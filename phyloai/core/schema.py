@@ -74,8 +74,9 @@ class RunRecord:
 
     def __post_init__(self):
         self.run_dir = Path(self.run_dir)
-        from phyloai import __version__
-        self.phyloai_version = __version__
+        if not self.phyloai_version:
+            from phyloai import __version__
+            self.phyloai_version = __version__
 
     def add_step(self, step_name: str, params: dict, result: ToolResult) -> None:
         self.steps.append({
