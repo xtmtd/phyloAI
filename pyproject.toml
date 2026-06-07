@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "phyloai"
+version = "0.1.0"
+description = "A modular phylogenomics analysis platform starting from sequence alignments"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "PyYAML>=6.0",
+    "biopython>=1.81",
+    "magus>=1.0",
+    "clipkit>=2.0",
+]
+
+[project.scripts]
+phyloai = "phyloai.cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["phyloai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
