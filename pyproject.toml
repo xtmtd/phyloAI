@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "phyloai"
 version = "0.1.0"
 description = "A modular phylogenomics analysis platform starting from sequence alignments"
+readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = [
@@ -13,7 +14,6 @@ dependencies = [
     "rich>=13.0",
     "PyYAML>=6.0",
     "biopython>=1.81",
-    "magus>=1.0",
     "clipkit>=2.0",
 ]
 
