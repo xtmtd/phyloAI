@@ -7,6 +7,20 @@ from pathlib import Path
 from typing import Any
 
 
+COMMON_ALIGNMENT_EXTENSIONS = (
+    ".fa",
+    ".fas",
+    ".fasta",
+    ".faa",
+    ".fna",
+    ".phy",
+    ".phylip",
+    ".nex",
+    ".nxs",
+    ".nexus",
+)
+
+
 @dataclass
 class MSACollection:
     """A directory of multiple sequence alignment files."""
@@ -18,9 +32,15 @@ class MSACollection:
     def __post_init__(self):
         self.directory = Path(self.directory)
         if self.directory.exists():
-            self.count = len(list(
-                self.directory.glob(f"*{self.file_extension}")
-            ))
+            if self.file_extension == ".fa":
+                self.count = sum(
+                    len(list(self.directory.glob(f"*{suffix}")))
+                    for suffix in COMMON_ALIGNMENT_EXTENSIONS
+                )
+            else:
+                self.count = len(list(
+                    self.directory.glob(f"*{self.file_extension}")
+                ))
 
 
 @dataclass

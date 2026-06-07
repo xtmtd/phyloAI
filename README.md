@@ -1,6 +1,6 @@
 # PhyloAI
 
-A modular phylogenomics analysis platform starting from sequence alignments.
+An AI-native modular phylogenomics analysis platform.
 
 ## Installation
 

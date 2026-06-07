@@ -18,10 +18,12 @@ class AlignmentFormat(str, Enum):
 
 _EXT_MAP: dict[str, AlignmentFormat] = {
     ".fa":    AlignmentFormat.FASTA,
+    ".fas":   AlignmentFormat.FASTA,
     ".fasta": AlignmentFormat.FASTA,
     ".faa":   AlignmentFormat.FASTA,
     ".fna":   AlignmentFormat.FASTA,
     ".phy":   AlignmentFormat.PHYLIP,
+    ".phylip": AlignmentFormat.PHYLIP,
     ".nex":   AlignmentFormat.NEXUS,
     ".nxs":   AlignmentFormat.NEXUS,
     ".nexus": AlignmentFormat.NEXUS,
@@ -29,7 +31,13 @@ _EXT_MAP: dict[str, AlignmentFormat] = {
 
 
 class FormatConverter:
-    def detect(self, path: Path) -> AlignmentFormat:
+    def detect(
+        self,
+        path: Path,
+        declared_format: Optional[AlignmentFormat] = None,
+    ) -> AlignmentFormat:
+        if declared_format is not None:
+            return declared_format
         suffix = path.suffix.lower()
         if suffix in _EXT_MAP:
             return _EXT_MAP[suffix]
@@ -67,6 +75,10 @@ class FormatConverter:
             AlignIO.write(alignment, fh, target.value)
         return dst
 
-    def read(self, path: Path) -> MultipleSeqAlignment:
-        fmt = self.detect(path)
+    def read(
+        self,
+        path: Path,
+        source_format: Optional[AlignmentFormat] = None,
+    ) -> MultipleSeqAlignment:
+        fmt = source_format or self.detect(path)
         return AlignIO.read(str(path), fmt.value)

@@ -17,7 +17,7 @@ console = Console()
     "--output-format",
     type=click.Choice(["text", "json"]),
     default="text",
-    help="Output format.",
+    help="Output format. Default: text.",
 )
 def doctor(output_format: str) -> None:
     """Check that required external tools are available."""

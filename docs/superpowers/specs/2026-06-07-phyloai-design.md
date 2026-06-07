@@ -8,7 +8,7 @@
 ## 1. Project Identity
 
 **Name:** PhyloAI  
-**Tagline:** *A modular phylogenomics analysis platform starting from sequence alignments*  
+**Tagline:** *An AI-native modular phylogenomics analysis platform*  
 **Scope:** MSA-first. Covers alignment through post-tree analysis. Does not handle upstream data acquisition (genome assembly, marker extraction, orthology inference).  
 **Target users:** Intermediate-level users with limited theoretical background. AI interaction depth scales with analytical module complexity, not with user expertise level.
 
@@ -60,7 +60,7 @@ phyloai/
 │   ├── genetree.py     # batch gene tree inference (IQ-TREE, parallel)
 │   ├── iqtree.py       # partitioned / unpartitioned / mixture (C20-C60, EX_EHO) /
 │   │                   # GHOST / PMSF / recoding (Dayhoff6) / model selection
-│   ├── astral.py       # ASTRAL-III / wASTRAL (ASTER), local branch support
+│   ├── astral.py       # astral-hybrid species-tree inference, local branch support
 │   └── phylobayes.py   # CAT-GTR, convergence checking (bpcomp, tracecomp),
 │                       # chain management (start, stop, resume)
 │
@@ -79,8 +79,7 @@ phyloai/
 │   │                   #   - substitution pattern heterogeneity
 │   │                   #   - model fit assessment (LOO-CV/PPC, internal use only)
 │   │                   # note: full diagnosis workflow orchestrated in Skill layer
-│   └── simulate.py     # SimPhy (species/gene tree simulation),
-│                       # AliSim (MSA simulation, empirical PDF parameters),
+│   └── simulate.py     # AliSim (MSA simulation, empirical PDF parameters),
 │                       # gene-jackknife resampling
 │
 ├── report/
@@ -110,8 +109,10 @@ phyloai/
 phyloai doctor
 
 # Pre-tree
-phyloai pretree align    --msa-dir ./raw --method linsi [--nt-dir ./raw_nt]
-phyloai pretree trim     --msa-dir ./aligned --tool bmge [--model BLOSUM90]
+phyloai pretree align    --msa-dir ./raw --method linsi [--nt-dir ./raw_nt] \
+                         [--input-format fasta]
+phyloai pretree trim     --msa-dir ./aligned --tool bmge [--model BLOSUM90] \
+                         [--input-format phylip-relaxed]
 phyloai pretree metrics  --msa-dir ./trimmed [--tree-dir ./genetrees]
 phyloai pretree filter   --msa-dir ./trimmed [--tree-dir ./genetrees] \
                          --strategy outlier [--filter-by pis,abs,treeness]
@@ -153,7 +154,7 @@ Two modes, both include: `align → trim → TAPER → concat → [tree inferenc
 | Mode | Steps | Notes |
 |------|-------|-------|
 | `--mode supermatrix` | align → trim → TAPER → concat → iqtree (unpartitioned) | Fast, single-step ML tree |
-| `--mode coalescent` | align → trim → TAPER → concat → genetree → astral (wASTRAL) | MSC-based species tree |
+| `--mode coalescent` | align → trim → TAPER → concat → genetree → astral-hybrid | MSC-based species tree |
 
 Filter step in `phyloai run` is TAPER only (error site detection). Full marker filtering is an explicit manual step via `phyloai pretree filter`.
 
@@ -169,6 +170,13 @@ All commands support:
 | `--threads N` | Parallelism control |
 | `--run-dir DIR` | Override default run directory |
 
+Commands that read alignment files should also support `--input-format`.
+
+- Accepted values should match the core `AlignmentFormat` enum
+- If `--input-format` is given, PhyloAI should trust it and skip guessing
+- If it is omitted, format detection should use filename suffix first, then fall back to conservative content inspection
+- Common suffixes to support include `.fa`, `.fasta`, `.fas`, `.faa`, `.fna`, `.phy`, `.phylip`, `.nex`, `.nxs`, and `.nexus`
+
 ---
 
 ## 5. Dependency Management
@@ -176,24 +184,31 @@ All commands support:
 ### 5.1 Strategy
 
 - **Bundled (auto-downloaded on install):** trimAl, BMGE — permissive licenses, small binaries
-- **pip-installable (auto-installed):** MAGUS, ClipKIT, PhyKIT
-- **User-installed (detected by `doctor`):** IQ-TREE2, PhyloBayes-MPI, ASTRAL/ASTER, MAFFT, MCMCTree (PAML), SimPhy, TreeShrink, TAPER
+- **pip-installable (auto-installed):** MAGUS (`pip install magus-msa`), ClipKIT, PhyKIT
+- **User-installed (detected by `doctor`):** IQ-TREE3, PhyloBayes-MPI, astral-hybrid, MAFFT, MCMCTree (PAML), TreeShrink, TAPER (`correction_multi.jl`)
 
 ### 5.2 `phyloai doctor` Output Format
+
+`phyloai doctor` should default to text output. Help text must make that default explicit.
 
 ```
 PhyloAI Environment Check
 ==========================
-[OK]   IQ-TREE2      v2.3.1    /usr/local/bin/iqtree2
-[OK]   MAFFT         v7.520    /usr/local/bin/mafft
-[OK]   MAGUS         v1.1.0    pip (phyloai.bundled)
-[OK]   trimAl        v1.4.1    bundled
+[OK]   iqtree3       3.0.1     /usr/local/bin/iqtree3
+[OK]   mafft         7.520     /usr/local/bin/mafft
+[OK]   magus         1.1.0     /usr/local/bin/magus
+[OK]   trimal        1.4.1     bundled
+[OK]   java          21.0.2    /usr/bin/java
 [WARN] PhyloBayes              not found — CAT-GTR module unavailable
-                               install: http://www.phylobayes.org
+                                install: https://github.com/bayesiancook/pbmpi
+[WARN] correction_multi.jl     —         not found
+                                install: https://github.com/chaoszhang/TAPER
+[WARN] julia                   —         not found
+                                install: https://julialang.org/downloads/
 [WARN] MAGUS                   not found — large-dataset alignment
-                               falls back to MAFFT
+                                falls back to MAFFT
 [MISS] MCMCTree                not found — dating module unavailable
-                               install: PAML package
+                                install: https://github.com/abacus-gene/paml/releases
 ```
 
 ---
@@ -249,7 +264,7 @@ Log file content per step: tool version, full command, stdout/stderr, wall time,
 
 ### 7.2 Methods Paragraph Example
 
-> Protein sequences were aligned using MAFFT v7.520 with the L-INS-i strategy. Alignments were trimmed using BMGE v1.12 with stringent parameters (−m BLOSUM90 −h 0.4). Error sites were detected and masked using TAPER. Trimmed alignments were concatenated into supermatrices at 75%, 90%, and 100% occupancy thresholds using PhyKIT. Phylogenetic trees were inferred using IQ-TREE2 v2.3.1 under the PMSF model (LG+C60+F+R4), with node support estimated from 1,000 UFBoot2 replicates and 1,000 SH-aLRT replicates. Gene concordance factors (gCF) and site concordance factors (sCF) were calculated in IQ-TREE2 to quantify branch-level topological support.
+> Protein sequences were aligned using MAFFT 7.520 with the L-INS-i strategy. Alignments were trimmed using BMGE 1.12 with stringent parameters (−m BLOSUM90 −h 0.4). Error sites were detected and masked using TAPER. Trimmed alignments were concatenated into supermatrices at 75%, 90%, and 100% occupancy thresholds using PhyKIT. Phylogenetic trees were inferred using IQ-TREE3 3.0.1 under the PMSF model (LG+C60+F+R4), with node support estimated from 1,000 UFBoot2 replicates and 1,000 SH-aLRT replicates. Gene concordance factors (gCF) and site concordance factors (sCF) were calculated in IQ-TREE3 to quantify branch-level topological support.
 
 ---
 
@@ -326,161 +341,12 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | TAPER only in `phyloai run` | TAPER is fast, non-destructive, and universally beneficial; full filtering requires data-specific decisions |
 | `--output-format json` from day one | Ensures MCP wrapping requires zero interface changes later |
 | YAML for config, JSON for output | YAML supports comments and is human-writable; JSON is strict and machine-parseable |
+| `--input-format` on alignment-reading commands | Real datasets often use inconsistent suffixes; explicit user intent must override guessing |
 
 ---
 
-## 12. YAML Config Template
+## 12. YAML Config Files
 
-All `--config FILE` parameters map 1-to-1 to CLI flags. Unknown keys are ignored with a warning. A minimal template for each major command is shown below.
+All `--config FILE` parameters should map 1-to-1 to CLI flags. Unknown keys should be ignored with a warning, and CLI flags should override config values.
 
-```yaml
-# phyloai-config.yaml
-# Full config template — uncomment and edit the sections you need.
-# Pass to any command with: phyloai <command> --config phyloai-config.yaml
-# CLI flags always override config file values.
-
-# ── Global ────────────────────────────────────────────────────────────────────
-threads: 8
-output_format: text          # text | json
-run_dir: ./runs/run001
-
-# ── pretree align ─────────────────────────────────────────────────────────────
-align:
-  msa_dir: ./raw
-  method: linsi              # linsi | einsi | ginsi | auto | magus
-  nt_dir: ./raw_nt           # optional: unaligned nucleotide dir for backtranslation
-  seq_type: AA               # AA | NT
-
-# ── pretree trim ──────────────────────────────────────────────────────────────
-trim:
-  msa_dir: ./aligned
-  tool: bmge                 # bmge | trimal | clipkit
-  # bmge options
-  bmge_matrix: BLOSUM90      # BLOSUM30 | BLOSUM45 | BLOSUM62 | BLOSUM90
-  bmge_entropy: 0.4          # entropy threshold; lower = stricter
-  # trimal options
-  trimal_mode: automated1    # automated1 | gappyout | strict
-  # clipkit options
-  clipkit_mode: kpic-gappy   # kpi | kpic | gappy | kpi-gappy | kpic-gappy
-
-# ── pretree metrics ───────────────────────────────────────────────────────────
-metrics:
-  msa_dir: ./trimmed
-  tree_dir: ./runs/run001/tree/genetree   # optional; enables tree metrics
-  seq_type: AA
-  threads: 8
-
-# ── pretree filter ────────────────────────────────────────────────────────────
-filter:
-  msa_dir: ./trimmed
-  tree_dir: ./runs/run001/tree/genetree   # required for tree-based filters
-  strategy: outlier          # outlier | threshold | combined
-  # threshold-based cutoffs (used when strategy: threshold or combined)
-  min_pis: 50                # minimum parsimony-informative sites
-  max_gc: 0.8
-  min_gc: 0.2
-  max_nrcfv: 0.0015
-  min_abs: 75                # average bootstrap support
-  max_dvmc: 0.45
-  min_treeness: 0.25
-  min_api: 0.5
-  max_api: 0.9
-  taper: true                # always run TAPER error-site masking
-
-# ── pretree concat ────────────────────────────────────────────────────────────
-concat:
-  msa_dir: ./filtered
-  occupancy: [75, 90, 100]   # list of occupancy thresholds (%)
-  seq_type: AA
-  recode: false              # true to apply Dayhoff6 recoding
-  recode_scheme: Dayhoff6    # Dayhoff6 | SR4 | KGB6
-  outgroup: Outgroup_sp      # optional: move outgroup to first row
-
-# ── tree genetree ─────────────────────────────────────────────────────────────
-genetree:
-  msa_dir: ./filtered
-  model: LG                  # LG | EX_EHO | C20 | auto
-  bootstrap: 1000
-  threads_per_job: 1
-  parallel_jobs: 8
-
-# ── tree iqtree ───────────────────────────────────────────────────────────────
-iqtree:
-  matrix: ./runs/run001/pretree/concat/matrix_90.fa
-  partition: ./runs/run001/pretree/concat/matrix_90.partition
-  mode: pmsf                 # partitioned | unpartitioned | mixture | ghost | pmsf | recode
-  model: LG                  # base model; ignored when mode=pmsf (uses LG+C60+F+R)
-  mixture_model: C60         # C20 | C40 | C60 | EX_EHO | LG4X
-  bootstrap: 1000
-  alrt: 1000
-  guide_tree: ~              # path to guide tree; required for pmsf mode
-  threads: AUTO
-
-# ── tree astral ───────────────────────────────────────────────────────────────
-astral:
-  gene_trees: ./runs/run001/tree/genetree
-  mode: wastral              # astral | wastral
-  threads: 8
-
-# ── tree phylobayes ───────────────────────────────────────────────────────────
-phylobayes:
-  matrix: ./runs/run001/pretree/concat/matrix_90.phy
-  chains: 3
-  threads: 8
-  burnin: 1000               # trees to discard for convergence check
-  sample_freq: 1
-
-# ── posttree concordance ──────────────────────────────────────────────────────
-concordance:
-  tree: ./runs/run001/tree/iqtree/matrix_90.treefile
-  gene_trees: ./runs/run001/tree/genetree
-  matrix: ./runs/run001/pretree/concat/matrix_90.fa
-  scf_quartets: 100
-
-# ── posttree topology ─────────────────────────────────────────────────────────
-topology:
-  matrix: ./runs/run001/pretree/concat/matrix_90.fa
-  hypotheses:                # list of topology hypothesis tree files
-    - ./h1.nwk
-    - ./h2.nwk
-    - ./h3.nwk
-  model: LG+C60+F+R          # model for topology test
-  guide_tree: ./runs/run001/tree/iqtree/matrix_90.treefile
-  bootstrap_replicates: 10000
-
-# ── posttree dating ───────────────────────────────────────────────────────────
-dating:
-  tree: ./runs/run001/tree/iqtree/matrix_90.treefile
-  matrix: ./runs/run001/pretree/concat/matrix_90.fa
-  calibrations: ./calibrations.txt  # see format in docs/calibration-format.md
-  seq_type: AA
-  mcmc_steps: 50000
-  burnin: 5000
-  partitions: auto           # auto = merge by partition scheme; or integer
-
-# ── posttree signal ───────────────────────────────────────────────────────────
-signal:
-  matrix: ./runs/run001/pretree/concat/matrix_90.fa
-  hypotheses:
-    - ./h1.nwk
-    - ./h2.nwk
-  model: LG+F+R4
-  gene_trees: ./runs/run001/tree/genetree   # optional, for gene-wise analysis
-
-# ── posttree simulate ─────────────────────────────────────────────────────────
-simulate:
-  tree: ./runs/run001/tree/iqtree/matrix_90.treefile
-  tool: alisim               # alisim | simphy
-  replicates: 100
-  seq_type: AA
-  model: LG+G4+F
-  length: empirical          # empirical | integer (e.g. 500)
-  indels: false
-
-# ── one-click run ─────────────────────────────────────────────────────────────
-run:
-  msa_dir: ./raw
-  mode: supermatrix          # supermatrix | coalescent
-  seq_type: AA
-  threads: 8
-```
+Example YAML templates should live under `examples/` in the repository rather than being embedded in the design document. Those example files should cover global options and representative command-level inputs, including `output_format`, `run_dir`, and future `input_format` fields for alignment-reading commands.

@@ -55,7 +55,7 @@ build-backend = "hatchling.build"
 [project]
 name = "phyloai"
 version = "0.1.0"
-description = "A modular phylogenomics analysis platform starting from sequence alignments"
+description = "An AI-native modular phylogenomics analysis platform"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -64,7 +64,7 @@ dependencies = [
     "rich>=13.0",
     "PyYAML>=6.0",
     "biopython>=1.81",
-    "magus>=1.0",
+    "magus-msa>=1.0",
     "clipkit>=2.0",
 ]
 
@@ -82,7 +82,7 @@ testpaths = ["tests"]
 
 `phyloai/__init__.py`:
 ```python
-"""PhyloAI — A modular phylogenomics analysis platform."""
+"""PhyloAI — An AI-native modular phylogenomics analysis platform."""
 
 __version__ = "0.1.0"
 ```
@@ -157,8 +157,8 @@ def test_msa_collection_defaults():
 
 def test_tool_result_success():
     r = ToolResult(
-        tool="iqtree2",
-        command="iqtree2 -s matrix.fa",
+        tool="iqtree3",
+        command="iqtree3 -s matrix.fa",
         returncode=0,
         stdout="Analysis done",
         stderr="",
@@ -169,8 +169,8 @@ def test_tool_result_success():
 
 def test_tool_result_failure():
     r = ToolResult(
-        tool="iqtree2",
-        command="iqtree2 -s missing.fa",
+        tool="iqtree3",
+        command="iqtree3 -s missing.fa",
         returncode=1,
         stdout="",
         stderr="ERROR: file not found",
@@ -338,7 +338,7 @@ def test_tool_status_values():
 
 
 def test_tool_info_defaults():
-    info = ToolInfo(name="iqtree2")
+    info = ToolInfo(name="iqtree3")
     assert info.status == ToolStatus.MISSING
     assert info.path is None
     assert info.version is None
@@ -366,7 +366,7 @@ def test_check_all_returns_dict():
     results = env.check_all()
     assert isinstance(results, dict)
     # known required tools must be present as keys
-    for key in ["iqtree2", "mafft", "trimal"]:
+    for key in ["iqtree3", "mafft", "trimal"]:
         assert key in results
 
 
@@ -421,23 +421,21 @@ class ToolInfo:
 # required=False -> doctor reports MISSING as warning only
 TOOL_REGISTRY: dict[str, dict] = {
     # user-installed tools
-    "iqtree2":     {"required": True,  "version_flag": "--version",
-                    "install": "https://github.com/iqtree/iqtree2/releases"},
+    "iqtree3":     {"required": True,  "version_flag": "--version",
+                    "install": "https://github.com/iqtree/iqtree3/releases"},
     "mafft":       {"required": True,  "version_flag": "--version",
                     "install": "https://mafft.cbrc.jp/alignment/software/"},
-    "astral":      {"required": False, "version_flag": "-v",
+    "astral-hybrid": {"required": False, "version_flag": "-v",
                     "install": "https://github.com/chaoszhang/ASTER"},
     "pb_mpi":      {"required": False, "version_flag": "",
-                    "install": "http://www.phylobayes.org"},
+                    "install": "https://github.com/bayesiancook/pbmpi"},
     "mcmctree":    {"required": False, "version_flag": "",
-                    "install": "http://abacus.gene.ucl.ac.uk/software/paml.html"},
-    "simphy":      {"required": False, "version_flag": "-v",
-                    "install": "https://github.com/adamallo/SimPhy"},
-    "treeshrink":  {"required": False, "version_flag": "--version",
-                    "install": "pip install treeshrink"},
+                    "install": "https://github.com/abacus-gene/paml/releases"},
+    "run_treeshrink.py": {"required": False, "version_flag": "--version",
+                    "install": "https://github.com/uym2/TreeShrink"},
     # pip-installed tools (detected via shutil.which after pip install)
     "magus":       {"required": False, "version_flag": "--version",
-                    "install": "pip install magus"},
+                    "install": "pip install magus-msa"},
     "clipkit":     {"required": False, "version_flag": "--version",
                     "install": "pip install clipkit"},
     "phykit":      {"required": False, "version_flag": "version",
@@ -445,10 +443,10 @@ TOOL_REGISTRY: dict[str, dict] = {
     # bundled tools (path resolved relative to package)
     "trimal":      {"required": True,  "version_flag": "--version",
                     "bundled": True,
-                    "install": "auto-bundled with phyloai"},
+                    "install": "https://github.com/inab/trimal/releases"},
     "bmge":        {"required": False, "version_flag": "",
                     "bundled": True,
-                    "install": "auto-bundled with phyloai"},
+                    "install": "conda install bmge"},
 }
 
 
@@ -959,8 +957,8 @@ def test_logger_creates_log_file(tmp_path):
 def test_logger_log_contains_required_fields(tmp_path):
     logger = StepLogger(run_dir=tmp_path)
     result = ToolResult(
-        tool="iqtree2",
-        command="iqtree2 -s matrix.fa",
+        tool="iqtree3",
+        command="iqtree3 -s matrix.fa",
         returncode=0,
         stdout="Analysis done",
         stderr="",
@@ -968,8 +966,8 @@ def test_logger_log_contains_required_fields(tmp_path):
     )
     logger.write("iqtree", result)
     content = (tmp_path / "logs" / "iqtree.log").read_text()
-    assert "iqtree2" in content          # tool name
-    assert "iqtree2 -s matrix.fa" in content  # full command
+    assert "iqtree3" in content          # tool name
+    assert "iqtree3 -s matrix.fa" in content  # full command
     assert "45.1" in content             # wall time
     assert "returncode: 0" in content    # exit code
     assert "Analysis done" in content    # stdout
@@ -1083,8 +1081,8 @@ from pathlib import Path
 
 def _mock_tools():
     return {
-        "iqtree2": ToolInfo("iqtree2", ToolStatus.OK,
-                            Path("/usr/bin/iqtree2"), "2.3.1"),
+        "iqtree3": ToolInfo("iqtree3", ToolStatus.OK,
+                            Path("/usr/bin/iqtree3"), "3.0.1"),
         "mafft":   ToolInfo("mafft",   ToolStatus.OK,
                             Path("/usr/bin/mafft"), "7.520"),
         "pb_mpi":  ToolInfo("pb_mpi",  ToolStatus.MISSING,
@@ -1105,7 +1103,7 @@ def test_doctor_shows_ok_tools():
     with patch("phyloai.cli.doctor.ToolEnv") as MockEnv:
         MockEnv.return_value.check_all.return_value = _mock_tools()
         result = runner.invoke(cli, ["doctor"])
-    assert "iqtree2" in result.output
+    assert "iqtree3" in result.output
     assert "mafft" in result.output
 
 
@@ -1126,8 +1124,8 @@ def test_doctor_json_output():
         result = runner.invoke(cli, ["doctor", "--output-format", "json"])
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert "iqtree2" in data
-    assert data["iqtree2"]["status"] == "ok"
+    assert "iqtree3" in data
+    assert data["iqtree3"]["status"] == "ok"
     assert data["pb_mpi"]["status"] == "missing"
 ```
 
@@ -1334,3 +1332,54 @@ git commit -m "feat(core): complete core/ module — all tests passing"
 - `--dry-run` flag: implemented per-command in pretree/tree/posttree plans
 - bundled tool download: `env.py` resolves bundled path; actual binary packaging is a packaging/CI task
 - `phyloai run` one-click command: implemented in Phase 5 plan
+- TAPER is detected via `correction_multi.jl`; Julia and Java runtime checks are reported as separate doctor entries
+
+---
+
+## Follow-up Task: Format Detection and Help Text Refinement
+
+**Files:**
+- Modify: `phyloai/cli/doctor.py`
+- Modify: `phyloai/core/formats.py`
+- Modify: `phyloai/core/schema.py`
+- Modify: `tests/cli/test_doctor.py`
+- Modify: `tests/core/test_formats.py`
+- Modify: `tests/core/test_schema.py`
+
+- [ ] **Step 1: Write failing tests for doctor help text and format handling**
+
+Add tests covering:
+
+- `phyloai doctor -h` explicitly says text is the default output format
+- `.fas` maps to FASTA
+- `.phylip` maps to PHYLIP
+- files with ambiguous suffixes can still be detected from FASTA/NEXUS/PHYLIP content
+- explicit `declared_format` / `source_format` overrides guessing
+- `MSACollection` counts multiple common alignment suffixes in one directory
+
+- [ ] **Step 2: Run targeted tests — expect failure**
+
+```bash
+python -m pytest tests/cli/test_doctor.py tests/core/test_formats.py tests/core/test_schema.py -v
+```
+
+Expected: failures in help text, suffix detection, or schema counting.
+
+- [ ] **Step 3: Implement minimal code changes**
+
+Implementation requirements:
+
+- `doctor.py` help text says `text` is the default
+- `formats.py` supports `.fas` and `.phylip`
+- `FormatConverter.detect()` accepts an explicit declared format and skips guessing when provided
+- `FormatConverter.read()` accepts `source_format`
+- auto-detection remains suffix-first with conservative content sniffing fallback
+- `MSACollection` can count common alignment suffixes, not just a single hard-coded extension
+
+- [ ] **Step 4: Re-run targeted tests — expect pass**
+
+```bash
+python -m pytest tests/cli/test_doctor.py tests/core/test_formats.py tests/core/test_schema.py -v
+```
+
+Expected: all targeted tests PASS.

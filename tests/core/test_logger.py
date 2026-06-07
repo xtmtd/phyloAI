@@ -21,8 +21,8 @@ def test_logger_creates_log_file(tmp_path):
 def test_logger_log_contains_required_fields(tmp_path):
     logger = StepLogger(run_dir=tmp_path)
     result = ToolResult(
-        tool="iqtree2",
-        command="iqtree2 -s matrix.fa",
+        tool="iqtree3",
+        command="iqtree3 -s matrix.fa",
         returncode=0,
         stdout="Analysis done",
         stderr="",
@@ -30,8 +30,8 @@ def test_logger_log_contains_required_fields(tmp_path):
     )
     logger.write("iqtree", result)
     content = (tmp_path / "logs" / "iqtree.log").read_text()
-    assert "iqtree2" in content
-    assert "iqtree2 -s matrix.fa" in content
+    assert "iqtree3" in content
+    assert "iqtree3 -s matrix.fa" in content
     assert "45.1" in content
     assert "returncode: 0" in content
     assert "Analysis done" in content

@@ -1,0 +1,8 @@
+threads: 8
+output_format: text
+run_dir: ./runs/run001
+
+align:
+  msa_dir: ./raw
+  method: linsi
+  input_format: fasta

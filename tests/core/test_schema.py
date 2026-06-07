@@ -18,8 +18,8 @@ def test_msa_collection_defaults():
 
 def test_tool_result_success():
     r = ToolResult(
-        tool="iqtree2",
-        command="iqtree2 -s matrix.fa",
+        tool="iqtree3",
+        command="iqtree3 -s matrix.fa",
         returncode=0,
         stdout="Analysis done",
         stderr="",
@@ -30,8 +30,8 @@ def test_tool_result_success():
 
 def test_tool_result_failure():
     r = ToolResult(
-        tool="iqtree2",
-        command="iqtree2 -s missing.fa",
+        tool="iqtree3",
+        command="iqtree3 -s missing.fa",
         returncode=1,
         stdout="",
         stderr="ERROR: file not found",
@@ -59,6 +59,16 @@ def test_msa_collection_auto_count(tmp_path):
     for i in range(3):
         (tmp_path / f"gene_{i}.fa").write_text(f">Taxon\nACGT\n")
     c = MSACollection(directory=tmp_path)
+    assert c.count == 3
+
+
+def test_msa_collection_counts_common_alignment_suffixes(tmp_path):
+    (tmp_path / "gene_1.fa").write_text(">A\nACGT\n")
+    (tmp_path / "gene_2.fas").write_text(">A\nACGT\n")
+    (tmp_path / "gene_3.phylip").write_text(" 1 4\nA ACGT\n")
+
+    c = MSACollection(directory=tmp_path)
+
     assert c.count == 3
 
 

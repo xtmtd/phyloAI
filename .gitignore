@@ -12,3 +12,4 @@ build/
 .coverage
 htmlcov/
 *.log
+ref/

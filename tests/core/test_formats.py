@@ -23,6 +23,57 @@ def test_detect_nexus():
     assert fmt == AlignmentFormat.NEXUS
 
 
+def test_detect_fas_suffix_as_fasta(tmp_path):
+    path = tmp_path / "alignment.fas"
+    path.write_text((FIXTURES / "test.fasta").read_text())
+
+    fc = FormatConverter()
+    fmt = fc.detect(path)
+
+    assert fmt == AlignmentFormat.FASTA
+
+
+def test_detect_phylip_suffix_as_phylip(tmp_path):
+    path = tmp_path / "alignment.phylip"
+    path.write_text((FIXTURES / "test.phy").read_text())
+
+    fc = FormatConverter()
+    fmt = fc.detect(path)
+
+    assert fmt == AlignmentFormat.PHYLIP
+
+
+def test_detect_fasta_from_content_when_suffix_is_unknown(tmp_path):
+    path = tmp_path / "alignment.weird"
+    path.write_text((FIXTURES / "test.fasta").read_text())
+
+    fc = FormatConverter()
+    fmt = fc.detect(path)
+
+    assert fmt == AlignmentFormat.FASTA
+
+
+def test_detect_declared_format_overrides_guessing(tmp_path):
+    path = tmp_path / "alignment.data"
+    path.write_text((FIXTURES / "test.fasta").read_text())
+
+    fc = FormatConverter()
+    fmt = fc.detect(path, declared_format=AlignmentFormat.PHYLIP)
+
+    assert fmt == AlignmentFormat.PHYLIP
+
+
+def test_read_uses_explicit_source_format(tmp_path):
+    path = tmp_path / "alignment.data"
+    path.write_text((FIXTURES / "test.fasta").read_text())
+
+    fc = FormatConverter()
+    alignment = fc.read(path, source_format=AlignmentFormat.FASTA)
+
+    assert len(alignment) == 3
+    assert alignment[0].id == "Taxon_A"
+
+
 def test_fasta_to_phylip(tmp_path):
     fc = FormatConverter()
     out = tmp_path / "out.phy"

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "phyloai"
 version = "0.1.0"
-description = "A modular phylogenomics analysis platform starting from sequence alignments"
+description = "An AI-native modular phylogenomics analysis platform"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
