@@ -44,6 +44,20 @@ PER_GENE_COLUMNS = [
 ]
 
 
+def _is_blank(value: Any) -> bool:
+    return value in {"", None}
+
+
+def per_gene_columns_for_rows(rows: list[dict[str, Any]]) -> list[str]:
+    if not rows:
+        return PER_GENE_COLUMNS
+    return [
+        column
+        for column in PER_GENE_COLUMNS
+        if any(not _is_blank(row.get(column, "")) for row in rows)
+    ]
+
+
 def _median(values: list[float]) -> float:
     return statistics.median(values) if values else 0.0
 
@@ -451,10 +465,11 @@ def render_summary_table(summary: dict[str, Any]) -> Table:
 
 def render_per_gene_table(per_file: list[dict[str, Any]]) -> Table:
     table = Table(title="Per-gene statistics")
-    for column in PER_GENE_COLUMNS:
+    columns = per_gene_columns_for_rows(per_file)
+    for column in columns:
         table.add_column(column)
     for result in sorted(per_file, key=lambda item: item["gene"]):
-        table.add_row(*(str(result.get(column, "")) for column in PER_GENE_COLUMNS))
+        table.add_row(*(str(result.get(column, "")) for column in columns))
     return table
 
 
@@ -567,11 +582,12 @@ def write_per_gene_output(data: dict[str, Any], path: Path) -> None:
         raise ValueError(f"Unsupported per-gene output extension '{path.suffix}'.")
     path.parent.mkdir(parents=True, exist_ok=True)
     delimiter = "," if suffix == ".csv" else "\t"
-    rows = [{column: result.get(column, "") for column in PER_GENE_COLUMNS} for result in data["data"]["per_gene"]]
+    columns = per_gene_columns_for_rows(data["data"]["per_gene"])
+    rows = [{column: result.get(column, "") for column in columns} for result in data["data"]["per_gene"]]
     if not rows:
         path.write_text("")
         return
     with path.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=PER_GENE_COLUMNS, delimiter=delimiter)
+        writer = csv.DictWriter(handle, fieldnames=columns, delimiter=delimiter)
         writer.writeheader()
         writer.writerows(rows)

@@ -327,8 +327,7 @@ def test_directory_csv_output_writes_summary_and_adjacent_per_gene(tmp_path: Pat
     assert header.startswith("n_genes,n_genes_ok")
     per_gene_header = per_gene_output.read_text().splitlines()[0]
     assert per_gene_header == (
-        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,seq_length_min,"
-        "seq_length_max,seq_length_mean,seq_length_median,seq_length_stdev,"
+        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,"
         "gap_ratio,ambiguous_ratio,gap_ambiguous_ratio,missing_taxa,missing_taxa_ratio"
     )
 
@@ -382,28 +381,37 @@ def test_directory_per_gene_format_can_write_tsv(tmp_path: Path) -> None:
 
 
 def test_unaligned_per_gene_output_includes_sequence_length_summary(tmp_path: Path) -> None:
-    runner = CliRunner()
-    output = tmp_path / "stats.txt"
+    from phyloai.pretree.stats import write_per_gene_output
+
     per_gene_output = tmp_path / "stats.per-gene.csv"
+    payload = {
+        "data": {
+            "per_gene": [
+                {
+                    "gene": "g1",
+                    "n_taxa": 4,
+                    "n_taxa_ratio": 1.0,
+                    "length_type": "seq_length",
+                    "alignment_length": "",
+                    "seq_length_min": 100,
+                    "seq_length_max": 120,
+                    "seq_length_mean": 110.0,
+                    "seq_length_median": 110.0,
+                    "seq_length_stdev": 8.165,
+                    "gap_ratio": 0.0,
+                    "ambiguous_ratio": 0.0,
+                    "gap_ambiguous_ratio": 0.0,
+                    "missing_taxa": 0,
+                    "missing_taxa_ratio": 0.0,
+                }
+            ]
+        }
+    }
 
-    result = runner.invoke(
-        cli,
-        [
-            "pretree",
-            "stats",
-            "--seq-dir",
-            str(TEST_DATA / "2-loci_filter" / "fna"),
-            "--per-gene",
-            "--output",
-            str(output),
-            "--quiet",
-            "--threads",
-            "1",
-        ],
-    )
+    write_per_gene_output(payload, per_gene_output)
 
-    assert result.exit_code == 0
     header = per_gene_output.read_text().splitlines()[0].split(",")
+    assert "alignment_length" not in header
     for column in [
         "length_type",
         "seq_length_min",
@@ -501,8 +509,7 @@ def test_directory_per_gene_txt_output_writes_adjacent_table(tmp_path: Path) -> 
     assert "EOG090X0971" not in content
     per_gene_content = per_gene_output.read_text()
     assert per_gene_content.splitlines()[0] == (
-        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,seq_length_min,"
-        "seq_length_max,seq_length_mean,seq_length_median,seq_length_stdev,"
+        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,"
         "gap_ratio,ambiguous_ratio,gap_ambiguous_ratio,missing_taxa,missing_taxa_ratio"
     )
     assert "EOG090X0971" in per_gene_content
@@ -531,8 +538,7 @@ def test_directory_per_gene_csv_output_writes_adjacent_csv(tmp_path: Path) -> No
     assert per_gene_output.exists()
     assert output.read_text().splitlines()[0].startswith("n_genes,n_genes_ok")
     assert per_gene_output.read_text().splitlines()[0] == (
-        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,seq_length_min,"
-        "seq_length_max,seq_length_mean,seq_length_median,seq_length_stdev,"
+        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,"
         "gap_ratio,ambiguous_ratio,gap_ambiguous_ratio,missing_taxa,missing_taxa_ratio"
     )
 
