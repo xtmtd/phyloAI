@@ -412,6 +412,8 @@ Each module also writes this same JSON to its output directory as `result.json` 
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
 - Every command writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code
 - Log files are appended (not overwritten) on retry, with a timestamp separator between runs
+- Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
+- When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
 
 ### 9.7 Tabular Output Format
 

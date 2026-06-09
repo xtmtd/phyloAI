@@ -108,7 +108,7 @@
   - Detect seq_type if not provided
   - Check stop codons
   - Compute `per_taxon_stats` for each sequence
-  - Aggregate: `n_taxa`, `seq_length` (min/max/mean/median of ungapped lengths), `total_length`, `gap_ratio` (mean across taxa), `ambiguous_ratio` (mean across taxa), `standard_ratio` (mean), `warnings`
+  - Aggregate: `n_taxa`, `seq_length` (min/max/mean/median/stdev of ungapped lengths), `total_length`, `gap_ratio` (mean across taxa), `ambiguous_ratio` (mean across taxa), `gap_ambiguous_ratio` (mean gap + ambiguous), `standard_ratio` (mean), `warnings`
   - Return full dict including `is_aligned: False`
 - [ ] Write tests:
   - [ ] `test_per_taxon_stats_basic`
@@ -123,14 +123,14 @@
 
 **Steps:**
 - [ ] Implement `compute_site_patterns(sequences: list[str], seq_type: str) -> dict`:
+  - Compute `distinct_patterns` as the number of unique full-column patterns across the alignment after normalizing `?` to `-` (IQ-TREE-compatible)
   - Iterate over each column index
   - For each column, collect characters classified as `standard` only
-  - If fewer than 2 standard chars in column → count as `gap_only_site`, skip
+  - If fewer than 2 standard chars in column → skip variable/PIS/singleton classification for that site
   - Else classify column:
-    - `constant`: all standard chars identical
     - `parsimony_informative`: ≥2 distinct standard chars each appearing ≥2 times
     - `singleton`: variable but not parsimony-informative
-    - `variable` = parsimony_informative + singleton
+    - `constant` = alignment_length − parsimony_informative − singleton_sites (IQ-TREE-compatible summary)
   - Return counts and ratios (denominator = alignment_length)
 - [ ] Implement `file_stats_aligned(path: Path, seq_type: str | None, input_format) -> dict`:
   - Read alignment with `FormatConverter.read()`
@@ -139,14 +139,14 @@
   - Check stop codons
   - Compute `per_taxon_stats` for each sequence
   - Call `compute_site_patterns`
-  - Aggregate gap/ambiguous/standard ratios (mean across taxa)
+  - Aggregate gap/ambiguous/gap+ambiguous/standard ratios (mean across taxa)
   - Return full dict including `alignment_length`, site pattern counts/ratios, `per_taxon`
 - [ ] Write tests:
   - [ ] `test_compute_site_patterns_basic` — small hand-crafted alignment
   - [ ] `test_file_stats_aligned` using `test/EOG090X0971.faa`:
     - alignment_length = 1042
-    - constant_sites = 242
-    - variable_sites = 560
+    - distinct_patterns = 624
+    - constant_sites = 482
     - parsimony_informative = 87
     - singleton_sites = 473
   - [ ] `test_file_stats_aligned_nt` using `test/EOG090X0971.fna`
@@ -182,10 +182,11 @@
 - [ ] Implement `collect_seq_files(directory: Path) -> list[Path]`:
   - Glob for all files with extensions in `COMMON_ALIGNMENT_EXTENSIONS` from `core/schema.py`
   - Sort by filename for deterministic ordering
-- [ ] Implement `stats_directory(directory: Path, seq_type: str | None, input_format, threads: int) -> tuple[list[dict], list[str]]`:
+- [ ] Implement `stats_directory(directory: Path, seq_type: str | None, input_format, threads: int, progress_callback=None) -> tuple[list[dict], list[str]]`:
   - Returns `(per_file_results, warnings)`
   - `threads=1`: run serially (no executor) for debuggability
   - `threads>1`: use `ProcessPoolExecutor(max_workers=threads)` with `map(_worker, args_list)`
+  - If `progress_callback` is provided, call it once for each completed file path
   - Collect errors from workers; include failed files in results with `error` field
   - Collect all warnings across files
 - [ ] Write tests:
@@ -214,6 +215,7 @@
     - `length`: min/max/mean/median/total of per-file length values
     - `gap_ratio`: mean/median across files
     - `ambiguous_ratio`: mean/median across files
+    - `gap_ambiguous_ratio`: mean/median across files
     - `missing_taxa_ratio`: mean/median across files (requires knowing max_taxa)
     - `n_taxa_ratio`: derived from max_taxa detected in dataset
   - `max_taxa` = maximum `n_taxa` across all files (used for ratio computations)
@@ -233,12 +235,12 @@
   - Two-column table: Metric / Value
   - Sections: Dataset Overview, Sequence Length, Gap & Ambiguous, Taxa Coverage
 - [ ] Implement `render_per_gene_table(per_file: list[dict]) -> rich.table.Table`:
-  - Columns: gene, n_taxa, n_taxa_ratio, length, gap_ratio, ambiguous_ratio, missing_taxa, missing_taxa_ratio
+  - Columns: gene, n_taxa, n_taxa_ratio, length_type, alignment_length, seq_length_min, seq_length_max, seq_length_mean, seq_length_median, seq_length_stdev, gap_ratio, ambiguous_ratio, gap_ambiguous_ratio, missing_taxa, missing_taxa_ratio
   - Rows sorted by gene name
 - [ ] Implement `render_single_file_panels(stats: dict) -> list[rich.panel.Panel]`:
   - Panel 1: Overview (filename, format, seq_type, is_aligned, n_taxa)
   - Panel 2: Character summary (standard/gap/ambiguous ratios)
-  - Panel 3: Site patterns (aligned only) — table of constant/variable/PIS/singleton/gap-only with counts and ratios
+  - Panel 3: Site patterns (aligned only) — include MSA length plus distinct-patterns/constant/PIS/singleton counts and ratios
   - Panel 4: Per-taxon table — name, raw_length, ungapped_length, gap_ratio, ambiguous_ratio
 - [ ] Write visual smoke test (not automated):
   - [ ] Run `phyloai pretree stats --seq ref/phylogenomics_examples/test/EOG090X0971.faa` and verify output looks correct
@@ -250,11 +252,13 @@
 **File:** `phyloai/pretree/stats.py`
 
 **Steps:**
-- [ ] Implement `write_output(data: dict, path: Path, mode: str)`:
-  - `mode` determined from file extension: `.csv` → CSV, `.tsv` → TSV, `.json` → JSON, `.txt` → plain text
-  - CSV/TSV: write per-gene table (directory mode) or per-taxon table (single-file mode) using `csv` stdlib
+- [ ] Implement `write_output(data: dict, path: Path, mode: str, force_json: bool = False)`:
+  - `mode` determined from file extension: `.csv` → CSV, `.tsv` → TSV, `.json` → JSON, `.txt` → plain text, unless `force_json=True`
+  - CSV/TSV: write summary table (directory mode) or per-taxon table (single-file mode) using `csv` stdlib
   - JSON: write full structured output matching schema in design spec Section 7.3
-  - TXT: write summary as key=value lines
+  - TXT: directory mode writes `[summary]`; single-file mode writes key=value lines plus a `[per_taxon]` table
+  - Implement `per_gene_output_path(summary_path, output_format="csv")` for adjacent `<stem>.per-gene.<format>` output
+  - Implement `write_per_gene_output(data, path)` to write the adjacent per-gene CSV/TSV table
 - [ ] Write tests:
   - [ ] `test_write_csv_output`
   - [ ] `test_write_json_output`
@@ -271,9 +275,10 @@
   - `--seq-dir` (Path, mutually exclusive with `--seq`)
   - `--seq` (Path, mutually exclusive with `--seq-dir`)
   - `--per-gene` (flag)
+  - `--per-gene-format` (choice: csv/tsv, default csv)
   - `--output` / `-o` (Path)
   - `--output-format` (choice: text/json, default text)
-  - `--input-format` (str, optional)
+  - `--input-format` (choice: `fasta`, `phylip-relaxed`, `nexus`; optional)
   - `--seq-type` (choice: AA/NT, optional)
   - `--threads` / `-t` (int, default 4)
   - `--quiet` / `-q` (flag)
@@ -281,12 +286,21 @@
 - [ ] Implement command body:
   - Dispatch to `stats_single_file` or `stats_directory` + `aggregate_summary`
   - Render output via Rich or JSON
-  - Write file if `--output` provided
+  - Write file if `--output` provided; when `--output-format json` is set, save JSON regardless of output suffix
+  - When `--per-gene --output` is provided, write per-gene results to an adjacent table path with CSV default and TSV override via `--per-gene-format`
+  - When `--output` is provided, print the saved output path in terminal output with content-aware wording (`Summary saved to ...`, `Per-gene table saved to ...`, etc.); in directory mode keep terminal output to summary only even if `--per-gene` is set
+  - Show a Rich progress bar during directory processing in text output mode, suppressed under `--quiet` and `--output-format json`
+  - Help text must explicitly state that exactly one of `--seq` or `--seq-dir` is required
   - Exit code 0 on success; 1 on input error; 2 on processing failure (all files errored)
 - [ ] Write CLI integration tests:
   - [ ] `test_cli_stats_seq_single_file` — invoke via Click test runner
   - [ ] `test_cli_stats_seq_dir` — small directory subset
   - [ ] `test_cli_stats_json_output`
+  - [ ] `test_cli_stats_json_output_format_writes_json_file_even_with_txt_suffix`
+  - [ ] `test_directory_txt_per_gene_defaults_to_adjacent_csv`
+  - [ ] `test_directory_per_gene_format_can_write_tsv`
+  - [ ] `test_unaligned_per_gene_output_includes_sequence_length_summary`
+  - [ ] `test_single_file_text_output_file_includes_per_taxon_table`
   - [ ] `test_cli_stats_mutual_exclusivity_error`
   - [ ] `test_cli_stats_no_args_error`
 
@@ -303,6 +317,10 @@
   - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/3-align/faa/ --per-gene --output /tmp/stats.csv`
   - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/2-loci_filter/faa/ --threads 8`
   - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/test/EOG090X0971.faa --output-format json`
-- [ ] Verify site pattern values for `EOG090X0971.faa` match expected: constant=242, variable=560, PIS=87, singleton=473
+  - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/test/EOG090X0971.faa --output /tmp/out.txt --output-format json` and verify `/tmp/out.txt` contains JSON
+  - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/2-loci_filter/fna --output /tmp/out.txt --threads 8 --per-gene` and verify `/tmp/out.per-gene.csv` contains length summary columns
+  - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/2-loci_filter/fna/EOG090X0971.fna --output /tmp/out.txt` and verify `[per_taxon]` is saved
+- [ ] Verify site pattern values for `EOG090X0971.faa` match expected: distinct_patterns=624, constant=482, PIS=87, singleton=473
+- [ ] Verify site pattern values for `raw.fa` match IQ-TREE distinct patterns after missing-state normalization: distinct_patterns=1053473
 - [ ] Verify parallel and serial results are identical for same input directory
 - [ ] Check all exit codes: success=0, missing file=1, bad format=1
