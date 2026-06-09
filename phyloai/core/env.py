@@ -53,9 +53,11 @@ TOOL_REGISTRY: dict[str, dict] = {
     "trimal":     {"required": True,  "version_flag": "--version",
                    "bundled": True,
                    "install": "https://github.com/inab/trimal/releases"},
-    "bmge":       {"required": False, "version_flag": "",
-                   "bundled": True,
-                   "install": "conda install bmge"},
+    "bmge":       {"required": False, "version_args": [["-?"]],
+                    "bundled_executable": "BMGE.jar",
+                   "path_aliases": ["BMGE.jar"],
+                    "bundled": True,
+                     "install": "conda install bmge"},
 }
 
 
@@ -79,8 +81,11 @@ class ToolEnv:
         candidates = [[version_args]] if isinstance(version_args, str) else version_args
         try:
             for args in candidates:
+                command = [str(path), *args]
+                if path.suffix.lower() == ".jar":
+                    command = ["java", "-jar", str(path), *args]
                 result = subprocess.run(
-                    [str(path), *args],
+                    command,
                     capture_output=True, text=True, timeout=5
                 )
                 output = result.stdout.strip() or result.stderr.strip()
@@ -95,7 +100,9 @@ class ToolEnv:
 
     def _detect_tool(self, name: str, version_flag: str = "",
                      version_args: Optional[list[list[str]]] = None,
-                     bundled: bool = False) -> ToolInfo:
+                     bundled: bool = False,
+                     bundled_executable: Optional[str] = None,
+                     path_aliases: Optional[list[str]] = None) -> ToolInfo:
         version_probe = version_args if version_args is not None else version_flag
         override_path = self._tool_paths.get(name)
         if override_path is not None:
@@ -105,16 +112,19 @@ class ToolEnv:
                                 path=override_path, version=ver)
             return ToolInfo(name=name)
         if bundled:
-            bundled_path = self._bundled_dir / name / name
+            bundled_name = bundled_executable or name
+            bundled_path = self._bundled_dir / name / bundled_name
             if bundled_path.exists():
                 ver = self._get_version(bundled_path, version_probe)
                 return ToolInfo(name=name, status=ToolStatus.OK,
                                 path=bundled_path, version=ver, note="bundled")
-        found = shutil.which(name)
-        if found:
-            p = Path(found)
-            ver = self._get_version(p, version_probe)
-            return ToolInfo(name=name, status=ToolStatus.OK, path=p, version=ver)
+        candidates = [name, *(path_aliases or [])]
+        for candidate in candidates:
+            found = shutil.which(candidate)
+            if found:
+                p = Path(found)
+                ver = self._get_version(p, version_probe)
+                return ToolInfo(name=name, status=ToolStatus.OK, path=p, version=ver)
         return ToolInfo(name=name)
 
     def check_all(self) -> dict[str, ToolInfo]:
@@ -124,6 +134,8 @@ class ToolEnv:
                 version_flag=meta.get("version_flag", ""),
                 version_args=meta.get("version_args"),
                 bundled=meta.get("bundled", False),
+                bundled_executable=meta.get("bundled_executable"),
+                path_aliases=meta.get("path_aliases"),
             )
             if info.status == ToolStatus.MISSING:
                 info.note = f"install: {meta.get('install', '')}"

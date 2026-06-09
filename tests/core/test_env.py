@@ -102,3 +102,25 @@ def test_get_version_uses_alternative_args_when_needed(tmp_path):
         version = env._get_version(tool, [["--version"], ["-h"]])
 
     assert version == "5.7.8"
+
+
+def test_get_version_runs_bmge_jar_via_java(tmp_path):
+    tool = tmp_path / "BMGE.jar"
+    tool.write_text("jar placeholder")
+
+    env = ToolEnv()
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = type(
+            "Result", (),
+            {"stdout": "", "stderr": "BMGE (version 1.12) arguments :\n", "returncode": 0} 
+        )()
+        version = env._get_version(tool, [["-?"]])
+
+    assert version == "1.12"
+    mock_run.assert_called_once_with(
+        ["java", "-jar", str(tool), "-?"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )

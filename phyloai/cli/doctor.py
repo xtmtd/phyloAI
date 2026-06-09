@@ -10,6 +10,7 @@ from rich.table import Table
 from phyloai.core.env import ToolEnv, ToolStatus
 
 console = Console()
+DISPLAY_NAMES = {"bmge": "BMGE.jar"}
 
 
 @click.command("doctor")
@@ -52,7 +53,7 @@ def doctor(output_format: str) -> None:
     for name, info in tools.items():
         table.add_row(
             status_icon[info.status],
-            name,
+            DISPLAY_NAMES.get(name, name),
             info.version or "—",
             str(info.path) if info.path else info.note,
         )
