@@ -413,7 +413,11 @@ Each module also writes this same JSON to its output directory as `result.json` 
 - Every command writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code
 - Log files are appended (not overwritten) on retry, with a timestamp separator between runs
 
-### 9.7 `--extra-args` Merge Semantics
+### 9.7 Tabular Output Format
+
+Commands that produce tabular output (per-gene tables, per-taxon tables, metric tables) default to **CSV** format. TSV is available via `--output-format tsv` or by using a `.tsv` file extension with `--output`. JSON output always uses `--output-format json` or a `.json` extension.
+
+### 9.8 `--extra-args` Merge Semantics
 
 1. PhyloAI builds its internal parameter set using tool-native argument format
 2. `--extra-args` string is tokenized with standard shell splitting (respects quoted strings)
