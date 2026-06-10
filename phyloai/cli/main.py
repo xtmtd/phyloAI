@@ -38,3 +38,7 @@ def cli(ctx: click.Context, config_file: Optional[Path]) -> None:
 cli.add_command(completion)
 cli.add_command(doctor)
 cli.add_command(pretree)
+
+
+if __name__ == "__main__":
+    cli()
