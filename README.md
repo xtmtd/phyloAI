@@ -33,7 +33,7 @@ phyloai completion zsh
 phyloai completion fish
 ```
 
-Generate the script once from an environment where `phyloai` is installed, save it to a persistent file, and source that static file from your shell configuration.
+Generate the script once from an environment where `phyloai` is installed, save it to a persistent file, and add a `source ...` line to your shell configuration so completion is available automatically in every new terminal.
 
 Do not run `phyloai completion ...` dynamically from `.bashrc`, `.zshrc`, or other shell startup files. Generate the file once and source the saved script instead.
 
@@ -44,11 +44,13 @@ mkdir -p ~/.config/phyloai/completion
 phyloai completion bash > ~/.config/phyloai/completion/phyloai.bash
 ```
 
-Source the saved file from `~/.bashrc`:
+Add this line to `~/.bashrc` so every new Bash shell loads the saved completion script automatically:
 
 ```bash
 source ~/.config/phyloai/completion/phyloai.bash
 ```
+
+If you only run `source ~/.config/phyloai/completion/phyloai.bash` manually in the current terminal, completion only works for that shell session.
 
 Example for Zsh:
 
@@ -57,11 +59,13 @@ mkdir -p ~/.config/phyloai/completion
 phyloai completion zsh > ~/.config/phyloai/completion/phyloai.zsh
 ```
 
-Source the saved file from `~/.zshrc`:
+Add this line to `~/.zshrc` so every new Zsh shell loads the saved completion script automatically:
 
 ```bash
 source ~/.config/phyloai/completion/phyloai.zsh
 ```
+
+If you only run `source ~/.config/phyloai/completion/phyloai.zsh` manually in the current terminal, completion only works for that shell session.
 
 Example for Fish:
 
@@ -70,7 +74,7 @@ mkdir -p ~/.config/fish/completions
 phyloai completion fish > ~/.config/fish/completions/phyloai.fish
 ```
 
-Fish loads completions from that directory automatically in new shells.
+Fish loads completions from that directory automatically in new shells, so you do not need to add an extra `source` line to `config.fish`.
 
 ## `phyloai doctor`
 
@@ -105,7 +109,7 @@ phyloai doctor --output-format json
 The current tool registry includes these names:
 
 - Required: `iqtree3`, `mafft`, `trimal`
-- Optional: `astral-hybrid`, `pb_mpi`, `mcmctree`, `correction_multi.jl`, `run_treeshrink.py`, `magus`, `clipkit`, `phykit`, `java`, `julia`, `bmge`
+- Optional: `astral-hybrid (ASTER)`, `pb_mpi (PhyloBayes)`, `mcmctree (PAML)`, `correction_multi.jl (TAPER)`, `run_treeshrink.py (TreeShrink)`, `magus`, `clipkit`, `phykit`, `java`, `julia`, `bmge`
 
 `bmge` is displayed as `BMGE.jar` in the table because the local project may provide it as a bundled jar file.
 
