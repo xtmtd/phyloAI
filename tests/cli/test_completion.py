@@ -21,7 +21,8 @@ def test_completion_bash_outputs_script() -> None:
     result = runner.invoke(cli, ["completion", "bash"])
 
     assert result.exit_code == 0
-    assert "complete -o nosort -F" in result.output
+    assert "_PHYLOAI_COMPLETE=bash_complete" in result.output
+    assert "_phyloai_completion" in result.output
     assert "phyloai" in result.output
 
 
@@ -41,7 +42,9 @@ def test_completion_fish_outputs_script() -> None:
     result = runner.invoke(cli, ["completion", "fish"])
 
     assert result.exit_code == 0
-    assert "complete --no-files --command phyloai" in result.output
+    assert "_PHYLOAI_COMPLETE=fish_complete" in result.output
+    assert "_phyloai_completion" in result.output
+    assert "phyloai" in result.output
 
 
 def test_completion_help_explains_static_usage() -> None:
