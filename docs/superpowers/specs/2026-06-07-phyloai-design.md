@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-09 (pretree module design finalized)  
+**Last updated:** 2026-06-10 (CLI shell completion design added)  
 **Status:** Approved for implementation
 
 ---
@@ -189,6 +189,45 @@ Commands that read alignment files also support `--input-format` (auto-detect by
 **Format handling policy:** Each module uses the format required by its underlying tool. `pretree convert` and `core/formats.py` provide conversion as needed. There is no global FASTA-only mandate; modules handle format requirements internally.
 
 Full parameter naming rules and exit code definitions are in **Section 9**.
+
+### 4.4 Shell Completion
+
+PhyloAI should provide first-party shell completion for the full CLI surface without adding any new Python dependency beyond the existing `click>=8.1` requirement.
+
+The supported scope is:
+
+- command and subcommand completion for the entire `phyloai` CLI tree
+- option-name completion for all commands
+- fixed enumerated parameter values exposed through `click.Choice(...)`
+- path completion delegated to Click and the user's shell integration
+
+PhyloAI should not implement custom runtime-dependent completion values at this stage. In particular, completion should not inspect project configuration, plugin state, or filesystem-derived domain values beyond what Click and the shell already provide automatically.
+
+The public interface should be a top-level command group:
+
+```bash
+phyloai completion bash
+phyloai completion zsh
+phyloai completion fish
+```
+
+Each subcommand should print the shell-specific completion script to standard output and exit successfully without modifying the user's shell configuration files. This command is intentionally a thin, stable wrapper around Click's built-in shell completion support. The wrapper exists to hide Click's internal environment-variable interface from end users and to give PhyloAI a stable, documented command surface.
+
+The recommended installation model is static script generation, not shell-startup-time dynamic evaluation. Users should run the completion export command once from an environment where `phyloai` is installed, save the generated script to a persistent location, and source that static file from their shell configuration. This avoids startup failures when the user's default shell environment is not the Conda environment that contains `phyloai` and `click`.
+
+The documentation must explicitly avoid recommending unconditional shell startup snippets that execute `phyloai` on every new shell session, such as dynamic `eval` patterns. Those patterns are fragile in Conda-based workflows because the default shell may not have access to the `phyloai` executable or its Python dependencies. Static script loading is the default documented path for Bash, Zsh, and Fish.
+
+Example usage pattern:
+
+```bash
+# Generate once from the phyloai environment
+phyloai completion zsh > ~/.config/phyloai/completion/phyloai.zsh
+
+# Then source the static script from shell configuration
+source ~/.config/phyloai/completion/phyloai.zsh
+```
+
+This feature is CLI-only. It does not require changes to the library API, MCP design, or run-record schema.
 
 ---
 
