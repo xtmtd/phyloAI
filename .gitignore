@@ -13,3 +13,4 @@ build/
 htmlcov/
 *.log
 ref/
+runs/

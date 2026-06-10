@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-10 (CLI shell completion design added)  
+**Last updated:** 2026-06-10 (CLI shell completion design added; output-format default corrected; log policy clarified; subcommand spec scope generalized)  
 **Status:** Approved for implementation
 
 ---
@@ -27,8 +27,8 @@ CLI              ←  built on library, single entry point
 MCP Server + Skill  ←  built on CLI, added after CLI stabilizes
 ```
 
-**Development order:** Library + CLI first → MCP Server + Skill after CLI is stable.  
-**MCP pre-requisite:** All CLI commands support `--output-format json` and standard exit codes from day one, so MCP wrapping requires no interface redesign.
+**Development order:** Library + CLI first → MCP Server + Skill after CLI is stable. `phyloai run` (pipeline orchestration) and `report/` (cross-module aggregation) are separate phases: `run` depends only on the analysis modules it orchestrates (Phases 2–3), while `report` must wait for all analysis phases (2–4) to finalize their JSON output schemas.  
+**MCP pre-requisite:** All CLI commands support `--output-format json` and standard exit codes from day one, so MCP wrapping requires no interface redesign. The default for `--output-format` is `json` for all pipeline commands (Section 9.2); `phyloai doctor` is an explicit exception that defaults to `text` (Section 5.2).
 
 ---
 
@@ -176,7 +176,7 @@ All commands support the shared parameters defined in Section 9.2. Key universal
 
 | Flag | Purpose |
 |------|---------|
-| `--output-format json\|text` | Machine-readable output (MCP pre-requisite); default `text` |
+| `--output-format json\|text` | Machine-readable output (MCP pre-requisite); default `json` for all commands except `doctor` |
 | `--dry-run` | Show what would be executed without running |
 | `--config FILE` | Load parameters from YAML (HPC batch use); see Section 13 for template |
 | `--threads` / `-t` | Parallelism control |
@@ -241,7 +241,7 @@ This feature is CLI-only. It does not require changes to the library API, MCP de
 
 ### 5.2 `phyloai doctor` Output Format
 
-`phyloai doctor` should default to text output. Help text must make that default explicit.
+`phyloai doctor` defaults to `text` output. This is the **only** CLI command where `--output-format` defaults to `text`; all other commands default to `json`. Help text must make this explicit.
 
 ```
 PhyloAI Environment Check
@@ -395,10 +395,10 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--seq-type` | | AA \| NT | AA | commands where molecule type affects behavior |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
 | `--input-format` | | str | auto-detect | all commands reading alignment files |
-| `--output-format` | | text \| json | text | all commands (MCP pre-requisite) |
+| `--output-format` | | text \| json | json | all commands except `doctor` (MCP pre-requisite; `doctor` defaults to `text`) |
 | `--extra-args` | | str | — | all commands invoking external tools |
 | `--config` | | Path | — | all commands (global, inherited from CLI root) |
-| `--run-dir` | | Path | `./runs/` | all commands (global, inherited from CLI root) |
+| `--run-dir` | | Path | `./runs/` | all commands except `stats` and `convert` (global, inherited from CLI root) |
 | `--dry-run` | | flag | False | all commands |
 | `--quiet` | `-q` | flag | False | all commands |
 | `--overwrite` | | flag | False | all commands producing output directories |
@@ -447,9 +447,9 @@ Each module also writes this same JSON to its output directory as `result.json` 
 
 ### 9.6 Display and Logging
 
-- Terminal output uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators
+- Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators — regardless of `--output-format`. The `--output-format` flag controls only the format of structured output written to stdout (for MCP) and to saved files; it does not suppress or alter Rich terminal display.
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
-- Every command writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code
+- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code. Utility commands (`stats`, `convert`) are read-only tools that do not write logs and do not require a run directory.
 - Log files are appended (not overwritten) on retry, with a timestamp separator between runs
 - Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
 - When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
@@ -478,17 +478,36 @@ Commands that produce tabular output (per-gene tables, per-taxon tables, metric 
 
 ## 11. Development Phases
 
-| Phase | Scope | Deliverable |
-|-------|-------|-------------|
-| 1 | `core/` infrastructure | env, runner, formats, logger |
-| 2 | `pretree/` modules | stats, convert, align, trim, metrics, filter, concat |
-| 3 | `tree/` modules | genetree, iqtree, astral, phylobayes |
-| 4 | `posttree/` modules | concordance, topology, dating, signal, syserror, simulate |
-| 5 | `report/` + `phyloai run` | methods generation, figures rendering, one-click pipeline |
-| 6 | MCP Server | JSON tool interface |
-| 7 | AI Coding Assistant Skill | workflow orchestration, syserror guided sub-workflow |
+| Phase | Scope | Deliverable | Pre-requisites |
+|-------|-------|-------------|----------------|
+| 1 | `core/` infrastructure | env, runner, formats, logger | — |
+| 2 | `pretree/` modules | stats, convert, align, trim, metrics, filter, concat | Phase 1 |
+| 3 | `tree/` modules | genetree, iqtree, astral, phylobayes | Phase 1 |
+| 4 | `posttree/` modules | concordance, topology, dating, signal, syserror, simulate | Phases 2–3 |
+| 5 | `phyloai run` | one-click supermatrix and coalescent pipelines | Phases 2–3 (align, trim, filter/TAPER, concat, genetree, iqtree, astral) |
+| 6 | `report/` module | collector, methods generation, figures rendering, run_record.yaml | Phases 2–4 |
+| 7 | MCP Server | JSON tool interface | Phases 2–6 (full CLI stable) |
+| 8 | AI Coding Assistant Skill | workflow orchestration, syserror guided sub-workflow | Phase 7 |
 
-Each `pretree` subcommand has its own design spec and implementation plan under `docs/superpowers/specs/` and `docs/superpowers/plans/` respectively. Subcommands within Phase 2 are designed and implemented one at a time in pipeline order.
+**Spec and plan granularity by phase:**
+
+- **Phase 1** — one spec + plan covering the entire `core/` infrastructure (already complete).
+- **Phases 2–4** — every subcommand (`pretree stats`, `pretree align`, `tree iqtree`, `posttree concordance`, etc.) has its own design spec and implementation plan under `docs/superpowers/specs/` and `docs/superpowers/plans/` respectively. Subcommands are designed and implemented one at a time in pipeline order within each phase.
+- **Phase 5** — one spec + plan for `phyloai run` (pipeline orchestration only; does not include report).
+- **Phase 6** — one spec + plan for the `report/` module (collector, methods, figures, run_record); depends on Phases 2–4 being stable so JSON output schemas are finalized.
+- **Phase 7** — one spec + plan for the MCP Server.
+- **Phase 8** — one spec + plan for the AI Coding Assistant Skill.
+
+Each subcommand spec and plan must be consistent with the conventions in Section 9; any deviation requires explicit justification in the subcommand spec.
+
+Every subcommand implementation must comply with the following binding requirements from the main design before it can be considered complete:
+
+1. **`--output-format`** defaults to `json` (not `text`); terminal Rich display is always on unless `--quiet` is set.
+2. **Output directory structure** follows Section 6; commands with an `--output-dir` parameter default to the appropriate subdirectory under `runs/`.
+3. **Conflict policy** follows Section 9.5: non-empty output directory → exit 1; `--overwrite` to replace.
+4. **Log file** written to `runs/runNNN/logs/<step>.log` for all pipeline commands (Section 9.6).
+5. **JSON output schema** follows Section 9.4; `result.json` written to the output directory on success.
+6. **Exit codes** follow Section 9.3.
 
 Modules within each phase can be developed in parallel. Phases are strictly sequential.
 
@@ -509,7 +528,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | syserror.py exposed as atomic ops only | Full diagnosis requires iterative human decisions; CLI atomics + Skill orchestration is the correct separation |
 | genetree.py in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
 | model_eval not exposed as standalone | Model evaluation logic is internal to syserror; exposing it separately creates redundant interface surface |
-| `--output-format json` from day one | Ensures MCP wrapping requires zero interface changes later |
+| `--output-format json` default (not text) | Ensures MCP wrapping requires zero interface changes later; `doctor` is the sole exception (defaults to `text` because it is a human-oriented diagnostic, not a pipeline step) |
 | JSON key_results in all pipeline modules | Enables report figures and summary without post-hoc data extraction; schema defined at design time |
 | YAML for config, JSON for output | YAML supports comments and is human-writable; JSON is strict and machine-parseable |
 | `--input-format` on alignment-reading commands | Real datasets often use inconsistent suffixes; explicit user intent must override guessing |

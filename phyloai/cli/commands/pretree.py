@@ -74,15 +74,16 @@ def pretree() -> None:
     "--output",
     "output_path",
     type=click.Path(path_type=Path),
-    default=None,
-    help="Write full results to a file. In directory mode, --per-gene writes an adjacent table file instead of mixing it into this file.",
+    default="runs/pretree-stats.json",
+    show_default=True,
+    help="Write full results to this file. In directory mode, --per-gene writes an adjacent .per-gene.csv table instead of mixing it into this file.",
 )
 @click.option(
     "--output-format",
     type=click.Choice(["text", "json"]),
-    default="text",
+    default="json",
     show_default=True,
-    help="Terminal output format. Use json for machine-readable stdout.",
+    help="Format for the file written with --output. Does not affect terminal output (always Rich tables unless --quiet).",
 )
 @click.option(
     "--input-format",
@@ -186,22 +187,15 @@ def _run_stats_command(
             "error": None,
             "data": stats,
         }
+        if not quiet:
+            for panel in render_single_file_panels(stats):
+                console.print(panel)
         if output_path is not None:
-            write_output(payload, output_path, mode="single", force_json=output_format == "json")
-        if quiet:
-            return
-        if output_format == "json":
-            click.echo(json.dumps(payload, indent=2, sort_keys=True))
-            if output_path is not None:
-                click.echo(f"Results written to {output_path}", err=True)
-            return
-        for panel in render_single_file_panels(stats):
-            console.print(panel)
-        if output_path is not None:
-            click.echo(f"Results written to {output_path}")
+            write_output(payload, output_path, mode="single", output_format=output_format)
+            click.echo(f"Results saved to {output_path}", err=True)
         return
 
-    if not quiet and output_format == "text":
+    if not quiet:
         files = collect_seq_files(seq_dir)
         with Progress(console=console, transient=True) as progress:
             task = progress.add_task("Processing sequence files", total=len(files))
@@ -216,6 +210,9 @@ def _run_stats_command(
         results, warnings = stats_directory(seq_dir, seq_type=seq_type, input_format=input_format, threads=threads)
     summary = aggregate_summary(results)
     summary["warnings"] = warnings
+    data: dict = {"summary": summary}
+    if per_gene:
+        data["per_gene"] = results
     payload = {
         "status": "success" if summary["n_genes_ok"] > 0 else "error",
         "command": "phyloai pretree stats",
@@ -230,39 +227,22 @@ def _run_stats_command(
         },
         "key_results": {},
         "error": None if summary["n_genes_ok"] > 0 else "All files failed during processing.",
-        "data": {
-            "summary": summary,
-            "per_gene": results,
-        },
+        "data": data,
     }
+    if summary["n_genes_ok"] == 0:
+        _fail("All files failed during processing.", 2)
+    if not quiet:
+        console.print(render_summary_table(summary))
+        if per_gene and output_path is None:
+            console.print(render_per_gene_table(results))
     if output_path is not None:
-        write_output(payload, output_path, mode="directory", per_gene=per_gene, force_json=output_format == "json")
+        write_output(payload, output_path, mode="directory", per_gene=per_gene, output_format=output_format)
         per_gene_path = per_gene_output_path(output_path, per_gene_format) if per_gene else None
         if per_gene_path is not None:
             write_per_gene_output(payload, per_gene_path)
-    else:
-        per_gene_path = None
-    if summary["n_genes_ok"] == 0:
-        _fail("All files failed during processing.", 2)
-    if quiet:
-        return
-    if output_format == "json":
-        click.echo(json.dumps(payload, indent=2, sort_keys=True))
-        if output_path is not None:
-            if per_gene:
-                click.echo(f"Summary saved to {output_path}", err=True)
-                click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
-            else:
-                click.echo(f"Summary saved to {output_path}", err=True)
-        return
-    console.print(render_summary_table(summary))
-    if per_gene and output_path is None:
-        console.print(render_per_gene_table(results))
-    if output_path is not None:
-        if per_gene:
-            click.echo(f"Summary saved to {output_path}")
-            click.echo(f"Per-gene table saved to {per_gene_path}")
+            click.echo(f"Summary saved to {output_path}", err=True)
+            click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
         else:
-            click.echo(f"Summary saved to {output_path}")
+            click.echo(f"Summary saved to {output_path}", err=True)
     for warning in warnings:
         click.echo(warning, err=True)

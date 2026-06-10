@@ -127,8 +127,8 @@ The current tool registry includes these names:
 - Directory mode with `--seq-dir`
 - Automatic aligned vs unaligned detection
 - Automatic AA vs NT detection, with manual override when needed
-- Text or JSON terminal output
-- Optional saved output files for summaries and tables
+- Rich terminal output (always on unless `--quiet`)
+- Optional saved output file (JSON by default) and adjacent per-gene tables
 
 Exactly one of `--seq` or `--seq-dir` is required.
 
@@ -144,8 +144,8 @@ phyloai pretree stats [OPTIONS]
 - `--seq FILE`: single-file mode. Inspect one sequence or alignment file in detail.
 - `--per-gene`: directory mode only. Show per-gene results in terminal output when no `--output` is used, or save an adjacent per-gene table when `--output` is provided.
 - `--per-gene-format csv|tsv`: directory mode only. Format for the adjacent per-gene table written by `--per-gene --output`. Default is `csv`.
-- `--output PATH`, `-o PATH`: save results to a file.
-- `--output-format text|json`: terminal output format. Default is `text`.
+- `--output PATH`, `-o PATH`: save results to a file. Default is `runs/pretree-stats.json` (directory created automatically).
+- `--output-format text|json`: format for the file written with `--output`. Does not affect terminal output. Default is `json`.
 - `--input-format fasta|phylip-relaxed|nexus`: override automatic format detection.
 - `--seq-type AA|NT`: override automatic molecule type detection.
 - `--threads INTEGER`, `-t INTEGER`: directory mode only. Number of worker processes. Default is `4`.
@@ -165,21 +165,13 @@ Unaligned nucleotide file:
 phyloai pretree stats --seq ref/phylogenomics_examples/2-loci_filter/fna/EOG090X0971.fna
 ```
 
-Force JSON on stdout:
+Save to a custom path in text format:
 
 ```bash
 phyloai pretree stats \
   --seq ref/phylogenomics_examples/test/EOG090X0971.faa \
-  --output-format json
-```
-
-Save JSON even if the file suffix is `.txt`:
-
-```bash
-phyloai pretree stats \
-  --seq ref/phylogenomics_examples/test/EOG090X0971.faa \
-  --output out.txt \
-  --output-format json
+  --output results/report.txt \
+  --output-format text
 ```
 
 ### Directory examples
@@ -212,7 +204,7 @@ Save summary plus adjacent per-gene CSV:
 phyloai pretree stats \
   --seq-dir ref/phylogenomics_examples/2-loci_filter/fna \
   --per-gene \
-  --output out.txt
+  --output results/summary.json
 ```
 
 Save summary plus adjacent per-gene TSV:
@@ -222,28 +214,30 @@ phyloai pretree stats \
   --seq-dir ref/phylogenomics_examples/2-loci_filter/fna \
   --per-gene \
   --per-gene-format tsv \
-  --output out.txt
+  --output results/summary.json
 ```
 
 ### Output behavior
 
+Terminal output is always Rich tables and panels (unless `--quiet` is set). The `--output-format` flag controls only the format of the file written with `--output`.
+
 Single-file mode:
 
-- Text terminal output uses Rich panels and a per-taxon table.
-- `--output file.csv` or `file.tsv` saves the per-taxon table.
-- `--output file.txt` saves key-value summary content plus a `[per_taxon]` section.
-- `--output-format json` prints JSON to stdout and also saves JSON to `--output`, even if the output suffix is not `.json`.
+- Terminal output uses Rich panels and a per-taxon table.
+- `--output` saves the full result payload.
+- `--output-format json` (default) writes JSON.
+- `--output-format text` writes a key-value summary with a `[per_taxon]` section.
 
 Directory mode:
 
-- Text terminal output shows a Rich summary table.
-- If `--per-gene` is set and `--output` is not set, a terminal per-gene table is also shown.
-- In text mode, a transient progress bar is shown while files are processed unless `--quiet` is used.
-- `--output file.csv`, `file.tsv`, or `file.txt` saves the dataset summary.
-- If `--per-gene --output file` is used, the per-gene table is saved separately as:
+- Terminal output shows a Rich summary table.
+- If `--per-gene` is set and no `--output` is used, a terminal per-gene table is also shown.
+- A transient progress bar is shown while files are processed unless `--quiet` is used.
+- `--output` saves the dataset summary payload.
+- If `--per-gene --output` is used, the per-gene table is saved separately as:
   - `file.per-gene.csv` by default
   - `file.per-gene.tsv` when `--per-gene-format tsv` is set
-- Per-gene CSV/TSV output dynamically removes columns that are completely empty for that specific export. This keeps aligned-only and unaligned-only tables compact.
+- Per-gene CSV/tsv output dynamically removes columns that are completely empty for that specific export. This keeps aligned-only and unaligned-only tables compact.
 
 ### Per-gene columns
 

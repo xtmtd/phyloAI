@@ -1,7 +1,8 @@
 # pretree stats — Design Specification
 
 **Date:** 2026-06-09  
-**Status:** Approved for implementation  
+**Last updated:** 2026-06-10 (output-format default corrected to json; log policy clarified; --output renamed to --output-dir for consistency)  
+**Status:** Approved for implementation — pending implementation update  
 **Parent spec:** `2026-06-07-phyloai-design.md`
 
 ---
@@ -171,7 +172,7 @@ Site pattern computation excludes gap/missing/ambiguous characters when determin
 | `--per-gene`      |       | flag     | False       | directory mode only: include per-gene results in terminal output when no `--output` is used; with `--output`, write an adjacent per-gene table |
 | `--per-gene-format` |     | csv\|tsv | csv         | directory mode only: format for adjacent per-gene table written with `--per-gene --output` |
 | `--output`        | `-o`  | Path     | —           | write results to file; extension controls text/csv/tsv/json unless `--output-format json` is used |
-| `--output-format` |       | text\|json | text      | terminal output format; `json` also saves JSON to `--output` regardless of file suffix |
+| `--output-format` |       | text\|json | json      | output format for stdout structured output and saved files; Rich terminal display is always on unless `--quiet`; `json` also saves JSON to `--output` regardless of file suffix |
 | `--input-format`  |       | fasta\|phylip-relaxed\|nexus | auto-detect | override format detection; accepted values: `fasta`, `phylip-relaxed`, `nexus` |
 | `--seq-type`      |       | AA\|NT   | auto-detect | override sequence type detection                         |
 | `--threads`       | `-t`  | int      | 4           | directory mode only: files processed in parallel (ProcessPoolExecutor) |
@@ -184,10 +185,12 @@ No `--overwrite` (read-only command, no output directory created).
 
 ## 7. Output Formats
 
-### 7.1 Terminal output (default `--output-format text`)
+### 7.1 Terminal output (always Rich, independent of `--output-format`)
+
+`--output-format` controls the format of structured output written to stdout and saved files. It does **not** affect Rich terminal display. Rich tables, panels, and progress bars are always rendered to the terminal unless `--quiet` is set.
 
 **Directory mode:**
-- Rich progress bar while processing files in text output mode, unless `--quiet` is set
+- Rich progress bar while processing files, unless `--quiet` is set
 - Rich table: summary statistics
 - Rich table: per-gene table (if `--per-gene` and no `--output` path is given)
 - `[WARN]` lines for any stop codons detected
@@ -256,7 +259,7 @@ Worker function must be a module-level function (not a lambda or closure) for pi
 - Format detection: `core/formats.py` `FormatConverter.detect()`
 - No `Runner` invoked (pure Python, no external tools)
 - No `RunRecord` entry (utility command)
-- Warnings emitted via `core/logger.py` if `--run-dir` is set; otherwise printed to stderr
+- No log file is written. `stats` is a read-only utility that does not require or create a run directory. This is a documented exception to the general pipeline log policy (Section 9.6 of the main spec), justified by `stats` being a read-only utility with no output directory.
 
 ---
 

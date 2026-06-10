@@ -521,54 +521,42 @@ def render_single_file_panels(stats: dict[str, Any]) -> list[Panel]:
     return panels
 
 
-def write_output(data: dict[str, Any], path: Path, mode: str, per_gene: bool = False, force_json: bool = False) -> None:
-    suffix = path.suffix.lower()
+def write_output(data: dict[str, Any], path: Path, mode: str, per_gene: bool = False, force_json: bool = False, output_format: str = "json") -> None:
+    """Write stats payload to *path* in the format dictated by *output_format*.
+
+    ``output_format="json"`` (default) writes pretty-printed JSON regardless of
+    the file extension.  ``output_format="text"`` writes a human-readable
+    key=value text report.  The legacy *force_json* flag is retained for
+    backwards compatibility and forces JSON when ``True``.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    if force_json or suffix == ".json":
+    if force_json or output_format == "json":
         path.write_text(json.dumps(data, indent=2, sort_keys=True))
         return
-    if suffix in {".csv", ".tsv"}:
-        delimiter = "," if suffix == ".csv" else "\t"
-        if mode == "directory":
-            rows = [data["data"]["summary"]]
-            fieldnames = list(rows[0].keys()) if rows else []
-        else:
-            rows = data["data"]["per_taxon"]
-            fieldnames = list(rows[0].keys()) if rows else []
-        if not rows or not fieldnames:
-            path.write_text("")
-            return
-        with path.open("w", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter=delimiter)
-            writer.writeheader()
-            writer.writerows(rows)
-        return
-    if suffix == ".txt":
-        if mode == "directory":
-            lines = ["[summary]"]
-            lines.extend(f"{key}={value}" for key, value in data["data"]["summary"].items())
-        else:
-            lines = [f"{key}={value}" for key, value in data["data"].items() if key != "per_taxon"]
-            lines.append("")
-            lines.append("[per_taxon]")
-            lines.append("name,raw_length,ungapped_length,gap_ratio,ambiguous_ratio,gap_ambiguous_ratio")
-            for entry in data["data"].get("per_taxon", []):
-                lines.append(
-                    ",".join(
-                        str(value)
-                        for value in [
-                            entry.get("name", ""),
-                            entry.get("raw_length", ""),
-                            entry.get("ungapped_length", ""),
-                            entry.get("gap_ratio", ""),
-                            entry.get("ambiguous_ratio", ""),
-                            _round(entry.get("gap_ratio", 0.0) + entry.get("ambiguous_ratio", 0.0)),
-                        ]
-                    )
+    # text format
+    if mode == "directory":
+        lines = ["[summary]"]
+        lines.extend(f"{key}={value}" for key, value in data["data"]["summary"].items())
+    else:
+        lines = [f"{key}={value}" for key, value in data["data"].items() if key != "per_taxon"]
+        lines.append("")
+        lines.append("[per_taxon]")
+        lines.append("name,raw_length,ungapped_length,gap_ratio,ambiguous_ratio,gap_ambiguous_ratio")
+        for entry in data["data"].get("per_taxon", []):
+            lines.append(
+                ",".join(
+                    str(value)
+                    for value in [
+                        entry.get("name", ""),
+                        entry.get("raw_length", ""),
+                        entry.get("ungapped_length", ""),
+                        entry.get("gap_ratio", ""),
+                        entry.get("ambiguous_ratio", ""),
+                        _round(entry.get("gap_ratio", 0.0) + entry.get("ambiguous_ratio", 0.0)),
+                    ]
                 )
-        path.write_text("\n".join(lines) + "\n")
-        return
-    raise ValueError(f"Unsupported output extension '{path.suffix}'.")
+            )
+    path.write_text("\n".join(lines) + "\n")
 
 
 def per_gene_output_path(summary_path: Path, output_format: str = "csv") -> Path:
