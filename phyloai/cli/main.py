@@ -8,6 +8,7 @@ import click
 import yaml
 
 from phyloai.cli.commands.pretree import pretree
+from phyloai.cli.completion import completion
 from phyloai.cli.doctor import doctor
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
@@ -34,5 +35,6 @@ def cli(ctx: click.Context, config_file: Optional[Path]) -> None:
         ctx.obj["config"] = {}
 
 
+cli.add_command(completion)
 cli.add_command(doctor)
 cli.add_command(pretree)
