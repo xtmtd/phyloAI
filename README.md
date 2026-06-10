@@ -23,6 +23,55 @@ phyloai --help
 - `phyloai doctor`: inspect external tool availability.
 - `phyloai pretree stats`: inspect one sequence/alignment file or summarize a directory of files before downstream analysis.
 
+## Shell Completion
+
+PhyloAI can generate static shell completion scripts for Bash, Zsh, and Fish:
+
+```bash
+phyloai completion bash
+phyloai completion zsh
+phyloai completion fish
+```
+
+Generate the script once from an environment where `phyloai` is installed, save it to a persistent file, and source that static file from your shell configuration.
+
+Do not run `phyloai completion ...` dynamically from `.bashrc`, `.zshrc`, or other shell startup files. Generate the file once and source the saved script instead.
+
+Example for Bash:
+
+```bash
+mkdir -p ~/.config/phyloai/completion
+phyloai completion bash > ~/.config/phyloai/completion/phyloai.bash
+```
+
+Source the saved file from `~/.bashrc`:
+
+```bash
+source ~/.config/phyloai/completion/phyloai.bash
+```
+
+Example for Zsh:
+
+```bash
+mkdir -p ~/.config/phyloai/completion
+phyloai completion zsh > ~/.config/phyloai/completion/phyloai.zsh
+```
+
+Source the saved file from `~/.zshrc`:
+
+```bash
+source ~/.config/phyloai/completion/phyloai.zsh
+```
+
+Example for Fish:
+
+```bash
+mkdir -p ~/.config/fish/completions
+phyloai completion fish > ~/.config/fish/completions/phyloai.fish
+```
+
+Fish loads completions from that directory automatically in new shells.
+
 ## `phyloai doctor`
 
 `phyloai doctor` checks whether external tools expected by the local project environment can be found, where they are located, and whether a version string can be detected.
