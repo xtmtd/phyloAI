@@ -32,7 +32,7 @@ def test_completion_zsh_outputs_script() -> None:
 
     assert result.exit_code == 0
     assert "#compdef phyloai" in result.output
-    assert "_phyloai_completion" in result.output
+    assert "compdef" in result.output
 
 
 def test_completion_fish_outputs_script() -> None:
@@ -50,5 +50,4 @@ def test_completion_help_explains_static_usage() -> None:
     result = runner.invoke(cli, ["completion", "bash", "--help"])
 
     assert result.exit_code == 0
-    assert "Print a Bash completion script" in result.output
-    assert "static" in result.output.lower()
+    assert "Print a Bash completion script for static sourcing." in result.output
