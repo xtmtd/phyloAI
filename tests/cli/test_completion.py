@@ -32,7 +32,7 @@ def test_completion_zsh_outputs_script() -> None:
 
     assert result.exit_code == 0
     assert "#compdef phyloai" in result.output
-    assert "compdef" in result.output
+    assert "_PHYLOAI_COMPLETE=zsh_complete" in result.output
 
 
 def test_completion_fish_outputs_script() -> None:
