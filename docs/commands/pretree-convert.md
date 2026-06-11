@@ -36,6 +36,8 @@ Converted sequence files are written to `seqs/` subdirectory inside `--output-di
 
 The JSON result is written to `result.json` inside `--output-dir`. The payload contains `summary`, `files`, `skipped`, and `warnings` under `data`. `key_results` is empty because `convert` is a utility command.
 
+For `phylip-paml`, output records use the PAML sequential header form with `S`, write the normalized taxon name in a 30-character field, and place at least two spaces between the name field and the sequence.
+
 Example output structure:
 ```
 runs/run001/pretree/convert/

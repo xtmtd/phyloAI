@@ -44,6 +44,32 @@ def test_cli_pretree_convert_single_file_json(tmp_path: Path) -> None:
     assert payload["status"] == "success"
     assert payload["data"]["summary"]["n_converted"] == 1
     assert (out_dir / "seqs" / "gene.fa").exists()
+    assert result.output == ""
+
+
+def test_cli_pretree_convert_rejects_output_format_option(tmp_path: Path) -> None:
+    src = tmp_path / "gene.fa"
+    src.write_text(">tax one\nacgu?\n")
+    out_dir = tmp_path / "converted"
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "pretree",
+            "convert",
+            "--input",
+            str(src),
+            "--output-dir",
+            str(out_dir),
+            "--output-format",
+            "json",
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "No such option '--output-format'" in result.output
+    assert not (out_dir / "result.json").exists()
 
 
 def test_cli_pretree_convert_all_failed_exits_one(tmp_path: Path) -> None:

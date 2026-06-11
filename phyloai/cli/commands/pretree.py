@@ -107,8 +107,9 @@ def convert_command(
     result_path.parent.mkdir(parents=True, exist_ok=True)
     with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
-    click.echo(f"Converted files saved to {output_dir / 'seqs'}", err=True)
-    click.echo(f"Results saved to {result_path}", err=True)
+    if not quiet:
+        click.echo(f"Converted files saved to {output_dir / 'seqs'}", err=True)
+        click.echo(f"Results saved to {result_path}", err=True)
 
 
 @pretree.command(

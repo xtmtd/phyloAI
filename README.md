@@ -77,6 +77,8 @@ Fish loads completions from that directory automatically in new shells, so you d
 
 ## Commands
 
+`phyloai doctor` is the only command that supports `--output-format text|json`. Other commands write structured results to `result.json` inside their output directory and use Rich terminal output unless `--quiet` is set.
+
 | Command | Purpose | Documentation |
 |---------|---------|---------------|
 | `phyloai doctor` | Inspect external tool availability. | [docs/commands/doctor.md](docs/commands/doctor.md) |

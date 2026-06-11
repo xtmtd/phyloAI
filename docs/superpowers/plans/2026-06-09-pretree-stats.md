@@ -247,22 +247,18 @@
 
 ---
 
-## Task 9: Output serialisation — CSV/TSV/JSON/TXT file writing
+## Task 9: Output serialisation — result.json plus per-gene table writing
 
 **File:** `phyloai/pretree/stats.py`
 
 **Steps:**
-- [ ] Implement `write_output(data: dict, path: Path, mode: str, force_json: bool = False)`:
-  - `mode` determined from file extension: `.csv` → CSV, `.tsv` → TSV, `.json` → JSON, `.txt` → plain text, unless `force_json=True`
-  - CSV/TSV: write summary table (directory mode) or per-taxon table (single-file mode) using `csv` stdlib
-  - JSON: write full structured output matching schema in design spec Section 7.3
-  - TXT: directory mode writes `[summary]`; single-file mode writes key=value lines plus a `[per_taxon]` table
-  - Implement `per_gene_output_path(summary_path, output_format="csv")` for adjacent `<stem>.per-gene.<format>` output
-  - Implement `write_per_gene_output(data, path)` to write the adjacent per-gene CSV/TSV table
+- [ ] Implement `write_output(data: dict, path: Path, mode: str, force_json: bool = False)` so the main command result is always written as structured JSON matching design spec Section 7.3
+- [ ] Implement `per_gene_output_path(output_dir, output_format="csv")` to place `per-gene.csv` or `per-gene.tsv` inside `--output-dir`
+- [ ] Implement `write_per_gene_output(data, path)` to write the optional per-gene CSV/TSV table
 - [ ] Write tests:
-  - [ ] `test_write_csv_output`
   - [ ] `test_write_json_output`
-  - [ ] `test_write_tsv_output`
+  - [ ] `test_write_per_gene_csv_output`
+  - [ ] `test_write_per_gene_tsv_output`
 
 ---
 
@@ -276,8 +272,7 @@
   - `--seq` (Path, mutually exclusive with `--seq-dir`)
   - `--per-gene` (flag)
   - `--per-gene-format` (choice: csv/tsv, default csv)
-  - `--output` / `-o` (Path)
-  - `--output-format` (choice: text/json, default text)
+  - `--output-dir` / `-o` (Path)
   - `--input-format` (choice: `fasta`, `phylip-relaxed`, `nexus`; optional)
   - `--seq-type` (choice: AA/NT, optional)
   - `--threads` / `-t` (int, default 4)
@@ -285,22 +280,21 @@
 - [ ] Implement mutual exclusivity check for `--seq-dir` / `--seq`: if both or neither provided, exit code 1 with clear message
 - [ ] Implement command body:
   - Dispatch to `stats_single_file` or `stats_directory` + `aggregate_summary`
-  - Render output via Rich or JSON
-  - Write file if `--output` provided; when `--output-format json` is set, save JSON regardless of output suffix
-  - When `--per-gene --output` is provided, write per-gene results to an adjacent table path with CSV default and TSV override via `--per-gene-format`
-  - When `--output` is provided, print the saved output path in terminal output with content-aware wording (`Summary saved to ...`, `Per-gene table saved to ...`, etc.); in directory mode keep terminal output to summary only even if `--per-gene` is set
-  - Show a Rich progress bar during directory processing in text output mode, suppressed under `--quiet` and `--output-format json`
+  - Render terminal output via Rich unless `--quiet` is set
+  - Always write structured results to `result.json` inside `--output-dir`
+  - When `--per-gene` is provided, write per-gene results under `--output-dir` with CSV default and TSV override via `--per-gene-format`
+  - Print saved output paths in terminal output with content-aware wording (`Results saved to ...`, `Per-gene table saved to ...`, etc.)
+  - Show a Rich progress bar during directory processing, suppressed under `--quiet`
   - Help text must explicitly state that exactly one of `--seq` or `--seq-dir` is required
   - Exit code 0 on success; 1 on input error; 2 on processing failure (all files errored)
 - [ ] Write CLI integration tests:
   - [ ] `test_cli_stats_seq_single_file` — invoke via Click test runner
   - [ ] `test_cli_stats_seq_dir` — small directory subset
-  - [ ] `test_cli_stats_json_output`
-  - [ ] `test_cli_stats_json_output_format_writes_json_file_even_with_txt_suffix`
-  - [ ] `test_directory_txt_per_gene_defaults_to_adjacent_csv`
+  - [ ] `test_cli_stats_writes_result_json`
+  - [ ] `test_directory_per_gene_defaults_to_csv`
   - [ ] `test_directory_per_gene_format_can_write_tsv`
   - [ ] `test_unaligned_per_gene_output_includes_sequence_length_summary`
-  - [ ] `test_single_file_text_output_file_includes_per_taxon_table`
+  - [ ] `test_single_file_result_json_includes_per_taxon_table`
   - [ ] `test_cli_stats_mutual_exclusivity_error`
   - [ ] `test_cli_stats_no_args_error`
 
@@ -314,12 +308,10 @@
   - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/test/EOG090X0971.faa`
   - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/test/EOG090X0971.fna`
   - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/2-loci_filter/faa/EOG090X0007.faa` (unaligned)
-  - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/3-align/faa/ --per-gene --output /tmp/stats.csv`
+  - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/3-align/faa/ --per-gene --output-dir /tmp/stats`
   - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/2-loci_filter/faa/ --threads 8`
-  - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/test/EOG090X0971.faa --output-format json`
-  - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/test/EOG090X0971.faa --output /tmp/out.txt --output-format json` and verify `/tmp/out.txt` contains JSON
-  - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/2-loci_filter/fna --output /tmp/out.txt --threads 8 --per-gene` and verify `/tmp/out.per-gene.csv` contains length summary columns
-  - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/2-loci_filter/fna/EOG090X0971.fna --output /tmp/out.txt` and verify `[per_taxon]` is saved
+  - [ ] `phyloai pretree stats --seq-dir ref/phylogenomics_examples/2-loci_filter/fna --output-dir /tmp/stats-fna --threads 8 --per-gene` and verify `/tmp/stats-fna/per-gene.csv` contains length summary columns
+  - [ ] `phyloai pretree stats --seq ref/phylogenomics_examples/2-loci_filter/fna/EOG090X0971.fna --output-dir /tmp/stats-single` and verify `per_taxon` is saved in `result.json`
 - [ ] Verify site pattern values for `EOG090X0971.faa` match expected: distinct_patterns=624, constant=482, PIS=87, singleton=473
 - [ ] Verify site pattern values for `raw.fa` match IQ-TREE distinct patterns after missing-state normalization: distinct_patterns=1053473
 - [ ] Verify parallel and serial results are identical for same input directory

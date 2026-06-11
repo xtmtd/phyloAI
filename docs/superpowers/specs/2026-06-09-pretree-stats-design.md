@@ -23,17 +23,17 @@
 Scans all sequence files in a directory. Files may be aligned or unaligned — auto-detected per file. Computes per-file statistics in parallel, then aggregates a directory-level summary.
 
 ```bash
-phyloai pretree stats --seq-dir ./aligned [--per-gene] [--output report.csv] [--threads 4]
+phyloai pretree stats --seq-dir ./aligned [--per-gene] [--output-dir ./runs/run001/pretree/stats] [--threads 4]
 ```
 
-`--per-gene` controls whether per-gene results are displayed in terminal output when no output file is requested. When `--output FILE` is also provided, per-gene results are written to an adjacent table file named `<stem>.per-gene.<format>` instead of being mixed into the summary file. The adjacent table defaults to CSV; `--per-gene-format tsv` writes TSV.
+`--per-gene` controls whether per-gene results are displayed in terminal output when no saved per-gene table is requested. When results are written to `--output-dir`, the per-gene table is saved there as `per-gene.csv` by default or `per-gene.tsv` with `--per-gene-format tsv`.
 
 ### 2.2 Single-file mode (`--seq`)
 
 Detailed statistics for one file. Supports both aligned and unaligned input. Auto-detects alignment status.
 
 ```bash
-phyloai pretree stats --seq ./EOG090X0971.faa [--output report.txt]
+phyloai pretree stats --seq ./EOG090X0971.faa [--output-dir ./runs/run001/pretree/stats]
 ```
 
 `--seq-dir` and `--seq` are mutually exclusive.
@@ -171,8 +171,7 @@ Site pattern computation excludes gap/missing/ambiguous characters when determin
 | `--seq`           |       | Path     | —           | single-file mode; mutually exclusive with `--seq-dir`    |
 | `--per-gene`      |       | flag     | False       | directory mode only: include per-gene results in terminal output when no `--output` is used; with `--output`, write an adjacent per-gene table |
 | `--per-gene-format` |     | csv\|tsv | csv         | directory mode only: format for adjacent per-gene table written with `--per-gene --output` |
-| `--output`        | `-o`  | Path     | —           | write results to file; extension controls text/csv/tsv/json unless `--output-format json` is used |
-| `--output-format` |       | text\|json | json      | output format for stdout structured output and saved files; Rich terminal display is always on unless `--quiet`; `json` also saves JSON to `--output` regardless of file suffix |
+| `--output-dir`    | `-o`  | Path     | `runs/run001/pretree/stats` | directory for `result.json` and auxiliary files |
 | `--input-format`  |       | fasta\|phylip-relaxed\|nexus | auto-detect | override format detection; accepted values: `fasta`, `phylip-relaxed`, `nexus` |
 | `--seq-type`      |       | AA\|NT   | auto-detect | override sequence type detection                         |
 | `--threads`       | `-t`  | int      | 4           | directory mode only: files processed in parallel (ProcessPoolExecutor) |
@@ -185,37 +184,32 @@ No `--overwrite` (read-only command, no output directory created).
 
 ## 7. Output Formats
 
-### 7.1 Terminal output (always Rich, independent of `--output-format`)
+### 7.1 Terminal output
 
-`--output-format` controls the format of structured output written to stdout and saved files. It does **not** affect Rich terminal display. Rich tables, panels, and progress bars are always rendered to the terminal unless `--quiet` is set.
+Rich tables, panels, and progress bars are rendered to the terminal unless `--quiet` is set. Structured command results are always written to `result.json` inside `--output-dir`.
 
 **Directory mode:**
 - Rich progress bar while processing files, unless `--quiet` is set
 - Rich table: summary statistics
 - Rich table: per-gene table (if `--per-gene` and no `--output` path is given)
 - `[WARN]` lines for any stop codons detected
-- If `--output FILE` is used, terminal output must print the resolved output path after the summary so users can immediately locate the saved file
-- If `--per-gene` and `--output FILE` are used together, the saved-file message must explicitly say that the per-gene table was written there
+- Terminal output must print the resolved `result.json` path after the summary so users can immediately locate the saved file
+- If `--per-gene` is used, the saved-file message must explicitly say that `per-gene.csv` or `per-gene.tsv` was written under `--output-dir`
 
 **Single-file mode:**
 - Rich panels: character summary, site patterns (aligned), per-taxon table
 
-### 7.2 File output (`--output FILE`)
+### 7.2 File output
 
-Extension determines format:
+`result.json` always contains the full structured stats payload. Auxiliary per-gene output is written only when `--per-gene` is set:
 
-| Extension      | Content                                                          |
-|----------------|------------------------------------------------------------------|
-| `.csv`         | summary table (directory mode); per-taxon table (single-file)  |
-| `.tsv`         | same as CSV but tab-separated                                    |
-| `.json`        | full structured output (summary + per-gene or full single-file stats) |
-| `.txt`         | plain text; directory mode writes `[summary]`; single-file mode writes key-value summary plus `[per_taxon]` table |
+| File | Content |
+|------|---------|
+| `result.json` | full structured output (summary plus per-gene or full single-file stats) |
+| `per-gene.csv` | per-gene table when `--per-gene --per-gene-format csv` is used |
+| `per-gene.tsv` | per-gene table when `--per-gene --per-gene-format tsv` is used |
 
-Directory mode `.csv`/`.tsv` output contains summary only. If `--per-gene --output FILE` is used, the per-gene table is written next to `FILE` as `<stem>.per-gene.csv` by default or `<stem>.per-gene.tsv` when `--per-gene-format tsv` is set.
-
-When `--output-format json` is used with `--output FILE`, the saved file is JSON even if `FILE` has a non-JSON suffix such as `.txt`.
-
-### 7.3 JSON output schema (`--output-format json` or `--output FILE.json`)
+### 7.3 JSON output schema (`result.json`)
 
 ```json
 {

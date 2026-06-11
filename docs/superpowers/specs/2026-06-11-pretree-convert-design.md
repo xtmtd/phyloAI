@@ -83,7 +83,7 @@ All phylip output (`phylip-relaxed` and `phylip-paml`) uses **sequential** forma
 - Species names should not contain two consecutive spaces. Spaces inside names should be normalized to `_` for safety.
 - The special symbols `"`, `,`, `:`, `#`, `(`, `)`, `$`, and `=` should not appear in species names because PAML uses them for special purposes.
 
-When writing `phylip-paml`, PhyloAI uses sequential output with one sequence record per taxon unless the implementation plan identifies a library limitation that requires a custom writer.
+When writing `phylip-paml`, PhyloAI uses sequential output with one sequence record per taxon. The header should include the PAML `S` option, and each record should use the 30-character PAML name field followed by at least two spaces before the sequence.
 
 ---
 
@@ -159,7 +159,7 @@ Additional `phylip-paml` rules:
 - Truncate names longer than 30 characters by default.
 - Preserve uniqueness after truncation by deterministic suffixing within the 30-character limit.
 - Report every name replacement or truncation.
-- Write at least two spaces between taxon name and sequence.
+- Write the normalized PAML name in a 30-character field, then at least two spaces before the sequence.
 
 ---
 
@@ -174,7 +174,6 @@ Additional `phylip-paml` rules:
 | `--seq-type` | | `AA\|NT\|auto` | `auto` | Override molecule-type detection |
 | `--aa-special` | | `x\|keep` | `x` | Convert or preserve `B/Z/J/X/U/O` in AA data |
 | `--threads` | `-t` | int | `4` | Directory mode parallelism |
-| `--output-format` | | `json\|text` | `json` | Structured command result format |
 | `--quiet` | `-q` | flag | `False` | Suppress terminal display except errors |
 | `--overwrite` | | flag | `False` | Allow writing into an existing non-empty output directory |
 

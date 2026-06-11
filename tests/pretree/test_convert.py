@@ -93,3 +93,57 @@ def test_convert_phylip_relaxed(tmp_path: Path) -> None:
     assert "taxon2" in lines[2]
     assert "ACGA" in lines[2]
     assert payload["data"]["summary"]["n_converted"] == 1
+
+
+def test_convert_reads_phylip_paml_input_and_expands_dots(tmp_path: Path) -> None:
+    from phyloai.pretree.convert import convert_input
+
+    src = tmp_path / "gene.paml.phy"
+    src.write_text("2 4\ntaxon1  ACGT\ntaxon2  A..T\n")
+    out_dir = tmp_path / "out"
+
+    payload = convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)
+
+    out = out_dir / "seqs" / "gene.paml.fa"
+    assert out.read_text() == ">taxon1\nACGT\n>taxon2\nACGT\n"
+    assert payload["data"]["summary"]["n_converted"] == 1
+    assert payload["data"]["files"][0]["input_format"] == "phylip-paml"
+    assert payload["data"]["files"][0]["replacements"]["dot_expanded"] == 2
+
+
+def test_convert_reports_paml_specific_taxon_name_changes(tmp_path: Path) -> None:
+    from phyloai.pretree.convert import convert_input
+
+    src = tmp_path / "gene.fa"
+    src.write_text(
+        ">Taxon name with spaces and very long suffix\nACGT\n"
+        ">Taxon:bad#chars\nACGA\n"
+    )
+    out_dir = tmp_path / "out"
+
+    payload = convert_input(src, out_dir, target_format="phylip-paml", seq_type="NT", threads=1, overwrite=False)
+
+    file_entry = payload["data"]["files"][0]
+    paml_lines = (out_dir / "seqs" / "gene.paml.phy").read_text().splitlines()
+    assert paml_lines[0] == "2  4  S"
+    assert paml_lines[1][30:32] == "  "
+    assert file_entry["taxon_name_changes"] == 2
+    assert payload["data"]["summary"]["total_taxon_name_changes"] == 2
+    assert len(file_entry["taxon_name_change_details"]) == 2
+
+
+def test_convert_aa_special_keep_preserves_special_codes(tmp_path: Path) -> None:
+    from phyloai.pretree.convert import convert_input
+
+    src = tmp_path / "protein.fa"
+    src.write_text(">taxon1\nBZJXUO?*1\n")
+    out_dir = tmp_path / "out"
+
+    payload = convert_input(src, out_dir, target_format="fasta", seq_type="AA", aa_special="keep", threads=1, overwrite=False)
+
+    assert (out_dir / "seqs" / "protein.fa").read_text() == ">taxon1\nBZJXUOXXX\n"
+    replacements = payload["data"]["files"][0]["replacements"]
+    assert "aa_special_to_x" not in replacements
+    assert replacements["question_to_missing"] == 1
+    assert replacements["stop_to_x"] == 1
+    assert replacements["invalid_to_missing"] == 1

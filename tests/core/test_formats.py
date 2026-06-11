@@ -135,9 +135,10 @@ def test_write_phylip_paml_uses_two_spaces_and_truncates_names(tmp_path):
     name_changes = write_phylip_paml(alignment, out)
 
     content = out.read_text().splitlines()
-    assert content[0] == "2 4"
-    assert "  " in content[1]
-    assert len(content[1].split("  ", 1)[0]) <= 30
-    assert ":" not in content[2].split("  ", 1)[0]
-    assert "#" not in content[2].split("  ", 1)[0]
+    assert content[0] == "2  4  S"
+    assert content[1][30:32] == "  "
+    assert content[2][30:32] == "  "
+    assert content[1][:30].rstrip() == "Taxon_name_with_spaces_and_ver"
+    assert ":" not in content[2][:30]
+    assert "#" not in content[2][:30]
     assert len(name_changes) == 2

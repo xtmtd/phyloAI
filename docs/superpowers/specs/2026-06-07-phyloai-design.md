@@ -28,7 +28,7 @@ MCP Server + Skill  ←  built on CLI, added after CLI stabilizes
 ```
 
 **Development order:** Library + CLI first → MCP Server + Skill after CLI is stable. `phyloai run` (pipeline orchestration) and `report/` (cross-module aggregation) are separate phases: `run` depends only on the analysis modules it orchestrates (Phases 2–3), while `report` must wait for all analysis phases (2–4) to finalize their JSON output schemas.  
-**MCP pre-requisite:** All CLI commands support `--output-format json` and standard exit codes from day one, so MCP wrapping requires no interface redesign. The default for `--output-format` is `json` for all pipeline commands (Section 9.2); `phyloai doctor` is an explicit exception that defaults to `text` (Section 5.2).
+**MCP pre-requisite:** All non-`doctor` commands write a standard `result.json` file and use standard exit codes from day one, so MCP wrapping reads structured results from files rather than command-specific stdout formats. `phyloai doctor` is the only command with `--output-format text|json` because it is primarily a human-facing environment diagnostic.
 
 ---
 
@@ -176,7 +176,7 @@ All commands support the shared parameters defined in Section 9.2. Key universal
 
 | Flag | Purpose |
 |------|---------|
-| `--output-format json\|text` | Machine-readable output (MCP pre-requisite); default `json` for all commands except `doctor` |
+| `--output-format json\|text` | `doctor` only; choose human-readable text or machine-readable JSON diagnostic output |
 | `--dry-run` | Show what would be executed without running |
 | `--config FILE` | Load parameters from YAML (HPC batch use); see Section 13 for template |
 | `--threads` / `-t` | Parallelism control |
@@ -264,7 +264,7 @@ New or materially changed commands must update both their command document and t
 
 ### 5.2 `phyloai doctor` Output Format
 
-`phyloai doctor` defaults to `text` output. This is the **only** CLI command where `--output-format` defaults to `text`; all other commands default to `json`. Help text must make this explicit.
+`phyloai doctor` defaults to `text` output. This is the **only** CLI command that supports `--output-format`; all other commands write structured results to `result.json`. Help text must make this explicit.
 
 ```
 PhyloAI Environment Check
@@ -417,7 +417,7 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--seq-type` | | AA \| NT | AA | commands where molecule type affects behavior |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
 | `--input-format` | | str | auto-detect | all commands reading alignment files |
-| `--output-format` | | text \| json | json | all commands except `doctor` (MCP pre-requisite; `doctor` defaults to `text`) |
+| `--output-format` | | text \| json | text | `doctor` only |
 | `--extra-args` | | str | — | all commands invoking external tools |
 | `--config` | | Path | — | all commands (global, inherited from CLI root) |
 | `--run-dir` | | Path | `./runs/` | all commands except `stats` and `convert` (global, inherited from CLI root) |
@@ -508,7 +508,7 @@ This unified structure ensures that:
 
 ### 9.6 Display and Logging
 
-- Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators — regardless of `--output-format`. The `--output-format` flag controls only the format of structured output written to stdout (for MCP) and to saved files; it does not suppress or alter Rich terminal display.
+- Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators. Non-`doctor` commands always write machine-readable structured output to `result.json`; they do not expose a text/json structured stdout switch.
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
 - Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
 - Log files are appended (not overwritten) on retry, with a timestamp separator between runs
@@ -517,7 +517,7 @@ This unified structure ensures that:
 
 ### 9.7 Tabular Output Format
 
-Commands that produce tabular output (per-gene tables, per-taxon tables, metric tables) default to **CSV** format. TSV is available via `--output-format tsv` or by using a `.tsv` file extension with `--output`. JSON output always uses `--output-format json` or a `.json` extension.
+Commands that produce auxiliary tabular output (per-gene tables, per-taxon tables, metric tables) default to **CSV** format. TSV is available via command-specific table format flags such as `--per-gene-format tsv`, or by explicit output-file conventions when a command defines them. Structured command results always use `result.json`.
 
 ### 9.8 `--extra-args` Merge Semantics
 
@@ -563,7 +563,7 @@ Each subcommand spec and plan must be consistent with the conventions in Section
 
 Every subcommand implementation must comply with the following binding requirements from the main design before it can be considered complete:
 
-1. **`--output-format`** defaults to `json` (not `text`); terminal Rich display is always on unless `--quiet` is set.
+1. **Structured output** for all non-`doctor` commands is always saved as `result.json`; terminal Rich display is always on unless `--quiet` is set.
 2. **Output directory structure** follows Section 6; commands with an `--output-dir` parameter default to the appropriate subdirectory under `runs/`.
 3. **Conflict policy** follows Section 9.5: non-empty output directory → exit 1; `--overwrite` to replace.
 4. **Log file** written to `runs/runNNN/logs/<step>.log` for all pipeline commands (Section 9.6).
@@ -589,7 +589,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | syserror.py exposed as atomic ops only | Full diagnosis requires iterative human decisions; CLI atomics + Skill orchestration is the correct separation |
 | genetree.py in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
 | model_eval not exposed as standalone | Model evaluation logic is internal to syserror; exposing it separately creates redundant interface surface |
-| `--output-format json` default (not text) | Ensures MCP wrapping requires zero interface changes later; `doctor` is the sole exception (defaults to `text` because it is a human-oriented diagnostic, not a pipeline step) |
+| JSON result files for non-`doctor` commands | Ensures MCP wrapping has one stable machine-readable result path without maintaining parallel text/json command outputs; `doctor` is the sole command with `--output-format` because it is a human-oriented diagnostic |
 | JSON key_results in all pipeline modules | Enables report figures and summary without post-hoc data extraction; schema defined at design time |
 | YAML for config, JSON for output | YAML supports comments and is human-writable; JSON is strict and machine-parseable |
 | `--input-format` on alignment-reading commands | Real datasets often use inconsistent suffixes; explicit user intent must override guessing |
@@ -602,4 +602,4 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 
 All `--config FILE` parameters should map 1-to-1 to CLI flags. Unknown keys should be ignored with a warning, and CLI flags should override config values.
 
-Example YAML templates should live under `examples/` in the repository rather than being embedded in the design document. Those example files should cover global options and representative command-level inputs, including `output_format`, `run_dir`, and future `input_format` fields for alignment-reading commands.
+Example YAML templates should live under `examples/` in the repository rather than being embedded in the design document. Those example files should cover global options and representative command-level inputs, including `run_dir` and future `input_format` fields for alignment-reading commands.

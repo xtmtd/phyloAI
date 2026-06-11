@@ -111,9 +111,15 @@ def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format
         replacements = {**normalized.replacements}
         for key, value in dot_counts.items():
             replacements[key] = replacements.get(key, 0) + value
-        normalized_records = [SeqRecord(Seq(sequence), id=_safe_record_id(record.description), description="") for record, sequence in zip(records, normalized.sequences)]
+        normalized_records = [SeqRecord(Seq(sequence), id=_safe_record_id(record.description, record.id), description="") for record, sequence in zip(records, normalized.sequences)]
         out = output_dir / f"{entry.stem}{TARGET_SUFFIX[target_format]}"
-        _write_records(normalized_records, out, target_format, detected_seq_type)
+        writer_name_changes = _write_records(normalized_records, out, target_format, detected_seq_type)
+        generic_name_changes = [
+            {"input": original.id, "output": record.id}
+            for original, record in zip(records, normalized_records)
+            if original.id != record.id
+        ]
+        taxon_name_changes = _merge_name_changes(generic_name_changes, writer_name_changes)
         return {
             "input": str(entry),
             "output": str(out),
@@ -121,18 +127,19 @@ def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format
             "target_format": target_format,
             "seq_type": detected_seq_type,
             "replacements": replacements,
-            "taxon_name_changes": sum(1 for original, record in zip(records, normalized_records) if original.id != record.id),
+            "taxon_name_changes": len(taxon_name_changes),
+            "taxon_name_change_details": taxon_name_changes,
             "warnings": normalized.warnings,
         }
     except Exception as exc:
         return {"skipped": {"path": str(entry), "reason": str(exc)}}
 
 
-def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_type: str) -> None:
+def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_type: str) -> list[dict[str, str]]:
     out.parent.mkdir(parents=True, exist_ok=True)
     if target_format == "fasta":
         SeqIO.write(records, str(out), "fasta")
-        return
+        return []
     from Bio.Align import MultipleSeqAlignment
     alignment = MultipleSeqAlignment(records)
     converter = FormatConverter()
@@ -140,7 +147,24 @@ def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_
         molecule_type = "DNA" if seq_type == "NT" else "protein"
         for record in alignment:
             record.annotations["molecule_type"] = molecule_type
-    converter.write_alignment(alignment, out, target=_alignment_format(target_format), molecule_type="DNA" if seq_type == "NT" else "protein")
+    return converter.write_alignment(alignment, out, target=_alignment_format(target_format), molecule_type="DNA" if seq_type == "NT" else "protein")
+
+
+def _merge_name_changes(generic_changes: list[dict[str, str]], writer_changes: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not writer_changes:
+        return generic_changes
+    by_intermediate = {change["input"]: change for change in generic_changes}
+    merged: list[dict[str, str]] = []
+    writer_inputs = set()
+    for writer_change in writer_changes:
+        writer_inputs.add(writer_change["input"])
+        generic_change = by_intermediate.get(writer_change["input"])
+        merged.append({
+            "input": generic_change["input"] if generic_change else writer_change["input"],
+            "output": writer_change["output"],
+        })
+    merged.extend(change for change in generic_changes if change["output"] not in writer_inputs)
+    return merged
 
 
 def _alignment_format(value: str | None) -> AlignmentFormat | None:
@@ -152,8 +176,12 @@ def _alignment_format(value: str | None) -> AlignmentFormat | None:
     raise ValueError(f"Unsupported alignment format '{value}'.")
 
 
-def _safe_record_id(name: str) -> str:
-    return "_".join(name.strip().split()) or "taxon"
+def _safe_record_id(*candidates: str) -> str:
+    for name in candidates:
+        joined = "_".join(name.strip().split())
+        if joined:
+            return joined
+    return "taxon"
 
 
 def _mixed(values: set[str]) -> str | None:

@@ -7,6 +7,7 @@ from typing import Optional
 
 from Bio import AlignIO
 from Bio.Align import MultipleSeqAlignment
+from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 
@@ -19,7 +20,7 @@ class AlignmentFormat(str, Enum):
 
 _BIOPYTHON_FORMATS = {
     AlignmentFormat.FASTA: "fasta",
-    AlignmentFormat.PHYLIP: "phylip-sequential",
+    AlignmentFormat.PHYLIP: "phylip-relaxed",
     AlignmentFormat.NEXUS: "nexus",
 }
 
@@ -74,15 +75,52 @@ def detect_alignment_format(path: Path, declared_format: Optional[AlignmentForma
     )
 
 
+def write_phylip_relaxed(alignment: MultipleSeqAlignment, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    length = alignment.get_alignment_length()
+    with open(dst, "w") as fh:
+        fh.write(f"{len(alignment)} {length}\n")
+        for record in alignment:
+            fh.write(f"{record.id}  {str(record.seq)}\n")
+
+
 def write_phylip_paml(alignment: MultipleSeqAlignment, dst: Path) -> list[dict[str, str]]:
     dst.parent.mkdir(parents=True, exist_ok=True)
     name_changes = _normalize_paml_names([record.id for record in alignment])
     length = alignment.get_alignment_length()
     with open(dst, "w") as fh:
-        fh.write(f"{len(alignment)} {length}\n")
+        fh.write(f"{len(alignment)}  {length}  S\n")
         for record, change in zip(alignment, name_changes):
-            fh.write(f"{change['output']}  {str(record.seq)}\n")
+            fh.write(f"{change['output']:<30}  {str(record.seq)}\n")
     return [change for change in name_changes if change["input"] != change["output"]]
+
+
+def read_phylip_paml(path: Path) -> MultipleSeqAlignment:
+    records: list[SeqRecord] = []
+    with open(path) as fh:
+        header = fh.readline().strip().split()
+        if len(header) < 2 or not header[0].isdigit() or not header[1].isdigit():
+            raise ValueError(f"Invalid phylip-paml header in '{path}'")
+        expected_count = int(header[0])
+        expected_length = int(header[1])
+        for line in fh:
+            stripped = line.rstrip("\n\r")
+            if not stripped.strip():
+                continue
+            if "  " in stripped:
+                name, sequence = stripped.split("  ", 1)
+            else:
+                parts = stripped.split(maxsplit=1)
+                if len(parts) != 2:
+                    raise ValueError(f"Invalid phylip-paml record in '{path}'")
+                name, sequence = parts
+            sequence = "".join(sequence.split())
+            if len(sequence) != expected_length:
+                raise ValueError(f"Sequence length mismatch in '{path}'")
+            records.append(SeqRecord(Seq(sequence), id=name.strip(), description=""))
+    if len(records) != expected_count:
+        raise ValueError(f"Expected {expected_count} records in '{path}', found {len(records)}")
+    return MultipleSeqAlignment(records)
 
 
 def _normalize_paml_names(names: list[str]) -> list[dict[str, str]]:
@@ -138,7 +176,7 @@ class FormatConverter:
     ) -> MultipleSeqAlignment:
         fmt = source_format or self.detect(path)
         if fmt == AlignmentFormat.PHYLIP_PAML:
-            fmt = AlignmentFormat.PHYLIP
+            return read_phylip_paml(path)
         for biopython_fmt in _BIOPYTHON_READ_FORMATS[fmt]:
             try:
                 return AlignIO.read(str(path), biopython_fmt)
@@ -154,6 +192,9 @@ class FormatConverter:
         molecule_type: str = "protein",
     ) -> list[dict[str, str]]:
         dst.parent.mkdir(parents=True, exist_ok=True)
+        if target == AlignmentFormat.PHYLIP:
+            write_phylip_relaxed(alignment, dst)
+            return []
         if target == AlignmentFormat.PHYLIP_PAML:
             return write_phylip_paml(alignment, dst)
         if target == AlignmentFormat.NEXUS:

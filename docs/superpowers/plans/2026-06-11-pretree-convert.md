@@ -990,7 +990,6 @@ Add the command above `@pretree.command("stats", ...)`:
 @click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True, help="Override sequence type detection.")
 @click.option("--aa-special", type=click.Choice(["x", "keep"]), default="x", show_default=True, help="Convert B/Z/J/X/U/O to X, or preserve them with keep.")
 @click.option("--threads", "threads", type=int, default=4, show_default=True, help="Directory mode worker count.")
-@click.option("--output-format", type=click.Choice(["text", "json"]), default="json", show_default=True, help="Structured output format.")
 @click.option("--quiet", "quiet", is_flag=True, default=False, help="Suppress Rich terminal output except errors.")
 @click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Delete and recreate a non-empty output directory before conversion.")
 def convert_command(
@@ -1001,7 +1000,6 @@ def convert_command(
     seq_type: str,
     aa_special: str,
     threads: int,
-    output_format: str,
     quiet: bool,
     overwrite: bool,
 ) -> None:
@@ -1024,11 +1022,8 @@ def convert_command(
         _fail(str(exc), 1)
     if not quiet:
         console.print(render_convert_summary_table(payload["data"]["summary"]))
-        click.echo(f"Converted files saved to {output_dir}", err=True)
-    if output_format == "json":
-        click.echo(json.dumps(payload, indent=2))
-    else:
-        click.echo(f"converted={payload['data']['summary']['n_converted']} skipped={payload['data']['summary']['n_skipped']}")
+        click.echo(f"Converted files saved to {output_dir / 'seqs'}", err=True)
+        click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
 ```
 
 - [ ] **Step 4: Add Rich summary renderer**
@@ -1110,7 +1105,6 @@ phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert
 | `--seq-type` | `auto` | Override molecule type detection |
 | `--aa-special` | `x` | Convert `B/Z/J/X/U/O` to `X`, or preserve with `keep` |
 | `--threads`, `-t` | `4` | Directory-mode worker count |
-| `--output-format` | `json` | Structured output format |
 | `--quiet`, `-q` | false | Suppress Rich terminal output except errors |
 | `--overwrite` | false | Delete and recreate a non-empty output directory |
 
@@ -1128,7 +1122,7 @@ The JSON payload contains `summary`, `files`, `skipped`, and `warnings` under `d
 
 ```bash
 phyloai pretree convert --input ./raw
-phyloai pretree stats --seq-dir ./runs/run001/pretree/convert
+phyloai pretree stats --seq-dir ./runs/run001/pretree/convert/seqs
 phyloai pretree convert --input ./gene.phy --output-dir ./converted --to fasta --seq-type NT
 phyloai pretree convert --input ./aligned --to phylip-paml --overwrite
 ```
@@ -1196,17 +1190,17 @@ Run:
 phyloai pretree convert --input ref/phylogenomics_examples/test --output-dir /tmp/phyloai-convert-smoke --to fasta --overwrite --quiet
 ```
 
-Expected: exit code 0 and JSON output with `"status": "success"` and `"n_converted": 3`.
+Expected: exit code 0 and `/tmp/phyloai-convert-smoke/result.json` contains `"status": "success"` and `"n_converted": 3`.
 
 - [ ] **Step 3: Verify stats can read converted output**
 
 Run:
 
 ```bash
-phyloai pretree stats --seq-dir /tmp/phyloai-convert-smoke --quiet --output /tmp/phyloai-convert-stats.json --output-format json
+phyloai pretree stats --seq-dir /tmp/phyloai-convert-smoke/seqs --quiet --output-dir /tmp/phyloai-convert-stats
 ```
 
-Expected: exit code 0 and `/tmp/phyloai-convert-stats.json` contains JSON with `"status": "success"`.
+Expected: exit code 0 and `/tmp/phyloai-convert-stats/result.json` contains JSON with `"status": "success"`.
 
 - [ ] **Step 4: Inspect git status**
 
