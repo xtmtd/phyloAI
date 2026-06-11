@@ -9,6 +9,7 @@ import click
 from rich.console import Console
 from rich.progress import Progress
 
+from phyloai.pretree.convert import convert_input, render_convert_summary_table
 from phyloai.pretree.stats import (
     aggregate_summary,
     collect_seq_files,
@@ -33,6 +34,62 @@ def _fail(message: str, exit_code: int) -> None:
 @click.group()
 def pretree() -> None:
     """Pre-tree data preparation commands."""
+
+
+@pretree.command(
+    "convert",
+    help=(
+        "Normalize and convert one sequence file or a directory of sequence files. "
+        "Directory input is the primary mode; --input may also be a single file. "
+        "Invalid directory entries are skipped and summarized."
+    ),
+)
+@click.option("--input", "input_path", type=click.Path(path_type=Path), required=True, help="Input directory or single sequence/alignment file.")
+@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/run001/pretree/convert"), show_default=True, help="Directory where converted files are written.")
+@click.option("--to", "target_format", type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="fasta", show_default=True, help="Target output format.")
+@click.option("--input-format", type=click.Choice(["auto", "fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="auto", show_default=True, help="Override input format detection for all input files.")
+@click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True, help="Override sequence type detection.")
+@click.option("--aa-special", type=click.Choice(["x", "keep"]), default="x", show_default=True, help="Convert B/Z/J/X/U/O to X, or preserve them with keep.")
+@click.option("--threads", "threads", type=int, default=4, show_default=True, help="Directory mode worker count.")
+@click.option("--output-format", type=click.Choice(["text", "json"]), default="json", show_default=True, help="Structured output format.")
+@click.option("--quiet", "quiet", is_flag=True, default=False, help="Suppress Rich terminal output except errors.")
+@click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Delete and recreate a non-empty output directory before conversion.")
+def convert_command(
+    input_path: Path,
+    output_dir: Path,
+    target_format: str,
+    input_format: str,
+    seq_type: str,
+    aa_special: str,
+    threads: int,
+    output_format: str,
+    quiet: bool,
+    overwrite: bool,
+) -> None:
+    if threads < 1:
+        _fail("--threads must be at least 1.", 1)
+    if not input_path.exists():
+        _fail(f"Input path '{input_path}' does not exist.", 1)
+    try:
+        payload = convert_input(
+            input_path,
+            output_dir,
+            target_format=target_format,
+            input_format=None if input_format == "auto" else input_format,
+            seq_type=None if seq_type == "auto" else seq_type,
+            aa_special=aa_special,
+            threads=threads,
+            overwrite=overwrite,
+        )
+    except ValueError as exc:
+        _fail(str(exc), 1)
+    if not quiet:
+        console.print(render_convert_summary_table(payload["data"]["summary"]))
+        click.echo(f"Converted files saved to {output_dir}", err=True)
+    if output_format == "json":
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        click.echo(f"converted={payload['data']['summary']['n_converted']} skipped={payload['data']['summary']['n_skipped']}")
 
 
 @pretree.command(
