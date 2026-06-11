@@ -106,3 +106,38 @@ def test_unsupported_format_raises():
     fc = FormatConverter()
     with pytest.raises(ValueError, match="Cannot detect"):
         fc.detect(Path("alignment.xyz"))
+
+
+def test_phylip_paml_format_value_is_public_name() -> None:
+    assert AlignmentFormat.PHYLIP.value == "phylip-relaxed"
+    assert AlignmentFormat.PHYLIP_PAML.value == "phylip-paml"
+
+
+def test_detect_phylip_paml_compound_suffix(tmp_path):
+    paml = tmp_path / "gene.paml.phy"
+    paml.write_text("2 4\ntaxon1  ACGT\ntaxon2  ACGA\n")
+
+    assert FormatConverter().detect(paml) == AlignmentFormat.PHYLIP_PAML
+
+
+def test_write_phylip_paml_uses_two_spaces_and_truncates_names(tmp_path):
+    from Bio.Align import MultipleSeqAlignment
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+    from phyloai.core.formats import write_phylip_paml
+
+    alignment = MultipleSeqAlignment([
+        SeqRecord(Seq("ACGT"), id="Taxon name with spaces and very long suffix"),
+        SeqRecord(Seq("ACGA"), id="Taxon:bad#chars"),
+    ])
+    out = tmp_path / "out.paml.phy"
+
+    name_changes = write_phylip_paml(alignment, out)
+
+    content = out.read_text().splitlines()
+    assert content[0] == "2 4"
+    assert "  " in content[1]
+    assert len(content[1].split("  ", 1)[0]) <= 30
+    assert ":" not in content[2].split("  ", 1)[0]
+    assert "#" not in content[2].split("  ", 1)[0]
+    assert len(name_changes) == 2
