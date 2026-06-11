@@ -37,7 +37,10 @@ TOOL_REGISTRY: dict[str, dict] = {
     "mcmctree":   {"required": False, "version_flag": "",
                    "install": "https://github.com/abacus-gene/paml/releases"},
     "correction_multi.jl": {"required": False, "version_flag": "",
-                   "install": "https://github.com/chaoszhang/TAPER"},
+                   "bundled": True,
+                   "bundled_dir": "TAPER-1.0.0",
+                   "bundled_executable": "correction_multi.jl",
+                   "install": "bundled with PhyloAI"},
     "run_treeshrink.py": {"required": False, "version_flag": "--version",
                    "install": "https://github.com/uym2/TreeShrink"},
     "magus":      {"required": False, "version_flag": "--version",
@@ -54,10 +57,11 @@ TOOL_REGISTRY: dict[str, dict] = {
                    "bundled": True,
                    "install": "https://github.com/inab/trimal/releases"},
     "bmge":       {"required": False, "version_args": [["-?"]],
+                    "bundled_dir": "BMGE-1.12",
                     "bundled_executable": "BMGE.jar",
-                   "path_aliases": ["BMGE.jar"],
+                    "path_aliases": ["BMGE.jar"],
                     "bundled": True,
-                     "install": "conda install bmge"},
+                    "install": "bundled with PhyloAI"},
 }
 
 
@@ -99,10 +103,11 @@ class ToolEnv:
         return None
 
     def _detect_tool(self, name: str, version_flag: str = "",
-                     version_args: Optional[list[list[str]]] = None,
-                     bundled: bool = False,
-                     bundled_executable: Optional[str] = None,
-                     path_aliases: Optional[list[str]] = None) -> ToolInfo:
+                      version_args: Optional[list[list[str]]] = None,
+                      bundled: bool = False,
+                      bundled_dir: Optional[str] = None,
+                      bundled_executable: Optional[str] = None,
+                      path_aliases: Optional[list[str]] = None) -> ToolInfo:
         version_probe = version_args if version_args is not None else version_flag
         override_path = self._tool_paths.get(name)
         if override_path is not None:
@@ -113,9 +118,9 @@ class ToolEnv:
             return ToolInfo(name=name)
         if bundled:
             bundled_name = bundled_executable or name
-            bundled_path = self._bundled_dir / name / bundled_name
+            bundled_path = self._bundled_dir / (bundled_dir or name) / bundled_name
             if bundled_path.exists():
-                ver = self._get_version(bundled_path, version_probe)
+                ver = self._get_version(bundled_path, version_probe) or self._version_from_bundled_dir(bundled_dir)
                 return ToolInfo(name=name, status=ToolStatus.OK,
                                 path=bundled_path, version=ver, note="bundled")
         candidates = [name, *(path_aliases or [])]
@@ -127,6 +132,11 @@ class ToolEnv:
                 return ToolInfo(name=name, status=ToolStatus.OK, path=p, version=ver)
         return ToolInfo(name=name)
 
+    def _version_from_bundled_dir(self, bundled_dir: Optional[str]) -> Optional[str]:
+        if not bundled_dir:
+            return None
+        return self._normalize_version(bundled_dir)
+
     def check_all(self) -> dict[str, ToolInfo]:
         for name, meta in TOOL_REGISTRY.items():
             info = self._detect_tool(
@@ -134,6 +144,7 @@ class ToolEnv:
                 version_flag=meta.get("version_flag", ""),
                 version_args=meta.get("version_args"),
                 bundled=meta.get("bundled", False),
+                bundled_dir=meta.get("bundled_dir"),
                 bundled_executable=meta.get("bundled_executable"),
                 path_aliases=meta.get("path_aliases"),
             )

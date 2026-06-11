@@ -23,5 +23,8 @@ phyloai = "phyloai.cli.main:cli"
 [tool.hatch.build.targets.wheel]
 packages = ["phyloai"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"phyloai/bundled" = "phyloai/bundled"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

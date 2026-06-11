@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-10 (CLI shell completion design added; output-format default corrected; log policy clarified; subcommand spec scope generalized)  
+**Last updated:** 2026-06-11 (pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified)  
 **Status:** Approved for implementation
 
 ---
@@ -44,10 +44,10 @@ phyloai/
 │   └── logger.py       # per-step log files under runs/runNNN/logs/
 │
 ├── pretree/
-│   ├── stats.py        # sequence/alignment statistics: format, length distribution,
-│   │                   # taxon count, gap ratio, min/max/mean/median length, total length
 │   ├── convert.py      # format conversion between FASTA/Phylip/Nexus/Phylip-PAML;
 │   │                   # wraps core/formats.py, exposes as CLI subcommand
+│   ├── stats.py        # sequence/alignment statistics: format, length distribution,
+│   │                   # taxon count, gap ratio, min/max/mean/median length, total length
 │   ├── align.py        # MAFFT (external), MAGUS (pip), batch AA + NT;
 │   │                   # --backtrans: AA-alignment → NT codon alignment via trimAl
 │   ├── trim.py         # trimAl (bundled), BMGE (bundled), ClipKIT (pip)
@@ -117,8 +117,8 @@ phyloai/
 phyloai doctor
 
 # Pre-tree
-phyloai pretree stats    --msa-dir ./aligned
-phyloai pretree convert  --input ./file.phy --output ./file.fa --format fasta
+phyloai pretree convert  --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
+phyloai pretree stats    --seq-dir ./runs/run001/pretree/convert
 phyloai pretree align    --msa-dir ./raw --method linsi [--nt-dir ./raw_nt] \
                          [--backtrans] [--extra-args "--op 1 --bl"]
 phyloai pretree trim     --msa-dir ./aligned --tool bmge [--model BLOSUM90] \
@@ -229,15 +229,38 @@ source ~/.config/phyloai/completion/phyloai.zsh
 
 This feature is CLI-only. It does not require changes to the library API, MCP design, or run-record schema.
 
+### 4.5 Documentation Layout
+
+The top-level `README.md` should remain a concise project entry point, not a full command manual. It should contain only the project summary, installation, quick start, command index, shell completion summary, and links to command-specific documentation.
+
+Detailed command documentation lives under `docs/commands/`, one file per user-facing command or subcommand. Examples:
+
+- `docs/commands/doctor.md`
+- `docs/commands/pretree-stats.md`
+- `docs/commands/pretree-convert.md`
+
+Each command document must include these sections:
+
+- Purpose: what the command does and explicitly what it does not do
+- Usage: minimal usage and full parameter table
+- Inputs: supported formats, input modes, and directory scanning rules where applicable
+- Outputs: terminal output, saved files, JSON schema summary, and default output paths
+- Examples: common single-file and batch workflows where applicable
+- Warnings and Errors: skipped inputs, overwrite behavior, format detection failures, and command-specific warnings
+- Notes: relationship to adjacent commands, such as `pretree convert` before `pretree stats`
+
+New or materially changed commands must update both their command document and the top-level README command index. Detailed subcommand designs and implementation plans remain separate under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
+
 ---
 
 ## 5. Dependency Management
 
 ### 5.1 Strategy
 
-- **Bundled (auto-downloaded on install):** trimAl, BMGE — permissive licenses, small binaries
+- **Bundled in the Python package:** TAPER 1.0.0 (`phyloai/bundled/TAPER-1.0.0/correction_multi.jl`), BMGE 1.12 (`phyloai/bundled/BMGE-1.12/BMGE.jar`) with corresponding license/source files retained in the bundled directories
+- **Bundled or auto-downloaded later:** trimAl — exact packaging strategy to be finalized before `pretree trim`
 - **pip-installable (auto-installed):** MAGUS (`pip install magus-msa`), ClipKIT, PhyKIT
-- **User-installed (detected by `doctor`):** IQ-TREE3, PhyloBayes-MPI, astral-hybrid, MAFFT, MCMCTree (PAML), TreeShrink, TAPER (`correction_multi.jl`)
+- **User-installed (detected by `doctor`):** IQ-TREE3, PhyloBayes-MPI, astral-hybrid, MAFFT, MCMCTree (PAML), TreeShrink
 
 ### 5.2 `phyloai doctor` Output Format
 
@@ -253,8 +276,7 @@ PhyloAI Environment Check
 [OK]   java          21.0.2    /usr/bin/java
 [WARN] PhyloBayes              not found — CAT-GTR module unavailable
                                 install: https://github.com/bayesiancook/pbmpi
-[WARN] correction_multi.jl     —         not found
-                                install: https://github.com/chaoszhang/TAPER
+[OK]   correction_multi.jl 1.0.0     bundled
 [WARN] julia                   —         not found
                                 install: https://julialang.org/downloads/
 [WARN] MAGUS                   not found — large-dataset alignment
@@ -276,8 +298,8 @@ runs/
     │   ├── metrics/
     │   ├── filter/
     │   └── concat/
-    │   # note: stats and convert write to caller-specified paths,
-    │   # not to a fixed pretree subdirectory
+    │   # note: convert defaults to runs/runNNN/pretree/convert;
+    │   # stats writes reports to caller-specified files
     ├── tree/
     │   ├── genetree/
     │   ├── iqtree/
@@ -449,7 +471,7 @@ Each module also writes this same JSON to its output directory as `result.json` 
 
 - Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators — regardless of `--output-format`. The `--output-format` flag controls only the format of structured output written to stdout (for MCP) and to saved files; it does not suppress or alter Rich terminal display.
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
-- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code. Utility commands (`stats`, `convert`) are read-only tools that do not write logs and do not require a run directory.
+- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
 - Log files are appended (not overwritten) on retry, with a timestamp separator between runs
 - Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
 - When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
@@ -533,6 +555,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | YAML for config, JSON for output | YAML supports comments and is human-writable; JSON is strict and machine-parseable |
 | `--input-format` on alignment-reading commands | Real datasets often use inconsistent suffixes; explicit user intent must override guessing |
 | Per-subcommand design + plan docs | Each pretree subcommand is complex enough to warrant its own spec; keeps main design doc stable while allowing detailed iteration |
+| Lightweight top-level README + command docs | Keeps `README.md` maintainable as the CLI grows; detailed command behavior belongs in `docs/commands/*.md` with a consistent section structure |
 
 ---
 

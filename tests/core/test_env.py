@@ -88,6 +88,24 @@ def test_check_all_includes_runtime_and_taper_entries():
         assert key in results
 
 
+def test_taper_bundled_tool_uses_correction_multi_script(tmp_path):
+    bundled_root = tmp_path / "bundled" / "TAPER-1.0.0"
+    bundled_root.mkdir(parents=True)
+    taper_script = bundled_root / "correction_multi.jl"
+    taper_script.write_text("# taper placeholder")
+
+    env = ToolEnv()
+    env._bundled_dir = tmp_path / "bundled"
+
+    with patch("shutil.which", return_value=None):
+        info = env.check_all()["correction_multi.jl"]
+
+    assert info.status == ToolStatus.OK
+    assert info.path == taper_script
+    assert info.version == "1.0.0"
+    assert info.note == "bundled"
+
+
 def test_get_version_uses_alternative_args_when_needed(tmp_path):
     tool = tmp_path / "astral-hybrid"
     tool.write_text("#!/bin/sh\n")
