@@ -13,20 +13,18 @@ phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--input` | required | Input directory or single file |
-| `--output-dir` | `runs/run001/pretree/convert` | Directory for converted files |
+| `--output-dir` | `runs/run001/pretree/convert` | Directory for converted files and result.json |
 | `--to` | `fasta` | Target format: `fasta`, `phylip-relaxed`, `phylip-paml`, `nexus` |
 | `--input-format` | `auto` | Override format detection |
 | `--seq-type` | `auto` | Override molecule type detection |
 | `--aa-special` | `x` | Convert `B/Z/J/X/U/O` to `X`, or preserve with `keep` |
 | `--threads` | `4` | Directory-mode worker count |
-| `--output` | `runs/pretree-convert.json` | Write full JSON results to this file |
-| `--interleaved` | false | Use interleaved format for phylip-relaxed output (default: sequential) |
 | `--quiet` | false | Suppress Rich terminal output except errors |
 | `--overwrite` | false | Delete and recreate a non-empty output directory |
 
 ## Terminal Output
 
-By default, the command displays a Rich progress bar and summary table in the terminal. The full JSON result is written to `--output`. Use `--quiet` to suppress terminal output.
+By default, the command displays a Rich progress bar and summary table in the terminal. The full JSON result is written to `result.json` inside `--output-dir`. Use `--quiet` to suppress terminal output.
 
 ## Inputs
 
@@ -34,18 +32,27 @@ By default, the command displays a Rich progress bar and summary table in the te
 
 ## Outputs
 
-Converted files are written to `--output-dir`. Target suffixes are `.fa`, `.phy`, `.paml.phy`, and `.nex`.
+Converted sequence files are written to `seqs/` subdirectory inside `--output-dir`. Target suffixes are `.fa`, `.phy`, `.paml.phy`, and `.nex`.
 
-The JSON payload contains `summary`, `files`, `skipped`, and `warnings` under `data`. `key_results` is empty because `convert` is a utility command.
+The JSON result is written to `result.json` inside `--output-dir`. The payload contains `summary`, `files`, `skipped`, and `warnings` under `data`. `key_results` is empty because `convert` is a utility command.
+
+Example output structure:
+```
+runs/run001/pretree/convert/
+├── seqs/
+│   ├── gene1.fa
+│   ├── gene2.fa
+│   └── ...
+└── result.json
+```
 
 ## Examples
 
 ```bash
 phyloai pretree convert --input ./raw
-phyloai pretree stats --seq-dir ./runs/run001/pretree/convert
+phyloai pretree stats --seq-dir ./runs/run001/pretree/convert/seqs
 phyloai pretree convert --input ./gene.phy --output-dir ./converted --to fasta --seq-type NT
 phyloai pretree convert --input ./aligned --to phylip-paml --overwrite
-phyloai pretree convert --input ./aligned --to phylip-relaxed --interleaved
 ```
 
 ## Warnings and Errors

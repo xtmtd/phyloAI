@@ -13,14 +13,11 @@ from phyloai.pretree.convert import convert_input, render_convert_summary_table
 from phyloai.pretree.stats import (
     aggregate_summary,
     collect_seq_files,
-    per_gene_output_path,
     render_per_gene_table,
     render_single_file_panels,
     render_summary_table,
     stats_directory,
     stats_single_file,
-    write_output,
-    write_per_gene_output,
 )
 
 console = Console()
@@ -45,17 +42,14 @@ def pretree() -> None:
     ),
 )
 @click.option("--input", "input_path", type=click.Path(path_type=Path), required=True, help="Input directory or single sequence/alignment file.")
-@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/run001/pretree/convert"), show_default=True, help="Directory where converted files are written.")
+@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/run001/pretree/convert"), show_default=True, help="Directory where converted files and result.json are written.")
 @click.option("--to", "target_format", type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="fasta", show_default=True, help="Target output format.")
 @click.option("--input-format", type=click.Choice(["auto", "fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="auto", show_default=True, help="Override input format detection for all input files.")
 @click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True, help="Override sequence type detection.")
 @click.option("--aa-special", type=click.Choice(["x", "keep"]), default="x", show_default=True, help="Convert B/Z/J/X/U/O to X, or preserve them with keep.")
 @click.option("--threads", "threads", type=int, default=4, show_default=True, help="Directory mode worker count.")
-@click.option("--output-format", type=click.Choice(["text", "json"]), default="json", show_default=True, help="Structured output format.")
 @click.option("--quiet", "quiet", is_flag=True, default=False, help="Suppress Rich terminal output except errors.")
 @click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Delete and recreate a non-empty output directory before conversion.")
-@click.option("--output", "output_path", type=click.Path(path_type=Path), default=Path("runs/pretree-convert.json"), show_default=True, help="Write full results to this file.")
-@click.option("--interleaved", "interleaved", is_flag=True, default=False, help="Use interleaved format for phylip-relaxed output. Default is sequential.")
 def convert_command(
     input_path: Path,
     output_dir: Path,
@@ -64,17 +58,16 @@ def convert_command(
     seq_type: str,
     aa_special: str,
     threads: int,
-    output_format: str,
     quiet: bool,
     overwrite: bool,
-    output_path: Path,
-    interleaved: bool,
 ) -> None:
     if threads < 1:
         _fail("--threads must be at least 1.", 1)
     if not input_path.exists():
         _fail(f"Input path '{input_path}' does not exist.", 1)
     entries = [input_path] if input_path.is_file() else list(input_path.iterdir())
+    conversion_error: str | None = None
+    payload: dict | None = None
     if not quiet:
         with Progress(console=console, transient=True) as progress:
             task = progress.add_task("Converting sequence files", total=len(entries))
@@ -88,11 +81,10 @@ def convert_command(
                     aa_special=aa_special,
                     threads=threads,
                     overwrite=overwrite,
-                    interleaved=interleaved,
                     progress_callback=lambda _path: progress.advance(task),
                 )
             except ValueError as exc:
-                _fail(str(exc), 1)
+                conversion_error = str(exc)
     else:
         try:
             payload = convert_input(
@@ -104,17 +96,19 @@ def convert_command(
                 aa_special=aa_special,
                 threads=threads,
                 overwrite=overwrite,
-                interleaved=interleaved,
             )
         except ValueError as exc:
-            _fail(str(exc), 1)
+            conversion_error = str(exc)
+    if conversion_error is not None:
+        _fail(conversion_error, 1)
     if not quiet:
         console.print(render_convert_summary_table(payload["data"]["summary"]))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as fh:
+    result_path = output_dir / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
-    click.echo(f"Converted files saved to {output_dir}", err=True)
-    click.echo(f"Results saved to {output_path}", err=True)
+    click.echo(f"Converted files saved to {output_dir / 'seqs'}", err=True)
+    click.echo(f"Results saved to {result_path}", err=True)
 
 
 @pretree.command(
@@ -123,8 +117,8 @@ def convert_command(
         "Inspect one sequence file or summarize a directory of sequence files. "
         "Use this command for quick pre-analysis QC on aligned or unaligned data. "
         "Exactly one of --seq or --seq-dir is required. Directory-only options: "
-        "--per-gene, --threads. Shared options: --output, --output-format, "
-        "--input-format, --seq-type, --quiet."
+        "--per-gene, --threads. Shared options: --output-dir, --input-format, "
+        "--seq-type, --quiet."
     ),
 )
 @click.option(
@@ -143,29 +137,22 @@ def convert_command(
     "--per-gene",
     is_flag=True,
     default=False,
-    help="Directory mode only. Include per-gene results in terminal output, or write them to an adjacent .per-gene.csv/.per-gene.tsv table when --output is used.",
+    help="Directory mode only. Include per-gene results in terminal output, or write them to per-gene.csv in the output directory.",
 )
 @click.option(
     "--per-gene-format",
     type=click.Choice(["csv", "tsv"]),
     default="csv",
     show_default=True,
-    help="Directory mode only. Table format for the adjacent per-gene file written with --per-gene --output.",
+    help="Directory mode only. Table format for the per-gene file written with --per-gene.",
 )
 @click.option(
-    "--output",
-    "output_path",
-    type=click.Path(path_type=Path),
-    default="runs/pretree-stats.json",
+    "--output-dir",
+    "output_dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/run001/pretree/stats"),
     show_default=True,
-    help="Write full results to this file. In directory mode, --per-gene writes an adjacent .per-gene.csv table instead of mixing it into this file.",
-)
-@click.option(
-    "--output-format",
-    type=click.Choice(["text", "json"]),
-    default="json",
-    show_default=True,
-    help="Format for the file written with --output. Does not affect terminal output (always Rich tables unless --quiet).",
+    help="Directory where result.json and per-gene files are written.",
 )
 @click.option(
     "--input-format",
@@ -193,17 +180,24 @@ def convert_command(
     default=False,
     help="Suppress terminal output except for errors.",
 )
+@click.option(
+    "--overwrite",
+    "overwrite",
+    is_flag=True,
+    default=False,
+    help="Delete and recreate a non-empty output directory before writing results.",
+)
 def stats_command(
     seq_dir: Path | None,
     seq: Path | None,
     per_gene: bool,
     per_gene_format: str,
-    output_path: Path | None,
-    output_format: str,
+    output_dir: Path,
     input_format: str | None,
     seq_type: str | None,
     threads: int,
     quiet: bool,
+    overwrite: bool,
 ) -> None:
     """Compute statistics for sequence or alignment files."""
     if bool(seq_dir) == bool(seq):
@@ -222,14 +216,20 @@ def stats_command(
     if seq_dir is not None and not seq_dir.exists():
         _fail(f"Input directory '{seq_dir}' does not exist.", 1)
 
+    if output_dir.exists() and any(output_dir.iterdir()):
+        if not overwrite:
+            _fail(f"Output directory '{output_dir}' already exists and is non-empty. Use --overwrite to replace it.", 1)
+        import shutil
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     try:
         _run_stats_command(
             seq_dir,
             seq,
             per_gene,
             per_gene_format,
-            output_path,
-            output_format,
+            output_dir,
             input_format,
             seq_type,
             threads,
@@ -244,14 +244,14 @@ def _run_stats_command(
     seq: Path | None,
     per_gene: bool,
     per_gene_format: str,
-    output_path: Path | None,
-    output_format: str,
+    output_dir: Path,
     input_format: str | None,
     seq_type: str | None,
     threads: int,
     quiet: bool,
 ) -> None:
     """Run the stats command after CLI validation."""
+    result_path = output_dir / "result.json"
 
     if seq is not None:
         stats = stats_single_file(seq, seq_type=seq_type, input_format=input_format)
@@ -272,9 +272,9 @@ def _run_stats_command(
         if not quiet:
             for panel in render_single_file_panels(stats):
                 console.print(panel)
-        if output_path is not None:
-            write_output(payload, output_path, mode="single", output_format=output_format)
-            click.echo(f"Results saved to {output_path}", err=True)
+        with open(result_path, "w") as fh:
+            json.dump(payload, fh, indent=2)
+        click.echo(f"Results saved to {result_path}", err=True)
         return
 
     if not quiet:
@@ -315,16 +315,27 @@ def _run_stats_command(
         _fail("All files failed during processing.", 2)
     if not quiet:
         console.print(render_summary_table(summary))
-        if per_gene and output_path is None:
+        if per_gene:
             console.print(render_per_gene_table(results))
-    if output_path is not None:
-        write_output(payload, output_path, mode="directory", per_gene=per_gene, output_format=output_format)
-        per_gene_path = per_gene_output_path(output_path, per_gene_format) if per_gene else None
-        if per_gene_path is not None:
-            write_per_gene_output(payload, per_gene_path)
-            click.echo(f"Summary saved to {output_path}", err=True)
-            click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
-        else:
-            click.echo(f"Summary saved to {output_path}", err=True)
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    click.echo(f"Summary saved to {result_path}", err=True)
+    if per_gene:
+        per_gene_path = output_dir / f"per-gene.{per_gene_format}"
+        _write_per_gene_csv(results, per_gene_path, per_gene_format)
+        click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
     for warning in warnings:
         click.echo(warning, err=True)
+
+
+def _write_per_gene_csv(results: list[dict], path: Path, fmt: str) -> None:
+    """Write per-gene results to CSV or TSV."""
+    import csv
+    if not results:
+        return
+    columns = list(results[0].keys())
+    delimiter = "\t" if fmt == "tsv" else ","
+    with open(path, "w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=columns, delimiter=delimiter)
+        writer.writeheader()
+        writer.writerows(results)

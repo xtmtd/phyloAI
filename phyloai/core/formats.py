@@ -19,14 +19,14 @@ class AlignmentFormat(str, Enum):
 
 _BIOPYTHON_FORMATS = {
     AlignmentFormat.FASTA: "fasta",
-    AlignmentFormat.PHYLIP: "phylip-relaxed",
+    AlignmentFormat.PHYLIP: "phylip-sequential",
     AlignmentFormat.NEXUS: "nexus",
 }
 
-_BIOPYTHON_FORMATS_SEQUENTIAL = {
-    AlignmentFormat.FASTA: "fasta",
-    AlignmentFormat.PHYLIP: "phylip-sequential",
-    AlignmentFormat.NEXUS: "nexus",
+_BIOPYTHON_READ_FORMATS = {
+    AlignmentFormat.FASTA: ["fasta"],
+    AlignmentFormat.PHYLIP: ["phylip-relaxed", "phylip-sequential"],
+    AlignmentFormat.NEXUS: ["nexus"],
 }
 
 
@@ -139,7 +139,12 @@ class FormatConverter:
         fmt = source_format or self.detect(path)
         if fmt == AlignmentFormat.PHYLIP_PAML:
             fmt = AlignmentFormat.PHYLIP
-        return AlignIO.read(str(path), _BIOPYTHON_FORMATS[fmt])
+        for biopython_fmt in _BIOPYTHON_READ_FORMATS[fmt]:
+            try:
+                return AlignIO.read(str(path), biopython_fmt)
+            except Exception:
+                continue
+        raise ValueError(f"Failed to read '{path}' as {fmt.value}")
 
     def write_alignment(
         self,
@@ -147,7 +152,6 @@ class FormatConverter:
         dst: Path,
         target: AlignmentFormat,
         molecule_type: str = "protein",
-        interleaved: bool = True,
     ) -> list[dict[str, str]]:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if target == AlignmentFormat.PHYLIP_PAML:
@@ -156,7 +160,6 @@ class FormatConverter:
             for record in alignment:
                 if "molecule_type" not in record.annotations:
                     record.annotations["molecule_type"] = molecule_type
-        format_map = _BIOPYTHON_FORMATS if interleaved else _BIOPYTHON_FORMATS_SEQUENTIAL
         with open(dst, "w") as fh:
-            AlignIO.write(alignment, fh, format_map[target])
+            AlignIO.write(alignment, fh, _BIOPYTHON_FORMATS[target])
         return []

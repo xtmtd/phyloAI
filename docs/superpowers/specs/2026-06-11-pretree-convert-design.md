@@ -68,11 +68,9 @@ The public format names are:
 
 `phylip-relaxed` is the default Phylip interpretation in PhyloAI. The project should avoid using bare `phylip` in user-facing documentation except when referring to external software terminology.
 
-### 3.1.1 Sequential vs interleaved phylip-relaxed
+### 3.1.1 Phylip output format
 
-By default, `phylip-relaxed` output uses **sequential** format (one sequence per taxon, all on one line). This is the most common format expected by downstream phylogenetic software. Use `--interleaved` to produce interleaved output instead, where sequences are split across multiple blocks.
-
-`phylip-paml` always uses sequential format regardless of `--interleaved`, as PAML requires sequential input by default.
+All phylip output (`phylip-relaxed` and `phylip-paml`) uses **sequential** format (one sequence per taxon, all on one line). This is the most common format expected by downstream phylogenetic software.
 
 ### 3.2 Phylip-PAML semantics
 
@@ -197,7 +195,17 @@ Output file stems match input file stems after path normalization. Target suffix
 | `phylip-paml` | `.paml.phy` |
 | `nexus` | `.nex` |
 
-Input directory plus output file is not supported. The command always writes one output file per converted input file.
+Converted sequence files are written to `seqs/` subdirectory inside `--output-dir`. The command always writes one output file per converted input file.
+
+Example output structure:
+```
+runs/run001/pretree/convert/
+├── seqs/
+│   ├── gene1.fa
+│   ├── gene2.fa
+│   └── ...
+└── result.json
+```
 
 ### 7.2 Output directory conflict policy
 
@@ -219,7 +227,7 @@ Warnings are summarized after the table. Large per-file details belong in JSON o
 
 ### 7.4 JSON result file
 
-The full JSON result is written to `--output` (default: `runs/pretree-convert.json`). The terminal never prints raw JSON; it shows Rich tables only. This matches the behavior of `pretree stats` and other PhyloAI commands.
+The full JSON result is written to `result.json` inside `--output-dir`. The terminal never prints raw JSON; it shows Rich tables only. This matches the behavior of all PhyloAI commands.
 
 ### 7.5 JSON result schema
 

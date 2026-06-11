@@ -33,7 +33,6 @@ def convert_input(
     aa_special: str = "x",
     threads: int = 4,
     overwrite: bool = False,
-    interleaved: bool = False,
     progress_callback: Callable[[Path], None] | None = None,
 ) -> dict[str, Any]:
     if output_dir.exists() and any(output_dir.iterdir()):
@@ -41,11 +40,13 @@ def convert_input(
             raise ValueError(f"Output directory '{output_dir}' already exists and is non-empty. Use --overwrite to replace it.")
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    seqs_dir = output_dir / "seqs"
+    seqs_dir.mkdir(parents=True, exist_ok=True)
     entries = [input_path] if input_path.is_file() else sorted(input_path.iterdir(), key=lambda path: path.name)
     files: list[dict[str, Any]] = []
     skipped: list[dict[str, str]] = []
     for entry in entries:
-        result = _convert_one(entry, output_dir, target_format, input_format, seq_type, aa_special, interleaved)
+        result = _convert_one(entry, seqs_dir, target_format, input_format, seq_type, aa_special)
         if "skipped" in result:
             skipped.append(result["skipped"])
         else:
@@ -68,7 +69,6 @@ def convert_input(
             "seq_type": seq_type or "auto",
             "aa_special": aa_special,
             "threads": threads,
-            "interleaved": interleaved,
         },
         "key_results": {},
         "error": None,
@@ -90,7 +90,7 @@ def convert_input(
     return payload
 
 
-def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format: str | None, seq_type: str | None, aa_special: str, interleaved: bool) -> dict[str, Any]:
+def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format: str | None, seq_type: str | None, aa_special: str) -> dict[str, Any]:
     if entry.is_dir():
         return {"skipped": {"path": str(entry), "reason": "directory"}}
     if not entry.is_file():
@@ -113,7 +113,7 @@ def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format
             replacements[key] = replacements.get(key, 0) + value
         normalized_records = [SeqRecord(Seq(sequence), id=_safe_record_id(record.description), description="") for record, sequence in zip(records, normalized.sequences)]
         out = output_dir / f"{entry.stem}{TARGET_SUFFIX[target_format]}"
-        _write_records(normalized_records, out, target_format, detected_seq_type, interleaved)
+        _write_records(normalized_records, out, target_format, detected_seq_type)
         return {
             "input": str(entry),
             "output": str(out),
@@ -128,7 +128,7 @@ def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format
         return {"skipped": {"path": str(entry), "reason": str(exc)}}
 
 
-def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_type: str, interleaved: bool) -> None:
+def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_type: str) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     if target_format == "fasta":
         SeqIO.write(records, str(out), "fasta")
@@ -140,7 +140,7 @@ def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_
         molecule_type = "DNA" if seq_type == "NT" else "protein"
         for record in alignment:
             record.annotations["molecule_type"] = molecule_type
-    converter.write_alignment(alignment, out, target=_alignment_format(target_format), molecule_type="DNA" if seq_type == "NT" else "protein", interleaved=interleaved)
+    converter.write_alignment(alignment, out, target=_alignment_format(target_format), molecule_type="DNA" if seq_type == "NT" else "protein")
 
 
 def _alignment_format(value: str | None) -> AlignmentFormat | None:

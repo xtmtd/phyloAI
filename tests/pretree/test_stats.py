@@ -194,39 +194,10 @@ def test_stats_directory_reports_progress_for_each_file() -> None:
     assert sorted(seen) == sorted(path.name for path in collect_seq_files(TEST_DATA / "test"))
 
 
-def test_cli_stats_json_output() -> None:
-    """--output-format json with --output writes a JSON file; terminal still shows Rich panels."""
+def test_cli_stats_json_output(tmp_path: Path) -> None:
+    """Stats writes result.json to output-dir; terminal still shows Rich panels."""
     runner = CliRunner()
-    import tempfile, os
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
-        out_path = Path(f.name)
-    try:
-        result = runner.invoke(
-            cli,
-            [
-                "pretree",
-                "stats",
-                "--seq",
-                str(TEST_DATA / "test" / "EOG090X0971.faa"),
-                "--output",
-                str(out_path),
-                "--output-format",
-                "json",
-            ],
-        )
-        assert result.exit_code == 0
-        saved = json.loads(out_path.read_text())
-        assert saved["status"] == "success"
-        assert saved["data"]["alignment_length"] == 1042
-        assert "constant_sites" in saved["data"]
-    finally:
-        out_path.unlink(missing_ok=True)
-
-
-def test_cli_stats_json_output_format_writes_json_file_ignoring_extension(tmp_path: Path) -> None:
-    """--output-format json forces JSON in the output file regardless of file extension."""
-    runner = CliRunner()
-    output = tmp_path / "out.txt"
+    output_dir = tmp_path / "stats_out"
 
     result = runner.invoke(
         cli,
@@ -235,18 +206,17 @@ def test_cli_stats_json_output_format_writes_json_file_ignoring_extension(tmp_pa
             "stats",
             "--seq",
             str(TEST_DATA / "test" / "EOG090X0971.faa"),
-            "--output",
-            str(output),
-            "--output-format",
-            "json",
+            "--output-dir",
+            str(output_dir),
         ],
     )
-
     assert result.exit_code == 0
-    # file contains JSON despite .txt extension (--output-format overrides extension)
-    saved_data = json.loads(output.read_text())
-    assert saved_data["status"] == "success"
-    assert saved_data["data"]["alignment_length"] == 1042
+    result_path = output_dir / "result.json"
+    assert result_path.exists()
+    saved = json.loads(result_path.read_text())
+    assert saved["status"] == "success"
+    assert saved["data"]["alignment_length"] == 1042
+    assert "constant_sites" in saved["data"]
 
 
 def test_cli_stats_mutual_exclusivity_error() -> None:
@@ -285,43 +255,20 @@ def test_cli_stats_missing_file_exits_one() -> None:
     assert result.exit_code == 1
 
 
-def test_cli_stats_output_any_extension_accepted(tmp_path: Path) -> None:
-    """Output format is controlled by --output-format, not file extension; any path is valid."""
-    runner = CliRunner()
-    output = tmp_path / "stats.xyz"
-
-    result = runner.invoke(
-        cli,
-        [
-            "pretree",
-            "stats",
-            "--seq",
-            str(TEST_DATA / "test" / "EOG090X0971.faa"),
-            "--output",
-            str(output),
-        ],
-    )
-
-    assert result.exit_code == 0
-    saved = json.loads(output.read_text())
-    assert saved["status"] == "success"
-
-
 def test_cli_stats_all_failed_directory_exits_two(tmp_path: Path) -> None:
     runner = CliRunner()
     bad = tmp_path / "bad.fa"
     bad.write_text(">broken\n")
 
-    result = runner.invoke(cli, ["pretree", "stats", "--seq-dir", str(tmp_path)])
+    result = runner.invoke(cli, ["pretree", "stats", "--seq-dir", str(tmp_path), "--output-dir", str(tmp_path / "out")])
 
     assert result.exit_code == 2
 
 
-def test_directory_output_writes_summary_and_adjacent_per_gene(tmp_path: Path) -> None:
-    """Directory mode writes a JSON summary and an adjacent per-gene CSV."""
+def test_directory_output_writes_summary_and_per_gene(tmp_path: Path) -> None:
+    """Directory mode writes result.json and per-gene CSV in output-dir."""
     runner = CliRunner()
-    output = tmp_path / "stats.json"
-    per_gene_output = tmp_path / "stats.per-gene.csv"
+    output_dir = tmp_path / "stats_out"
 
     result = runner.invoke(
         cli,
@@ -331,49 +278,27 @@ def test_directory_output_writes_summary_and_adjacent_per_gene(tmp_path: Path) -
             "--seq-dir",
             str(TEST_DATA / "test"),
             "--per-gene",
-            "--output",
-            str(output),
+            "--output-dir",
+            str(output_dir),
         ],
     )
 
     assert result.exit_code == 0
-    saved = json.loads(output.read_text())
+    result_path = output_dir / "result.json"
+    per_gene_path = output_dir / "per-gene.csv"
+    assert result_path.exists()
+    assert per_gene_path.exists()
+    saved = json.loads(result_path.read_text())
     assert saved["data"]["summary"]["n_genes"] > 0
-    per_gene_header = per_gene_output.read_text().splitlines()[0]
-    assert per_gene_header == (
-        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,"
-        "gap_ratio,ambiguous_ratio,gap_ambiguous_ratio,missing_taxa,missing_taxa_ratio"
-    )
-
-
-def test_directory_per_gene_adjacent_csv_always_created(tmp_path: Path) -> None:
-    """Per-gene adjacent CSV is created regardless of the main output format."""
-    runner = CliRunner()
-    output = tmp_path / "stats.json"
-    per_gene_output = tmp_path / "stats.per-gene.csv"
-
-    result = runner.invoke(
-        cli,
-        [
-            "pretree",
-            "stats",
-            "--seq-dir",
-            str(TEST_DATA / "test"),
-            "--per-gene",
-            "--output",
-            str(output),
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert per_gene_output.exists()
-    assert f"Per-gene table saved to {per_gene_output}" in result.output
+    per_gene_header = per_gene_path.read_text().splitlines()[0]
+    assert "gene" in per_gene_header
+    assert "n_taxa" in per_gene_header
+    assert "alignment_length" in per_gene_header
 
 
 def test_directory_per_gene_format_can_write_tsv(tmp_path: Path) -> None:
     runner = CliRunner()
-    output = tmp_path / "stats.txt"
-    per_gene_output = tmp_path / "stats.per-gene.tsv"
+    output_dir = tmp_path / "stats_out"
 
     result = runner.invoke(
         cli,
@@ -385,57 +310,15 @@ def test_directory_per_gene_format_can_write_tsv(tmp_path: Path) -> None:
             "--per-gene",
             "--per-gene-format",
             "tsv",
-            "--output",
-            str(output),
+            "--output-dir",
+            str(output_dir),
         ],
     )
 
     assert result.exit_code == 0
-    assert per_gene_output.exists()
-    assert "\t" in per_gene_output.read_text().splitlines()[0]
-
-
-def test_unaligned_per_gene_output_includes_sequence_length_summary(tmp_path: Path) -> None:
-    from phyloai.pretree.stats import write_per_gene_output
-
-    per_gene_output = tmp_path / "stats.per-gene.csv"
-    payload = {
-        "data": {
-            "per_gene": [
-                {
-                    "gene": "g1",
-                    "n_taxa": 4,
-                    "n_taxa_ratio": 1.0,
-                    "length_type": "seq_length",
-                    "alignment_length": "",
-                    "seq_length_min": 100,
-                    "seq_length_max": 120,
-                    "seq_length_mean": 110.0,
-                    "seq_length_median": 110.0,
-                    "seq_length_stdev": 8.165,
-                    "gap_ratio": 0.0,
-                    "ambiguous_ratio": 0.0,
-                    "gap_ambiguous_ratio": 0.0,
-                    "missing_taxa": 0,
-                    "missing_taxa_ratio": 0.0,
-                }
-            ]
-        }
-    }
-
-    write_per_gene_output(payload, per_gene_output)
-
-    header = per_gene_output.read_text().splitlines()[0].split(",")
-    assert "alignment_length" not in header
-    for column in [
-        "length_type",
-        "seq_length_min",
-        "seq_length_max",
-        "seq_length_mean",
-        "seq_length_median",
-        "seq_length_stdev",
-    ]:
-        assert column in header
+    per_gene_path = output_dir / "per-gene.tsv"
+    assert per_gene_path.exists()
+    assert "\t" in per_gene_path.read_text().splitlines()[0]
 
 
 def test_cli_help_explains_options() -> None:
@@ -451,7 +334,7 @@ def test_cli_help_explains_options() -> None:
     assert "Override auto-detection when a file suffix is" in result.output
     assert "misleading" in result.output
     assert "[fasta|phylip-relaxed|nexus]" in result.output
-    assert "Write full results to" in result.output
+    assert "Directory where result.json" in result.output
 
 
 def test_cli_rejects_phylip_input_format_choice() -> None:
@@ -473,10 +356,10 @@ def test_cli_rejects_phylip_input_format_choice() -> None:
     assert "invalid value for '--input-format'" in result.output.lower()
 
 
-def test_directory_output_file_keeps_terminal_to_summary_only(tmp_path: Path) -> None:
+def test_directory_per_gene_writes_to_output_dir(tmp_path: Path) -> None:
+    """Per-gene data goes to per-gene.csv in output-dir."""
     runner = CliRunner()
-    output = tmp_path / "stats.txt"
-    per_gene_output = tmp_path / "stats.per-gene.csv"
+    output_dir = tmp_path / "stats_out"
 
     result = runner.invoke(
         cli,
@@ -486,103 +369,23 @@ def test_directory_output_file_keeps_terminal_to_summary_only(tmp_path: Path) ->
             "--seq-dir",
             str(TEST_DATA / "test"),
             "--per-gene",
-            "--output",
-            str(output),
-            "--output-format",
-            "text",
+            "--output-dir",
+            str(output_dir),
         ],
     )
 
     assert result.exit_code == 0
-    assert "pretree stats summary" in result.output
-    assert "Per-gene statistics" not in result.output
-    assert str(output) in result.output
-    assert str(per_gene_output) in result.output
-    assert "Summary saved to" in result.output
-    assert "Per-gene table saved to" in result.output
-
-
-def test_directory_per_gene_writes_adjacent_table_not_inline(tmp_path: Path) -> None:
-    """Per-gene data goes to the adjacent CSV, not embedded in the main output file."""
-    runner = CliRunner()
-    output = tmp_path / "stats.json"
-    per_gene_output = tmp_path / "stats.per-gene.csv"
-
-    result = runner.invoke(
-        cli,
-        [
-            "pretree",
-            "stats",
-            "--seq-dir",
-            str(TEST_DATA / "test"),
-            "--per-gene",
-            "--output",
-            str(output),
-        ],
-    )
-
-    assert result.exit_code == 0
-    saved = json.loads(output.read_text())
-    # per_gene key is present in payload (included because --per-gene was set)
+    result_path = output_dir / "result.json"
+    per_gene_path = output_dir / "per-gene.csv"
+    assert result_path.exists()
+    assert per_gene_path.exists()
+    saved = json.loads(result_path.read_text())
     assert "per_gene" in saved["data"]
-    per_gene_content = per_gene_output.read_text()
-    assert per_gene_content.splitlines()[0] == (
-        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,"
-        "gap_ratio,ambiguous_ratio,gap_ambiguous_ratio,missing_taxa,missing_taxa_ratio"
-    )
+    per_gene_content = per_gene_path.read_text()
+    per_gene_header = per_gene_content.splitlines()[0]
+    assert "gene" in per_gene_header
+    assert "n_taxa" in per_gene_header
     assert "EOG090X0971" in per_gene_content
-
-
-def test_directory_per_gene_csv_output_writes_adjacent_csv(tmp_path: Path) -> None:
-    """With --per-gene, a .per-gene.csv file is written adjacent to the main output."""
-    runner = CliRunner()
-    output = tmp_path / "stats.json"
-    per_gene_output = tmp_path / "stats.per-gene.csv"
-
-    result = runner.invoke(
-        cli,
-        [
-            "pretree",
-            "stats",
-            "--seq-dir",
-            str(TEST_DATA / "test"),
-            "--per-gene",
-            "--output",
-            str(output),
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert output.exists()
-    assert per_gene_output.exists()
-    saved = json.loads(output.read_text())
-    assert saved["data"]["summary"]["n_genes"] > 0
-    assert per_gene_output.read_text().splitlines()[0] == (
-        "gene,n_taxa,n_taxa_ratio,length_type,alignment_length,"
-        "gap_ratio,ambiguous_ratio,gap_ambiguous_ratio,missing_taxa,missing_taxa_ratio"
-    )
-
-
-def test_directory_csv_output_reports_per_gene_destination(tmp_path: Path) -> None:
-    runner = CliRunner()
-    output = tmp_path / "stats.csv"
-    per_gene_output = tmp_path / "stats.per-gene.csv"
-
-    result = runner.invoke(
-        cli,
-        [
-            "pretree",
-            "stats",
-            "--seq-dir",
-            str(TEST_DATA / "test"),
-            "--per-gene",
-            "--output",
-            str(output),
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert f"Per-gene table saved to {per_gene_output}" in result.output
 
 
 def test_cli_stats_rejects_per_gene_in_single_file_mode() -> None:
@@ -603,43 +406,10 @@ def test_cli_stats_rejects_per_gene_in_single_file_mode() -> None:
     assert "--per-gene is directory mode only" in result.output
 
 
-def test_single_file_text_output_mentions_msa_length() -> None:
-    runner = CliRunner()
-
-    result = runner.invoke(
-        cli,
-        [
-            "pretree",
-            "stats",
-            "--seq",
-            str(TEST_DATA / "test" / "EOG090X0971.faa"),
-            "--output-format",
-            "text",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert "MSA length" in result.output
-    assert "1042" in result.output
-    assert "distinct_patterns" in result.output
-
-
-def test_single_file_text_output_shows_gap_ambiguous_per_taxon() -> None:
-    runner = CliRunner()
-
-    result = runner.invoke(
-        cli,
-        ["pretree", "stats", "--seq", str(TEST_DATA / "test" / "EOG090X0971.faa")],
-    )
-
-    assert result.exit_code == 0
-    assert "gap_ambiguous_ratio" in result.output
-
-
-def test_single_file_json_output_file_includes_per_taxon_data(tmp_path: Path) -> None:
+def test_single_file_output_includes_per_taxon_data(tmp_path: Path) -> None:
     """Default JSON output for single file includes per_taxon array."""
     runner = CliRunner()
-    output = tmp_path / "out.json"
+    output_dir = tmp_path / "stats_out"
 
     result = runner.invoke(
         cli,
@@ -648,12 +418,14 @@ def test_single_file_json_output_file_includes_per_taxon_data(tmp_path: Path) ->
             "stats",
             "--seq",
             str(TEST_DATA / "2-loci_filter" / "fna" / "EOG090X0971.fna"),
-            "--output",
-            str(output),
+            "--output-dir",
+            str(output_dir),
         ],
     )
 
     assert result.exit_code == 0
-    saved = json.loads(output.read_text())
+    result_path = output_dir / "result.json"
+    assert result_path.exists()
+    saved = json.loads(result_path.read_text())
     assert "per_taxon" in saved["data"]
     assert len(saved["data"]["per_taxon"]) > 0

@@ -440,7 +440,7 @@ All commands must exit with one of these codes:
 
 ### 9.4 JSON Output Schema
 
-When `--output-format json` is set, every command outputs a single JSON object to stdout with this top-level structure:
+Every command writes a JSON result file to its output directory. The top-level structure is:
 
 ```json
 {
@@ -450,7 +450,8 @@ When `--output-format json` is set, every command outputs a single JSON object t
   "tool_versions": {"mafft": "7.520"},
   "params": { },
   "key_results": { },
-  "error": null
+  "error": null,
+  "data": { }
 }
 ```
 
@@ -458,8 +459,46 @@ When `--output-format json` is set, every command outputs a single JSON object t
 - `key_results`: quantitative outputs and conclusions for report integration; empty `{}` for utility commands (stats, convert)
 - `tool_versions`: version string for every external tool invoked
 - `error`: null on success; error message string on failure
+- `data`: command-specific detailed results (summary, files, skipped entries, warnings)
 
-Each module also writes this same JSON to its output directory as `result.json` for `report collector` to aggregate.
+#### Unified Output Directory Structure
+
+All commands follow the same output convention:
+
+1. **JSON result** is always written to `result.json` inside the output directory
+2. **Data files** (sequences, alignments, etc.) are written alongside `result.json`, or in a `seqs/` subdirectory for commands that produce sequence files
+3. **Auxiliary files** (per-gene tables, etc.) are written alongside `result.json`
+
+Example directory structure for `pretree convert`:
+```
+runs/run001/pretree/convert/
+├── seqs/                 # converted sequence files
+│   ├── gene1.fa
+│   ├── gene2.fa
+│   └── ...
+└── result.json           # JSON result
+```
+
+Example directory structure for `pretree stats`:
+```
+runs/run001/pretree/stats/
+├── result.json           # JSON result
+└── per-gene.csv          # per-gene table (when --per-gene is used)
+```
+
+Example directory structure for pipeline commands (`pretree align`, `tree iqtree`, etc.):
+```
+runs/run001/pretree/align/
+├── gene1.aln             # aligned files
+├── gene2.aln
+├── ...
+└── result.json           # JSON result
+```
+
+This unified structure ensures that:
+- Every output directory is self-contained with `result.json` for report aggregation
+- `report collector` can aggregate results by scanning the run directory tree for `result.json` files
+- Users can easily find all outputs from a command in one directory
 
 ### 9.5 Output Directory Conflict Policy
 

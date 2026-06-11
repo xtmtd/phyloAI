@@ -12,7 +12,7 @@ def test_convert_single_file_defaults_to_fasta_and_normalizes_nt(tmp_path: Path)
 
     payload = convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)
 
-    out = out_dir / "gene.fa"
+    out = out_dir / "seqs" / "gene.fa"
     assert out.exists()
     assert out.read_text() == ">tax_one\nACGTNRYN\n"
     assert payload["data"]["summary"]["n_converted"] == 1
@@ -49,7 +49,7 @@ def test_convert_expands_paml_dots_before_normalization(tmp_path: Path) -> None:
 
     payload = convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)
 
-    assert (out_dir / "dots.fa").read_text() == ">ref\nACGT\n>second\nACGT\n"
+    assert (out_dir / "seqs" / "dots.fa").read_text() == ">ref\nACGT\n>second\nACGT\n"
     assert payload["data"]["files"][0]["replacements"]["dot_expanded"] == 2
 
 
@@ -74,7 +74,7 @@ def test_convert_output_dir_conflict_requires_overwrite(tmp_path: Path) -> None:
     assert not (out_dir / "old.fa").exists()
 
 
-def test_convert_phylip_relaxed_sequential_by_default(tmp_path: Path) -> None:
+def test_convert_phylip_relaxed(tmp_path: Path) -> None:
     from phyloai.pretree.convert import convert_input
 
     src = tmp_path / "gene.fa"
@@ -83,7 +83,7 @@ def test_convert_phylip_relaxed_sequential_by_default(tmp_path: Path) -> None:
 
     payload = convert_input(src, out_dir, target_format="phylip-relaxed", seq_type="NT", threads=1, overwrite=False)
 
-    out = out_dir / "gene.phy"
+    out = out_dir / "seqs" / "gene.phy"
     assert out.exists()
     content = out.read_text()
     lines = content.strip().split("\n")
@@ -92,22 +92,4 @@ def test_convert_phylip_relaxed_sequential_by_default(tmp_path: Path) -> None:
     assert "ACGT" in lines[1]
     assert "taxon2" in lines[2]
     assert "ACGA" in lines[2]
-    assert payload["data"]["summary"]["n_converted"] == 1
-
-
-def test_convert_phylip_relaxed_interleaved_when_requested(tmp_path: Path) -> None:
-    from phyloai.pretree.convert import convert_input
-
-    src = tmp_path / "gene.fa"
-    src.write_text(">taxon1\nACGTACGT\n>taxon2\nACGAACGA\n")
-    out_dir = tmp_path / "out"
-
-    payload = convert_input(src, out_dir, target_format="phylip-relaxed", seq_type="NT", threads=1, overwrite=False, interleaved=True)
-
-    out = out_dir / "gene.phy"
-    assert out.exists()
-    content = out.read_text()
-    lines = content.strip().split("\n")
-    assert lines[0] == "2 8"
-    assert len(lines) >= 3
     assert payload["data"]["summary"]["n_converted"] == 1
