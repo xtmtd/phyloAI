@@ -13,15 +13,20 @@ phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--input` | required | Input directory or single file |
-| `--output-dir`, `-o` | `runs/run001/pretree/convert` | Directory for converted files |
+| `--output-dir` | `runs/run001/pretree/convert` | Directory for converted files |
 | `--to` | `fasta` | Target format: `fasta`, `phylip-relaxed`, `phylip-paml`, `nexus` |
 | `--input-format` | `auto` | Override format detection |
 | `--seq-type` | `auto` | Override molecule type detection |
 | `--aa-special` | `x` | Convert `B/Z/J/X/U/O` to `X`, or preserve with `keep` |
-| `--threads`, `-t` | `4` | Directory-mode worker count |
-| `--output-format` | `json` | Structured output format |
-| `--quiet`, `-q` | false | Suppress Rich terminal output except errors |
+| `--threads` | `4` | Directory-mode worker count |
+| `--output` | `runs/pretree-convert.json` | Write full JSON results to this file |
+| `--interleaved` | false | Use interleaved format for phylip-relaxed output (default: sequential) |
+| `--quiet` | false | Suppress Rich terminal output except errors |
 | `--overwrite` | false | Delete and recreate a non-empty output directory |
+
+## Terminal Output
+
+By default, the command displays a Rich progress bar and summary table in the terminal. The full JSON result is written to `--output`. Use `--quiet` to suppress terminal output.
 
 ## Inputs
 
@@ -40,6 +45,7 @@ phyloai pretree convert --input ./raw
 phyloai pretree stats --seq-dir ./runs/run001/pretree/convert
 phyloai pretree convert --input ./gene.phy --output-dir ./converted --to fasta --seq-type NT
 phyloai pretree convert --input ./aligned --to phylip-paml --overwrite
+phyloai pretree convert --input ./aligned --to phylip-relaxed --interleaved
 ```
 
 ## Warnings and Errors

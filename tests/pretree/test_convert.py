@@ -72,3 +72,42 @@ def test_convert_output_dir_conflict_requires_overwrite(tmp_path: Path) -> None:
     payload = convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=True)
     assert payload["data"]["summary"]["n_converted"] == 1
     assert not (out_dir / "old.fa").exists()
+
+
+def test_convert_phylip_relaxed_sequential_by_default(tmp_path: Path) -> None:
+    from phyloai.pretree.convert import convert_input
+
+    src = tmp_path / "gene.fa"
+    src.write_text(">taxon1\nACGT\n>taxon2\nACGA\n")
+    out_dir = tmp_path / "out"
+
+    payload = convert_input(src, out_dir, target_format="phylip-relaxed", seq_type="NT", threads=1, overwrite=False)
+
+    out = out_dir / "gene.phy"
+    assert out.exists()
+    content = out.read_text()
+    lines = content.strip().split("\n")
+    assert lines[0] == "2 4"
+    assert "taxon1" in lines[1]
+    assert "ACGT" in lines[1]
+    assert "taxon2" in lines[2]
+    assert "ACGA" in lines[2]
+    assert payload["data"]["summary"]["n_converted"] == 1
+
+
+def test_convert_phylip_relaxed_interleaved_when_requested(tmp_path: Path) -> None:
+    from phyloai.pretree.convert import convert_input
+
+    src = tmp_path / "gene.fa"
+    src.write_text(">taxon1\nACGTACGT\n>taxon2\nACGAACGA\n")
+    out_dir = tmp_path / "out"
+
+    payload = convert_input(src, out_dir, target_format="phylip-relaxed", seq_type="NT", threads=1, overwrite=False, interleaved=True)
+
+    out = out_dir / "gene.phy"
+    assert out.exists()
+    content = out.read_text()
+    lines = content.strip().split("\n")
+    assert lines[0] == "2 8"
+    assert len(lines) >= 3
+    assert payload["data"]["summary"]["n_converted"] == 1

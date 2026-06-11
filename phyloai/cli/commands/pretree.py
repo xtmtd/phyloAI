@@ -54,6 +54,8 @@ def pretree() -> None:
 @click.option("--output-format", type=click.Choice(["text", "json"]), default="json", show_default=True, help="Structured output format.")
 @click.option("--quiet", "quiet", is_flag=True, default=False, help="Suppress Rich terminal output except errors.")
 @click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Delete and recreate a non-empty output directory before conversion.")
+@click.option("--output", "output_path", type=click.Path(path_type=Path), default=Path("runs/pretree-convert.json"), show_default=True, help="Write full results to this file.")
+@click.option("--interleaved", "interleaved", is_flag=True, default=False, help="Use interleaved format for phylip-relaxed output. Default is sequential.")
 def convert_command(
     input_path: Path,
     output_dir: Path,
@@ -65,31 +67,54 @@ def convert_command(
     output_format: str,
     quiet: bool,
     overwrite: bool,
+    output_path: Path,
+    interleaved: bool,
 ) -> None:
     if threads < 1:
         _fail("--threads must be at least 1.", 1)
     if not input_path.exists():
         _fail(f"Input path '{input_path}' does not exist.", 1)
-    try:
-        payload = convert_input(
-            input_path,
-            output_dir,
-            target_format=target_format,
-            input_format=None if input_format == "auto" else input_format,
-            seq_type=None if seq_type == "auto" else seq_type,
-            aa_special=aa_special,
-            threads=threads,
-            overwrite=overwrite,
-        )
-    except ValueError as exc:
-        _fail(str(exc), 1)
+    entries = [input_path] if input_path.is_file() else list(input_path.iterdir())
+    if not quiet:
+        with Progress(console=console, transient=True) as progress:
+            task = progress.add_task("Converting sequence files", total=len(entries))
+            try:
+                payload = convert_input(
+                    input_path,
+                    output_dir,
+                    target_format=target_format,
+                    input_format=None if input_format == "auto" else input_format,
+                    seq_type=None if seq_type == "auto" else seq_type,
+                    aa_special=aa_special,
+                    threads=threads,
+                    overwrite=overwrite,
+                    interleaved=interleaved,
+                    progress_callback=lambda _path: progress.advance(task),
+                )
+            except ValueError as exc:
+                _fail(str(exc), 1)
+    else:
+        try:
+            payload = convert_input(
+                input_path,
+                output_dir,
+                target_format=target_format,
+                input_format=None if input_format == "auto" else input_format,
+                seq_type=None if seq_type == "auto" else seq_type,
+                aa_special=aa_special,
+                threads=threads,
+                overwrite=overwrite,
+                interleaved=interleaved,
+            )
+        except ValueError as exc:
+            _fail(str(exc), 1)
     if not quiet:
         console.print(render_convert_summary_table(payload["data"]["summary"]))
-        click.echo(f"Converted files saved to {output_dir}", err=True)
-    if output_format == "json":
-        click.echo(json.dumps(payload, indent=2))
-    else:
-        click.echo(f"converted={payload['data']['summary']['n_converted']} skipped={payload['data']['summary']['n_skipped']}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    click.echo(f"Converted files saved to {output_dir}", err=True)
+    click.echo(f"Results saved to {output_path}", err=True)
 
 
 @pretree.command(
