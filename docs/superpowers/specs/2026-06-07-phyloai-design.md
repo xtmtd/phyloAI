@@ -486,12 +486,20 @@ runs/run001/pretree/stats/
 └── per-gene.csv          # per-gene table (when --per-gene is used)
 ```
 
-Example directory structure for pipeline commands (`pretree align`, `tree iqtree`, etc.):
+Example directory structure for pipeline commands (`tree iqtree`, etc.):
+```
+runs/run001/tree/iqtree/
+├── result.json           # JSON result
+└── ...                   # tool output files
+```
+
+Example directory structure for `pretree align` (uses `seqs/` subdirectory, consistent with `pretree convert`):
 ```
 runs/run001/pretree/align/
-├── gene1.aln             # aligned files
-├── gene2.aln
-├── ...
+├── seqs/                 # aligned sequence files (Mode 1/2: flat; Mode 3: faa/ and fna/)
+│   ├── gene1.fa
+│   └── ...
+├── align.log             # per-gene tool log (co-located with outputs, not under runs/logs/)
 └── result.json           # JSON result
 ```
 
