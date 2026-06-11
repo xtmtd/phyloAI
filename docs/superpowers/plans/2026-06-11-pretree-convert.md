@@ -384,7 +384,7 @@ Expected: commit succeeds.
 - Modify: `phyloai/core/formats.py`
 - Modify: `tests/core/test_formats.py`
 
-- [ ] **Step 1: Add failing tests for `phylip-paml` enum and writer semantics**
+- [ ] **Step 1: Add failing tests for `phylip-paml` enum, compound suffix detection, and writer semantics**
 
 Append to `tests/core/test_formats.py`:
 
@@ -392,6 +392,13 @@ Append to `tests/core/test_formats.py`:
 def test_phylip_paml_format_value_is_public_name() -> None:
     assert AlignmentFormat.PHYLIP.value == "phylip-relaxed"
     assert AlignmentFormat.PHYLIP_PAML.value == "phylip-paml"
+
+
+def test_detect_phylip_paml_compound_suffix(tmp_path):
+    paml = tmp_path / "gene.paml.phy"
+    paml.write_text("2 4\ntaxon1  ACGT\ntaxon2  ACGA\n")
+
+    assert FormatConverter().detect(paml) == AlignmentFormat.PHYLIP_PAML
 
 
 def test_write_phylip_paml_uses_two_spaces_and_truncates_names(tmp_path):
@@ -419,9 +426,9 @@ def test_write_phylip_paml_uses_two_spaces_and_truncates_names(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/core/test_formats.py::test_phylip_paml_format_value_is_public_name tests/core/test_formats.py::test_write_phylip_paml_uses_two_spaces_and_truncates_names -v`
+Run: `pytest tests/core/test_formats.py::test_phylip_paml_format_value_is_public_name tests/core/test_formats.py::test_detect_phylip_paml_compound_suffix tests/core/test_formats.py::test_write_phylip_paml_uses_two_spaces_and_truncates_names -v`
 
-Expected: FAIL because `PHYLIP_PAML.value` is still `phylip` and `write_phylip_paml` is missing.
+Expected: FAIL because `PHYLIP_PAML.value` is still `phylip`, compound `.paml.phy` suffix detection is missing, and `write_phylip_paml` is missing.
 
 - [ ] **Step 3: Update enum and add custom writer**
 
@@ -443,6 +450,36 @@ _BIOPYTHON_FORMATS = {
     AlignmentFormat.PHYLIP: "phylip-relaxed",
     AlignmentFormat.NEXUS: "nexus",
 }
+
+
+_COMPOUND_EXT_MAP: dict[str, AlignmentFormat] = {
+    ".paml.phy": AlignmentFormat.PHYLIP_PAML,
+}
+
+
+def detect_alignment_format(path: Path, declared_format: Optional[AlignmentFormat] = None) -> AlignmentFormat:
+    if declared_format is not None:
+        return declared_format
+    name = path.name.lower()
+    for suffix, fmt in _COMPOUND_EXT_MAP.items():
+        if name.endswith(suffix):
+            return fmt
+    suffix = path.suffix.lower()
+    if suffix in _EXT_MAP:
+        return _EXT_MAP[suffix]
+    if path.exists():
+        first = path.read_text(errors="ignore")[:200]
+        if first.strip().startswith(">"):
+            return AlignmentFormat.FASTA
+        if first.strip().upper().startswith("#NEXUS"):
+            return AlignmentFormat.NEXUS
+        lines = [line for line in first.splitlines() if line.strip()]
+        if lines and all(part.isdigit() for part in lines[0].strip().split()[:2]):
+            return AlignmentFormat.PHYLIP
+    raise ValueError(
+        f"Cannot detect alignment format for '{path}'. "
+        f"Supported extensions: {list(_EXT_MAP.keys()) + list(_COMPOUND_EXT_MAP.keys())}"
+    )
 
 
 def write_phylip_paml(alignment: MultipleSeqAlignment, dst: Path) -> list[dict[str, str]]:
@@ -481,7 +518,44 @@ def _safe_paml_name(name: str) -> str:
     return safe.strip("_")
 ```
 
-Update `FormatConverter.convert()` and `read()` to use `_BIOPYTHON_FORMATS` for Biopython calls and call `write_phylip_paml()` when target is `AlignmentFormat.PHYLIP_PAML`.
+Update `FormatConverter.detect()` to delegate to `detect_alignment_format(...)` so compound suffixes such as `.paml.phy` are checked before the normal `Path.suffix` fallback.
+
+Update `FormatConverter.read()` and `FormatConverter.convert()` so public enum values are never passed directly to Biopython. `PHYLIP_PAML.value` is `phylip-paml` for the PhyloAI public API, but Biopython does not know that format name.
+
+```python
+class FormatConverter:
+    def detect(
+        self,
+        path: Path,
+        declared_format: Optional[AlignmentFormat] = None,
+    ) -> AlignmentFormat:
+        return detect_alignment_format(path, declared_format=declared_format)
+
+    def convert(
+        self,
+        src: Path,
+        dst: Path,
+        target: AlignmentFormat,
+        source_format: Optional[AlignmentFormat] = None,
+        molecule_type: str = "protein",
+    ) -> Path:
+        src_fmt = source_format or self.detect(src)
+        alignment = self.read(src, source_format=src_fmt)
+        self.write_alignment(alignment, dst, target=target, molecule_type=molecule_type)
+        return dst
+
+    def read(
+        self,
+        path: Path,
+        source_format: Optional[AlignmentFormat] = None,
+    ) -> MultipleSeqAlignment:
+        fmt = source_format or self.detect(path)
+        if fmt == AlignmentFormat.PHYLIP_PAML:
+            fmt = AlignmentFormat.PHYLIP
+        return AlignIO.read(str(path), _BIOPYTHON_FORMATS[fmt])
+```
+
+`FormatConverter.read(...)` returns a `MultipleSeqAlignment`; this object is iterable over `SeqRecord` instances, so later conversion code may safely use `list(converter.read(...))` when it needs records.
 
 - [ ] **Step 4: Run format tests**
 
@@ -541,7 +615,7 @@ Run: `pytest tests/pretree/test_convert.py::test_convert_single_file_defaults_to
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'phyloai.pretree.convert'`.
 
-- [ ] **Step 3: Implement minimal `convert_input` and FASTA writing**
+- [ ] **Step 3: Implement minimal `convert_input`, dot expansion, and FASTA writing**
 
 Create `phyloai/pretree/convert.py`:
 
@@ -560,7 +634,7 @@ from Bio.SeqRecord import SeqRecord
 from rich.table import Table
 
 from phyloai.core.formats import AlignmentFormat, FormatConverter
-from phyloai.core.sequence_normalization import detect_seq_type, normalize_sequences
+from phyloai.core.sequence_normalization import detect_seq_type, expand_dots_from_first_sequence, normalize_sequences
 
 
 TARGET_SUFFIX = {
@@ -645,8 +719,14 @@ def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format
         records = list(SeqIO.parse(str(entry), "fasta")) if fmt == AlignmentFormat.FASTA else list(converter.read(entry, source_format=fmt))
         if not records:
             return {"skipped": {"path": str(entry), "reason": "no sequences found"}}
-        detected_seq_type = seq_type or detect_seq_type([str(record.seq) for record in records])
-        normalized = normalize_sequences([str(record.seq) for record in records], detected_seq_type, aa_special=aa_special)
+        raw_sequences = [str(record.seq) for record in records]
+        detected_seq_type = seq_type or detect_seq_type(raw_sequences)
+        missing_char = "N" if detected_seq_type == "NT" else "X"
+        expanded_sequences, dot_counts = expand_dots_from_first_sequence(raw_sequences, missing_char=missing_char)
+        normalized = normalize_sequences(expanded_sequences, detected_seq_type, aa_special=aa_special)
+        replacements = {**normalized.replacements}
+        for key, value in dot_counts.items():
+            replacements[key] = replacements.get(key, 0) + value
         normalized_records = [SeqRecord(Seq(sequence), id=_safe_record_id(record.id), description="") for record, sequence in zip(records, normalized.sequences)]
         out = output_dir / f"{entry.stem}{TARGET_SUFFIX[target_format]}"
         _write_records(normalized_records, out, target_format, detected_seq_type)
@@ -656,7 +736,7 @@ def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format
             "input_format": fmt.value,
             "target_format": target_format,
             "seq_type": detected_seq_type,
-            "replacements": normalized.replacements,
+            "replacements": replacements,
             "taxon_name_changes": sum(1 for original, record in zip(records, normalized_records) if original.id != record.id),
             "warnings": normalized.warnings,
         }
@@ -732,7 +812,7 @@ Run: `pytest tests/pretree/test_convert.py::test_convert_single_file_defaults_to
 
 Expected: PASS.
 
-- [ ] **Step 6: Add directory skipped-entry and overwrite tests**
+- [ ] **Step 6: Add directory skipped-entry, dot expansion, and overwrite tests**
 
 Append to `tests/pretree/test_convert.py`:
 
@@ -755,6 +835,19 @@ def test_convert_directory_skips_non_sequence_empty_and_subdirectory(tmp_path: P
     reasons = {item["reason"] for item in payload["data"]["skipped"]}
     assert "empty file" in reasons
     assert "directory" in reasons
+
+
+def test_convert_expands_paml_dots_before_normalization(tmp_path: Path) -> None:
+    from phyloai.pretree.convert import convert_input
+
+    src = tmp_path / "dots.fa"
+    src.write_text(">ref\nACGT\n>second\nA..T\n")
+    out_dir = tmp_path / "out"
+
+    payload = convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)
+
+    assert (out_dir / "dots.fa").read_text() == ">ref\nACGT\n>second\nACGT\n"
+    assert payload["data"]["files"][0]["replacements"]["dot_expanded"] == 2
 
 
 def test_convert_output_dir_conflict_requires_overwrite(tmp_path: Path) -> None:
