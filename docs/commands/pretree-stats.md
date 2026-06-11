@@ -20,14 +20,14 @@ Exactly one of `--seq` or `--seq-dir` is required.
 |-----------|---------|-------------|
 | `--seq-dir DIRECTORY` | none | Directory mode. Scan supported sequence/alignment files in one folder and compute a dataset-level summary. |
 | `--seq FILE` | none | Single-file mode. Inspect one sequence or alignment file in detail. |
-| `--per-gene` | `False` | Directory mode only. Show per-gene results in terminal output when no `--output` is used, or save an adjacent per-gene table when `--output` is provided. |
-| `--per-gene-format csv|tsv` | `csv` | Directory mode only. Format for the adjacent per-gene table written by `--per-gene --output`. |
-| `--output PATH`, `-o PATH` | `runs/pretree-stats.json` | Save results to a file. Parent directories are created automatically. |
-| `--output-format text|json` | `json` | Format for the file written with `--output`. This does not affect Rich terminal output. |
+| `--per-gene` | `False` | Directory mode only. Show per-gene results in terminal output and save per-gene table to output directory. |
+| `--per-gene-format csv|tsv` | `csv` | Directory mode only. Format for the per-gene table written with `--per-gene`. |
+| `--output-dir DIRECTORY` | `runs/run001/pretree/stats` | Directory where `result.json` and per-gene files are written. |
 | `--input-format fasta|phylip-relaxed|nexus` | auto | Override automatic format detection. |
 | `--seq-type AA|NT` | auto | Override automatic molecule-type detection. |
 | `--threads INTEGER`, `-t INTEGER` | `4` | Directory mode only. Number of worker processes. Must be at least `1`. |
 | `--quiet`, `-q` | `False` | Suppress terminal output except for errors. |
+| `--overwrite` | `False` | Delete and recreate the output directory if it already exists and is non-empty. |
 
 ## Inputs
 
@@ -39,13 +39,21 @@ Alignment status is detected per file. A file is aligned when it has more than o
 
 ## Outputs
 
-Terminal output uses Rich tables and panels unless `--quiet` is set. `--output-format` controls saved file content only.
+Terminal output uses Rich tables and panels unless `--quiet` is set.
 
 Single-file mode shows overview, character summary, per-taxon statistics, and site-pattern statistics when the file is aligned.
 
-Directory mode shows a summary table. With `--per-gene`, it also shows a per-gene table in the terminal when no output file is requested.
+Directory mode shows a summary table. With `--per-gene`, it also shows a per-gene table in the terminal.
 
-When `--output` is used, the command saves the structured result payload. With `--per-gene --output`, the per-gene table is saved next to the summary file as `<stem>.per-gene.csv` by default or `<stem>.per-gene.tsv` when `--per-gene-format tsv` is set.
+Results are always written to the output directory:
+
+```
+runs/run001/pretree/stats/
+├── result.json           # JSON result (always written)
+└── per-gene.csv          # per-gene table (when --per-gene is used)
+```
+
+The per-gene file uses the format specified by `--per-gene-format` (default: csv).
 
 ## Examples
 
@@ -73,14 +81,24 @@ Save a directory summary plus per-gene CSV:
 phyloai pretree stats \
   --seq-dir ref/phylogenomics_examples/2-loci_filter/fna \
   --per-gene \
-  --output results/summary.json
+  --output-dir runs/run001/pretree/stats
+```
+
+Save per-gene table as TSV:
+
+```bash
+phyloai pretree stats \
+  --seq-dir ./data \
+  --per-gene \
+  --per-gene-format tsv \
+  --output-dir runs/run001/pretree/stats
 ```
 
 Recommended order after raw input normalization:
 
 ```bash
 phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
-phyloai pretree stats --seq-dir ./runs/run001/pretree/convert
+phyloai pretree stats --seq-dir ./runs/run001/pretree/convert/seqs
 ```
 
 ## Warnings And Errors
@@ -91,6 +109,8 @@ phyloai pretree stats --seq-dir ./runs/run001/pretree/convert
 
 `--threads` must be at least `1`.
 
+If the output directory exists and is non-empty, the command exits with an error. Use `--overwrite` to replace it.
+
 If sequence type detection is ambiguous, the command defaults to `AA` and emits a warning.
 
 If `*` appears in any sequence, the command emits a warning because it may indicate stop codons or upstream processing problems.
@@ -98,5 +118,3 @@ If `*` appears in any sequence, the command emits a warning because it may indic
 ## Notes
 
 Character classes are reported as standard, gap/missing, or ambiguous. Site-pattern statistics exclude gap/missing/ambiguous characters when determining parsimony-informative and singleton sites.
-
-Per-gene CSV/TSV output removes columns that are completely empty for that export. Aligned-only datasets keep `alignment_length` and drop unaligned length columns; unaligned-only datasets keep `seq_length_*` columns and drop `alignment_length`.
