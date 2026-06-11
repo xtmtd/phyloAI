@@ -294,17 +294,38 @@ runs/
 └── run001/
     ├── pretree/
     │   ├── align/
+    │   │   ├── seqs/
+    │   │   ├── align.log       # log co-located with outputs
+    │   │   └── result.json
     │   ├── trim/
+    │   │   ├── seqs/
+    │   │   ├── trim.log
+    │   │   └── result.json
     │   ├── metrics/
+    │   │   ├── metrics.log
+    │   │   └── result.json
     │   ├── filter/
+    │   │   ├── seqs/
+    │   │   ├── filter.log
+    │   │   └── result.json
     │   └── concat/
+    │       ├── concat.log
+    │       └── result.json
     │   # note: convert defaults to runs/runNNN/pretree/convert;
-    │   # stats writes reports to caller-specified files
+    │   # stats writes reports to caller-specified files; neither writes a log
     ├── tree/
     │   ├── genetree/
+    │   │   ├── genetree.log
+    │   │   └── result.json
     │   ├── iqtree/
+    │   │   ├── iqtree.log
+    │   │   └── result.json
     │   ├── astral/
+    │   │   ├── astral.log
+    │   │   └── result.json
     │   └── phylobayes/
+    │       ├── phylobayes.log
+    │       └── result.json
     ├── posttree/
     │   ├── concordance/
     │   ├── topology/
@@ -312,20 +333,13 @@ runs/
     │   ├── signal/
     │   ├── syserror/
     │   └── simulate/
-    ├── report/
-    │   ├── summary.json
-    │   ├── methods.txt
-    │   └── run_record.yaml
-    └── logs/
-        ├── align.log
-        ├── trim.log
-        ├── filter.log
-        ├── concat.log
-        ├── iqtree.log
-        └── ...         # one log per step, appended on retry
+    └── report/
+        ├── summary.json
+        ├── methods.txt
+        └── run_record.yaml
 ```
 
-Log file content per step: tool version, full command, stdout/stderr, wall time, exit code.
+Log file content per step: tool version, full command, stdout/stderr, wall time, exit code. Commands that produce multiple output files under a subdirectory (e.g., `seqs/`) place the log directly in the output directory root alongside `result.json`, without a separate `logs/` subdirectory.
 
 ---
 
@@ -518,8 +532,8 @@ This unified structure ensures that:
 
 - Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators. Non-`doctor` commands always write machine-readable structured output to `result.json`; they do not expose a text/json structured stdout switch.
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
-- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to `runs/runNNN/logs/<step>.log` containing: resolved command, tool versions, full stdout/stderr, wall time, exit code. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
-- Log files are appended (not overwritten) on retry, with a timestamp separator between runs
+- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to its own output directory alongside `result.json`, named `<step>.log` (e.g., `runs/runNNN/pretree/align/align.log`). The log contains: resolved command, tool versions, full stdout/stderr, wall time, exit code. If a command produces only a single log file, it is placed directly in the output directory root with no `logs/` subdirectory. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
+- Log files are appended (not overwritten) on retry, with a timestamp separator between runs. On `--overwrite` runs the log file is deleted and recreated together with the output directory.
 - Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
 - When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
 
