@@ -99,3 +99,43 @@ def expand_dots_from_first_sequence(sequences: list[str], missing_char: str) -> 
                 counters["dot_to_missing"] += 1
         expanded.append("".join(chars))
     return expanded, dict(counters)
+
+
+def detect_seq_type(sequences: list[str]) -> str:
+    seq_type, _warnings = resolve_seq_type(sequences)
+    return seq_type
+
+
+def resolve_seq_type(sequences: list[str]) -> tuple[str, list[str]]:
+    observed: set[str] = set()
+    for sequence in sequences:
+        observed.update(sequence.upper())
+    observed.difference_update(GAP_CHARS)
+    observed.discard(".")
+    if observed & set("EFILPQWYZ"):
+        return "AA", []
+    if observed and observed <= NT_AUTO_CHARS:
+        return "NT", []
+    return "AA", ["[WARN] Cannot determine seq_type, defaulting to AA"]
+
+
+def normalize_pattern_char(char: str) -> str:
+    upper = char.upper()
+    return "-" if upper == "?" else upper
+
+
+def standard_chars(seq_type: str) -> set[str]:
+    return NT_STANDARD if seq_type == "NT" else AA_STANDARD
+
+
+def gap_chars(seq_type: str) -> set[str]:
+    return NT_MISSING if seq_type == "NT" else GAP_CHARS
+
+
+def classify_char(char: str, seq_type: str) -> str:
+    upper = char.upper()
+    if upper in standard_chars(seq_type):
+        return "standard"
+    if upper in gap_chars(seq_type):
+        return "gap"
+    return "ambiguous"

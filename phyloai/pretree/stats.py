@@ -17,14 +17,21 @@ from rich.table import Table
 
 from phyloai.core.formats import AlignmentFormat, FormatConverter
 from phyloai.core.schema import COMMON_ALIGNMENT_EXTENSIONS
+from phyloai.core.sequence_normalization import (
+    AA_STANDARD,
+    GAP_CHARS,
+    NT_AUTO_CHARS,
+    NT_MISSING,
+    NT_STANDARD,
+    classify_char,
+    detect_seq_type,
+    gap_chars,
+    normalize_pattern_char,
+    resolve_seq_type,
+    standard_chars,
+)
 
-AA_STANDARD = set("ACDEFGHIKLMNPQRSTVWY")
-AA_AMBIGUOUS = set("BZJUO*")
-NT_STANDARD = set("ACGT")
-NT_AMBIGUOUS = set("RYSWKMBDHVU*")
-GAP_CHARS = set("-?")
-NT_MISSING = set("-?N")
-NT_AUTO_CHARS = set("ACGTURYSWKMBDHVN")
+
 PER_GENE_COLUMNS = [
     "gene",
     "n_taxa",
@@ -102,51 +109,6 @@ def _sequence_strings(records: list[SeqRecord]) -> list[str]:
     return [str(record.seq).upper() for record in records]
 
 
-def normalize_pattern_char(char: str) -> str:
-    upper = char.upper()
-    return "-" if upper == "?" else upper
-
-
-def _standard_chars(seq_type: str) -> set[str]:
-    return NT_STANDARD if seq_type == "NT" else AA_STANDARD
-
-
-def _gap_chars(seq_type: str) -> set[str]:
-    return NT_MISSING if seq_type == "NT" else GAP_CHARS
-
-
-def detect_seq_type(sequences: list[str]) -> str:
-    seq_type, _warnings = _resolve_seq_type(sequences)
-    return seq_type
-
-
-def _resolve_seq_type(sequences: list[str]) -> tuple[str, list[str]]:
-    observed: set[str] = set()
-    for sequence in sequences:
-        observed.update(sequence.upper())
-    observed.difference_update(GAP_CHARS)
-    if observed & set("EFILPQWYZ"):
-        return "AA", []
-    if observed and observed <= NT_AUTO_CHARS:
-        return "NT", []
-    return "AA", ["[WARN] Cannot determine seq_type, defaulting to AA"]
-
-
-def classify_char(char: str, seq_type: str) -> str:
-    upper = char.upper()
-    if seq_type == "NT":
-        if upper in NT_STANDARD:
-            return "standard"
-        if upper in NT_MISSING:
-            return "gap"
-        return "ambiguous"
-    if upper in AA_STANDARD:
-        return "standard"
-    if upper in GAP_CHARS:
-        return "gap"
-    return "ambiguous"
-
-
 def check_stop_codons(sequences: list[str], filename: str) -> list[str]:
     if any("*" in sequence for sequence in sequences):
         return [
@@ -160,8 +122,8 @@ def per_taxon_stats(record: SeqRecord, seq_type: str) -> dict[str, Any]:
     raw_length = len(sequence)
     if raw_length == 0:
         raise ValueError(f"Sequence '{record.id}' is empty.")
-    gap_count = sum(sequence.count(char) for char in _gap_chars(seq_type))
-    standard_count = sum(sequence.count(char) for char in _standard_chars(seq_type))
+    gap_count = sum(sequence.count(char) for char in gap_chars(seq_type))
+    standard_count = sum(sequence.count(char) for char in standard_chars(seq_type))
     ambiguous_count = raw_length - gap_count - standard_count
     ungapped_length = raw_length - gap_count
     return {
@@ -178,7 +140,7 @@ def compute_site_patterns(sequences: list[str], seq_type: str) -> dict[str, Any]
     alignment_length = len(sequences[0]) if sequences else 0
     parsimony_informative = 0
     singleton_sites = 0
-    standard_codes = {ord(char) for char in _standard_chars(seq_type)}
+    standard_codes = {ord(char) for char in standard_chars(seq_type)}
     question_code = ord("?")
     gap_code = ord("-")
     distinct_pattern_set: set[bytes] = set()
@@ -234,7 +196,7 @@ def file_stats_unaligned(
 ) -> dict[str, Any]:
     records, fmt = _read_records(path, input_format)
     sequences = _sequence_strings(records)
-    detected_seq_type, seq_type_warnings = (seq_type, []) if seq_type else _resolve_seq_type(sequences)
+    detected_seq_type, seq_type_warnings = (seq_type, []) if seq_type else resolve_seq_type(sequences)
     warnings = seq_type_warnings + check_stop_codons(sequences, path.name)
     per_taxon = [per_taxon_stats(record, detected_seq_type) for record in records]
     ungapped_lengths = [entry["ungapped_length"] for entry in per_taxon]
@@ -283,7 +245,7 @@ def file_stats_aligned(
     lengths = {len(sequence) for sequence in sequences}
     if len(lengths) != 1:
         raise ValueError(f"Alignment '{path}' contains unequal sequence lengths.")
-    detected_seq_type, seq_type_warnings = (seq_type, []) if seq_type else _resolve_seq_type(sequences)
+    detected_seq_type, seq_type_warnings = (seq_type, []) if seq_type else resolve_seq_type(sequences)
     warnings = seq_type_warnings + check_stop_codons(sequences, path.name)
     per_taxon = [per_taxon_stats(record, detected_seq_type) for record in records]
     summary = _summarize_per_taxon(per_taxon)

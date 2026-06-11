@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from phyloai.core.sequence_normalization import expand_dots_from_first_sequence, normalize_sequences
+from phyloai.core.sequence_normalization import (
+    classify_char,
+    detect_seq_type,
+    expand_dots_from_first_sequence,
+    normalize_pattern_char,
+    normalize_sequences,
+)
 
 
 def test_normalize_nt_preserves_iupac_and_converts_u_question_and_invalid() -> None:
@@ -42,3 +48,24 @@ def test_expand_dots_uses_missing_char_when_lengths_do_not_match() -> None:
 
     assert expanded == ["ACGT", "ANN"]
     assert counts == {"dot_to_missing": 2}
+
+
+def test_shared_detect_seq_type_nt_with_iupac() -> None:
+    assert detect_seq_type(["ACGT", "ACGR", "NNNN"]) == "NT"
+
+
+def test_shared_detect_seq_type_defaults_to_aa_when_x_seen() -> None:
+    assert detect_seq_type(["ACGTX"]) == "AA"
+
+
+def test_shared_classify_char_matches_stats_terms() -> None:
+    assert classify_char("A", "AA") == "standard"
+    assert classify_char("B", "AA") == "ambiguous"
+    assert classify_char("-", "AA") == "gap"
+    assert classify_char("N", "NT") == "gap"
+    assert classify_char("R", "NT") == "ambiguous"
+
+
+def test_shared_normalize_pattern_char_treats_question_mark_as_gap() -> None:
+    assert normalize_pattern_char("?") == "-"
+    assert normalize_pattern_char("a") == "A"
