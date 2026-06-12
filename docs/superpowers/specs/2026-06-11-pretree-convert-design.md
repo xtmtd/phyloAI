@@ -15,8 +15,8 @@ It is not a general-purpose bioinformatics format converter. It supports only fo
 The recommended workflow is:
 
 ```bash
-phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
-phyloai pretree stats --seq-dir ./runs/run001/pretree/convert
+phyloai pretree convert --input ./raw --output-dir ./runs/pretree/convert --to fasta
+phyloai pretree stats --seq-dir ./runs/pretree/convert
 ```
 
 `convert` modifies output files only. It never edits input files in place.
@@ -30,7 +30,7 @@ phyloai pretree stats --seq-dir ./runs/run001/pretree/convert
 The primary input mode is directory-to-directory conversion:
 
 ```bash
-phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
+phyloai pretree convert --input ./raw --output-dir ./runs/pretree/convert --to fasta
 ```
 
 Directory mode scans one directory level only. It does not recurse into subdirectories. Each recognized sequence/alignment file is converted independently and written to the output directory with the same stem and a target-format suffix.
@@ -40,7 +40,7 @@ Directory mode scans one directory level only. It does not recurse into subdirec
 `--input` may also point to a single file:
 
 ```bash
-phyloai pretree convert --input ./gene001.phy --output-dir ./runs/run001/pretree/convert --to fasta
+phyloai pretree convert --input ./gene001.phy --output-dir ./runs/pretree/convert --to fasta
 ```
 
 Single-file mode uses the same format detection, normalization, and reporting rules as directory mode. The output file is written inside `--output-dir` using the input stem and target-format suffix.
@@ -168,7 +168,7 @@ Additional `phylip-paml` rules:
 | Parameter | Short | Type | Default | Notes |
 |-----------|-------|------|---------|-------|
 | `--input` | | Path | required | Input directory or single file |
-| `--output-dir` | `-o` | Path | `runs/run001/pretree/convert` | Output directory for converted files; future run allocation may resolve `runNNN` automatically |
+| `--output-dir` | `-o` | Path | `runs/pretree/convert` | Output directory for converted files; future run allocation may resolve `runNNN` automatically |
 | `--to` | | `fasta\|phylip-relaxed\|phylip-paml\|nexus` | `fasta` | Target output format |
 | `--input-format` | | `auto\|fasta\|phylip-relaxed\|phylip-paml\|nexus` | `auto` | Override detection for all input files |
 | `--seq-type` | | `AA\|NT\|auto` | `auto` | Override molecule-type detection |
@@ -198,7 +198,7 @@ Converted sequence files are written to `seqs/` subdirectory inside `--output-di
 
 Example output structure:
 ```
-runs/run001/pretree/convert/
+runs/pretree/convert/
 ├── seqs/
 │   ├── gene1.fa
 │   ├── gene2.fa
@@ -235,12 +235,12 @@ The full JSON result is written to `result.json` inside `--output-dir`. The term
 ```json
 {
   "status": "success",
-  "command": "phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta",
+  "command": "phyloai pretree convert --input ./raw --output-dir ./runs/pretree/convert --to fasta",
   "wall_time": 0.0,
   "tool_versions": {},
   "params": {
     "input": "./raw",
-    "output_dir": "./runs/run001/pretree/convert",
+    "output_dir": "./runs/pretree/convert",
     "to": "fasta",
     "input_format": "auto",
     "seq_type": "auto",
@@ -301,7 +301,7 @@ The top-level README should not contain the full `pretree convert` manual.
 Tests should cover:
 
 - directory input with mixed valid files, non-sequence files, empty files, and subdirectories
-- single-file input writing to the default `runs/run001/pretree/convert` output directory
+- single-file input writing to the default `runs/pretree/convert` output directory
 - FASTA, Phylip-relaxed, Phylip-PAML, and Nexus conversion paths where library support permits
 - NT normalization including `U -> T`, IUPAC ambiguity preservation, `? -> N`, and invalid symbols to `N`
 - AA normalization including default `B/Z/J/X/U/O -> X`, `--aa-special keep`, `* -> X`, and invalid symbols to `X`

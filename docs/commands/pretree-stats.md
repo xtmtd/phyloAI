@@ -22,7 +22,7 @@ Exactly one of `--seq` or `--seq-dir` is required.
 | `--seq FILE` | none | Single-file mode. Inspect one sequence or alignment file in detail. |
 | `--per-gene` | `False` | Directory mode only. Show per-gene results in terminal output and save per-gene table to output directory. |
 | `--per-gene-format csv|tsv` | `csv` | Directory mode only. Format for the per-gene table written with `--per-gene`. |
-| `--output-dir DIRECTORY` | `runs/run001/pretree/stats` | Directory where `result.json` and per-gene files are written. |
+| `--output-dir DIRECTORY` | `runs/pretree/stats` | Directory where `result.json` and per-gene files are written. |
 | `--input-format fasta|phylip-relaxed|nexus` | auto | Override automatic format detection. |
 | `--seq-type AA|NT` | auto | Override automatic molecule-type detection. |
 | `--threads INTEGER`, `-t INTEGER` | `4` | Directory mode only. Number of worker processes. Must be at least `1`. |
@@ -48,7 +48,7 @@ Directory mode shows a summary table. With `--per-gene`, it also shows a per-gen
 Results are always written to the output directory:
 
 ```
-runs/run001/pretree/stats/
+runs/pretree/stats/
 ├── result.json           # JSON result (always written)
 └── per-gene.csv          # per-gene table (when --per-gene is used)
 ```
@@ -81,7 +81,7 @@ Save a directory summary plus per-gene CSV:
 phyloai pretree stats \
   --seq-dir ref/phylogenomics_examples/2-loci_filter/fna \
   --per-gene \
-  --output-dir runs/run001/pretree/stats
+  --output-dir runs/pretree/stats
 ```
 
 Save per-gene table as TSV:
@@ -91,14 +91,14 @@ phyloai pretree stats \
   --seq-dir ./data \
   --per-gene \
   --per-gene-format tsv \
-  --output-dir runs/run001/pretree/stats
+  --output-dir runs/pretree/stats
 ```
 
 Recommended order after raw input normalization:
 
 ```bash
-phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
-phyloai pretree stats --seq-dir ./runs/run001/pretree/convert/seqs
+phyloai pretree convert --input ./raw --output-dir ./runs/pretree/convert --to fasta
+phyloai pretree stats --seq-dir ./runs/pretree/convert/seqs
 ```
 
 ## Warnings And Errors

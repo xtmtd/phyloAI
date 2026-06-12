@@ -23,7 +23,7 @@
 Scans all sequence files in a directory. Files may be aligned or unaligned — auto-detected per file. Computes per-file statistics in parallel, then aggregates a directory-level summary.
 
 ```bash
-phyloai pretree stats --seq-dir ./aligned [--per-gene] [--output-dir ./runs/run001/pretree/stats] [--threads 4]
+phyloai pretree stats --seq-dir ./aligned [--per-gene] [--output-dir ./runs/pretree/stats] [--threads 4]
 ```
 
 `--per-gene` controls whether per-gene results are displayed in terminal output when no saved per-gene table is requested. When results are written to `--output-dir`, the per-gene table is saved there as `per-gene.csv` by default or `per-gene.tsv` with `--per-gene-format tsv`.
@@ -33,7 +33,7 @@ phyloai pretree stats --seq-dir ./aligned [--per-gene] [--output-dir ./runs/run0
 Detailed statistics for one file. Supports both aligned and unaligned input. Auto-detects alignment status.
 
 ```bash
-phyloai pretree stats --seq ./EOG090X0971.faa [--output-dir ./runs/run001/pretree/stats]
+phyloai pretree stats --seq ./EOG090X0971.faa [--output-dir ./runs/pretree/stats]
 ```
 
 `--seq-dir` and `--seq` are mutually exclusive.
@@ -171,7 +171,7 @@ Site pattern computation excludes gap/missing/ambiguous characters when determin
 | `--seq`           |       | Path     | —           | single-file mode; mutually exclusive with `--seq-dir`    |
 | `--per-gene`      |       | flag     | False       | directory mode only: include per-gene results in terminal output when no `--output` is used; with `--output`, write an adjacent per-gene table |
 | `--per-gene-format` |     | csv\|tsv | csv         | directory mode only: format for adjacent per-gene table written with `--per-gene --output` |
-| `--output-dir`    | `-o`  | Path     | `runs/run001/pretree/stats` | directory for `result.json` and auxiliary files |
+| `--output-dir`    | `-o`  | Path     | `runs/pretree/stats` | directory for `result.json` and auxiliary files |
 | `--input-format`  |       | fasta\|phylip-relaxed\|nexus | auto-detect | override format detection; accepted values: `fasta`, `phylip-relaxed`, `nexus` |
 | `--seq-type`      |       | AA\|NT   | auto-detect | override sequence type detection                         |
 | `--threads`       | `-t`  | int      | 4           | directory mode only: files processed in parallel (ProcessPoolExecutor) |

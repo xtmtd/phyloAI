@@ -597,7 +597,7 @@ def test_convert_single_file_defaults_to_fasta_and_normalizes_nt(tmp_path: Path)
 
     src = tmp_path / "gene.fna"
     src.write_text(">tax one\nacgu?ry!\n")
-    out_dir = tmp_path / "runs" / "run001" / "pretree" / "convert"
+    out_dir = tmp_path / "runs" / "pretree" / "convert"
 
     payload = convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)
 
@@ -984,7 +984,7 @@ Add the command above `@pretree.command("stats", ...)`:
     ),
 )
 @click.option("--input", "input_path", type=click.Path(path_type=Path), required=True, help="Input directory or single sequence/alignment file.")
-@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/run001/pretree/convert"), show_default=True, help="Directory where converted files are written.")
+@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/convert"), show_default=True, help="Directory where converted files are written.")
 @click.option("--to", "target_format", type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="fasta", show_default=True, help="Target output format.")
 @click.option("--input-format", type=click.Choice(["auto", "fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="auto", show_default=True, help="Override input format detection for all input files.")
 @click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True, help="Override sequence type detection.")
@@ -1093,13 +1093,13 @@ Create `docs/commands/pretree-convert.md`:
 ## Usage
 
 ```bash
-phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
+phyloai pretree convert --input ./raw --output-dir ./runs/pretree/convert --to fasta
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--input` | required | Input directory or single file |
-| `--output-dir`, `-o` | `runs/run001/pretree/convert` | Directory for converted files |
+| `--output-dir`, `-o` | `runs/pretree/convert` | Directory for converted files |
 | `--to` | `fasta` | Target format: `fasta`, `phylip-relaxed`, `phylip-paml`, `nexus` |
 | `--input-format` | `auto` | Override format detection |
 | `--seq-type` | `auto` | Override molecule type detection |
@@ -1122,7 +1122,7 @@ The JSON payload contains `summary`, `files`, `skipped`, and `warnings` under `d
 
 ```bash
 phyloai pretree convert --input ./raw
-phyloai pretree stats --seq-dir ./runs/run001/pretree/convert/seqs
+phyloai pretree stats --seq-dir ./runs/pretree/convert/seqs
 phyloai pretree convert --input ./gene.phy --output-dir ./converted --to fasta --seq-type NT
 phyloai pretree convert --input ./aligned --to phylip-paml --overwrite
 ```
@@ -1212,6 +1212,6 @@ Expected: no uncommitted changes after all task commits.
 
 ## Self-Review
 
-- Spec coverage: Tasks cover directory-first conversion, single-file compatibility, skipped invalid entries, default `runs/run001/pretree/convert`, target formats, Phylip-PAML semantics, NT/AA normalization, shared stats rules, CLI, JSON output, docs, and verification.
+- Spec coverage: Tasks cover directory-first conversion, single-file compatibility, skipped invalid entries, default `runs/pretree/convert`, target formats, Phylip-PAML semantics, NT/AA normalization, shared stats rules, CLI, JSON output, docs, and verification.
 - Placeholder scan: No placeholder implementation steps remain; each code task includes concrete tests, code, and commands.
 - Type consistency: Public names are `normalize_sequences`, `expand_dots_from_first_sequence`, `convert_input`, `render_convert_summary_table`, `AlignmentFormat.PHYLIP_PAML`, `--output-dir`, `--to`, and `--aa-special` throughout the plan.

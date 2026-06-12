@@ -17,16 +17,16 @@ Recommended workflow:
 ```bash
 # AA only
 phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
-  --output-dir ./runs/run001/pretree/align
+  --output-dir ./runs/pretree/align
 
 # AA + codon backtranslation
 phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
   --backtrans --nt-dir ./raw_nt \
-  --output-dir ./runs/run001/pretree/align
+  --output-dir ./runs/pretree/align
 
 # NT only
 phyloai pretree align --seq-dir ./raw_nt --method linsi --seq-type NT \
-  --output-dir ./runs/run001/pretree/align
+  --output-dir ./runs/pretree/align
 ```
 
 ---
@@ -121,7 +121,7 @@ After each tool run, PhyloAI validates the generated MSA with the shared `core` 
 ### 4.1 Mode 1 and Mode 2 (single sequence type)
 
 ```
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 │   ├── gene1.fa
 │   ├── gene2.fa
@@ -133,7 +133,7 @@ runs/run001/pretree/align/
 ### 4.2 Mode 3 (AA + backtrans)
 
 ```
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 │   ├── faa/
 │   │   ├── gene1.fa
@@ -179,7 +179,7 @@ Log entries are separated by a timestamp header. On `--overwrite` runs the log f
 | `--seq-type` | | `AA\|NT\|auto` | `auto` | Molecule type; auto-detected from the first few genes |
 | `--backtrans` | | flag | `False` | Produce NT codon alignment via trimAl backtranslation |
 | `--nt-dir` | | Path | — | Required when `--backtrans` is set; directory of unaligned CDS sequences |
-| `--output-dir` | `-o` | Path | `runs/run001/pretree/align` | Output directory |
+| `--output-dir` | `-o` | Path | `runs/pretree/align` | Output directory |
 | `--threads` | `-t` | int | `4` | Number of concurrent alignment tasks |
 | `--extra-args` | | str | — | Extra arguments passed to MAGUS only; ignored with warning for MAFFT methods |
 | `--mafft-path` | | Path | — | Optional explicit MAFFT executable path; used only for MAFFT methods |
@@ -218,7 +218,7 @@ Log entries are separated by a timestamp header. On `--overwrite` runs the log f
     "seq_type": "AA",
     "backtrans": false,
     "nt_dir": null,
-    "output_dir": "./runs/run001/pretree/align",
+    "output_dir": "./runs/pretree/align",
     "threads": 4,
     "extra_args": null,
     "mafft_path": null,
@@ -357,7 +357,7 @@ The main design (`2026-06-07-phyloai-design.md`) requires one correction:
 **Section 9.4** example directory structure for `pretree align` should continue to use the unified `seqs/` convention:
 
 ```
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 │   ├── gene1.fa
 │   └── ...

@@ -47,7 +47,7 @@ def test_logger_appends_on_retry(tmp_path):
 
 
 def test_logger_logs_dir_is_created(tmp_path):
-    run_dir = tmp_path / "runs" / "run001"
+    run_dir = tmp_path / "runs"
     logger = StepLogger(run_dir=run_dir)
     result = ToolResult("echo", "echo hi", 0, "hi", "", 0.01)
     logger.write("test_step", result)

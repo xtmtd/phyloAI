@@ -41,7 +41,7 @@ def test_tool_result_failure():
 
 
 def test_run_record_to_dict():
-    record = RunRecord(run_dir=Path("./runs/run001"))
+    record = RunRecord(run_dir=Path("./runs"))
     d = record.to_dict()
     assert "run_dir" in d
     assert "steps" in d
@@ -81,7 +81,7 @@ def test_tree_set_auto_count(tmp_path):
 
 def test_run_record_add_step():
     from pathlib import Path
-    record = RunRecord(run_dir=Path("./runs/run001"))
+    record = RunRecord(run_dir=Path("./runs"))
     result = ToolResult(
         tool="mafft", command="mafft in.fa", returncode=0,
         stdout="done", stderr="", wall_time=1.5,
@@ -94,5 +94,5 @@ def test_run_record_add_step():
 
 def test_run_record_explicit_version():
     from pathlib import Path
-    record = RunRecord(run_dir=Path("./runs/run001"), phyloai_version="9.9.9")
+    record = RunRecord(run_dir=Path("./runs"), phyloai_version="9.9.9")
     assert record.phyloai_version == "9.9.9"

@@ -7,13 +7,13 @@
 ## Usage
 
 ```bash
-phyloai pretree convert --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
+phyloai pretree convert --input ./raw --output-dir ./runs/pretree/convert --to fasta
 ```
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `--input` | required | Input directory or single file |
-| `--output-dir` | `runs/run001/pretree/convert` | Directory for converted files and result.json |
+| `--output-dir` | `runs/pretree/convert` | Directory for converted files and result.json |
 | `--to` | `fasta` | Target format: `fasta`, `phylip-relaxed`, `phylip-paml`, `nexus` |
 | `--input-format` | `auto` | Override format detection |
 | `--seq-type` | `auto` | Override molecule type detection |
@@ -40,7 +40,7 @@ For `phylip-paml`, output records use the PAML sequential header form with `S`, 
 
 Example output structure:
 ```
-runs/run001/pretree/convert/
+runs/pretree/convert/
 ├── seqs/
 │   ├── gene1.fa
 │   ├── gene2.fa
@@ -52,7 +52,7 @@ runs/run001/pretree/convert/
 
 ```bash
 phyloai pretree convert --input ./raw
-phyloai pretree stats --seq-dir ./runs/run001/pretree/convert/seqs
+phyloai pretree stats --seq-dir ./runs/pretree/convert/seqs
 phyloai pretree convert --input ./gene.phy --output-dir ./converted --to fasta --seq-type NT
 phyloai pretree convert --input ./aligned --to phylip-paml --overwrite
 ```

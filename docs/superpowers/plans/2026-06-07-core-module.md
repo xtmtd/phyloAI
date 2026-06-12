@@ -20,7 +20,7 @@
 | `phyloai/core/env.py` | Tool detection, path resolution, bundled tool management |
 | `phyloai/core/runner.py` | Unified external tool call interface with timeout, retry, logging |
 | `phyloai/core/formats.py` | Format detection and conversion (FASTA/Nexus/Phylip/Phylip-PAML) |
-| `phyloai/core/logger.py` | Per-step log file writer under `runs/runNNN/logs/` |
+| `phyloai/core/logger.py` | Per-step log file writer (each step writes its own `<step>.log` inside the command's output directory; no shared `logs/` folder) |
 | `phyloai/cli/__init__.py` | CLI package |
 | `phyloai/cli/main.py` | `phyloai` entry point, config file loading |
 | `phyloai/cli/doctor.py` | `phyloai doctor` command |
@@ -180,7 +180,7 @@ def test_tool_result_failure():
 
 
 def test_run_record_to_dict():
-    record = RunRecord(run_dir=Path("./runs/run001"))
+    record = RunRecord(run_dir=Path("./runs"))
     d = record.to_dict()
     assert "run_dir" in d
     assert "steps" in d
@@ -983,7 +983,7 @@ def test_logger_appends_on_retry(tmp_path):
 
 
 def test_logger_logs_dir_is_created(tmp_path):
-    run_dir = tmp_path / "runs" / "run001"
+    run_dir = tmp_path / "runs"
     logger = StepLogger(run_dir=run_dir)
     result = ToolResult("echo", "echo hi", 0, "hi", "", 0.01)
     logger.write("test_step", result)
@@ -1012,7 +1012,7 @@ from phyloai.core.schema import ToolResult
 
 
 class StepLogger:
-    """Writes one log file per analysis step under runs/runNNN/logs/."""
+    """Writes one log file per analysis step directly under the run directory (no shared `logs/` subfolder)."""
 
     def __init__(self, run_dir: Path):
         self.log_dir = Path(run_dir) / "logs"

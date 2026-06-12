@@ -19,7 +19,7 @@ phyloai pretree align \
   --seq-dir ./raw_aa \
   --method linsi \
   --seq-type AA \
-  --output-dir ./runs/run001/pretree/align \
+  --output-dir ./runs/pretree/align \
   --threads 4
 ```
 
@@ -31,7 +31,7 @@ phyloai pretree align \
   --seq-type AA \
   --backtrans \
   --nt-dir ./raw_nt \
-  --output-dir ./runs/run001/pretree/align \
+  --output-dir ./runs/pretree/align \
   --threads 4
 ```
 
@@ -44,7 +44,7 @@ phyloai pretree align \
 | `--seq-type` | `auto` | AA, NT, or auto (auto-detects from first few genes) |
 | `--backtrans` | off | Produce NT codon alignment; requires --nt-dir |
 | `--nt-dir` | — | Unaligned CDS directory for backtrans |
-| `--output-dir` / `-o` | `runs/run001/pretree/align` | Output directory |
+| `--output-dir` / `-o` | `runs/pretree/align` | Output directory |
 | `--threads` / `-t` | 4 | Concurrent alignment tasks (each uses 1 thread) |
 | `--extra-args` | — | Extra args for MAGUS only; ignored for MAFFT methods |
 | `--mafft-path` | — | Explicit MAFFT executable path for MAFFT methods |
@@ -63,7 +63,7 @@ Scans `--seq-dir` one level deep for files with extensions: `.fa`, `.fas`, `.fas
 
 **Mode AA or NT only:**
 ```
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 │   ├── gene1.fa
 │   └── ...
@@ -74,7 +74,7 @@ runs/run001/pretree/align/
 
 **Mode AA + backtrans:**
 ```
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 │   ├── faa/
 │   │   └── gene1.fa
@@ -111,7 +111,7 @@ phyloai pretree align --seq-dir ./raw_aa --method linsi --dry-run
 
 # Resume an interrupted run
 phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
-  --output-dir ./runs/run001/pretree/align --resume
+  --output-dir ./runs/pretree/align --resume
 ```
 
 ## Resume behavior

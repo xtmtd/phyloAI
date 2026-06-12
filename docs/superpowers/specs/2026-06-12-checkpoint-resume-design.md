@@ -70,7 +70,7 @@ Each resumable command writes `checkpoint.json` in its output directory, alongsi
 Example layout for `pretree align`:
 
 ```text
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 ├── align.log
 ├── checkpoint.json
@@ -115,7 +115,7 @@ Tasks store only the state needed to decide whether to skip or rerun that unit. 
   "status": "success",
   "input": "raw/gene1.fa",
   "outputs": {
-    "aa": "runs/run001/pretree/align/seqs/gene1.fa",
+    "aa": "runs/pretree/align/seqs/gene1.fa",
     "nt": null
   },
   "attempts": 1,

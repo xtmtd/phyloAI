@@ -1,6 +1,6 @@
 threads: 8
 output_format: text
-run_dir: ./runs/run001
+run_dir: ./runs
 
 align:
   msa_dir: ./raw

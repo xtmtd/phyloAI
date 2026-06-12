@@ -22,7 +22,7 @@
 
 - `pretree align` is FASTA-only. Do not expose `--input-format`; users must run `phyloai pretree convert --to fasta` first for PHYLIP/Nexus/other formats.
 - MAFFT, MAGUS, and trimAl are user-provided external tools. Resolve each tool from PATH by default, or from `--mafft-path`, `--magus-path`, or `--trimal-path` when provided.
-- Log files are written to the command output directory as `align.log`; do not write to `runs/runNNN/logs/`. Do not duplicate MAFFT alignment stdout in the log because it is primary output already saved under `seqs/`.
+- Log files are written to the command output directory as `align.log`; do not write to a shared `runs/<run>/logs/` folder. Do not duplicate MAFFT alignment stdout in the log because it is primary output already saved under `seqs/`.
 - `--seq-type` accepts `AA`, `NT`, or `auto`; default is `auto`. Auto-detection samples the first few genes and resolves to one molecule type before command construction. `--backtrans` still requires the resolved type to be `AA`.
 - `--method magus` is Linux-only in Phase 2 because the pip-distributed MAGUS bundle includes Linux binaries. Non-Linux platforms should fail early with a user-facing error.
 - Generated MSA files are validated through shared `core` sequence-output validation helpers before a gene is counted as aligned. Empty output, unparsable FASTA, zero FASTA records, empty sequences, or unequal sequence lengths are skipped with a recorded reason.
@@ -1884,7 +1884,7 @@ Add the subcommand after the `convert` command block:
 @click.option("--nt-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
               help="Directory of unaligned CDS sequences for --backtrans mode.")
 @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
-              default=Path("runs/run001/pretree/align"), show_default=True,
+              default=Path("runs/pretree/align"), show_default=True,
               help="Output directory; contains seqs/, align.log, result.json.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of genes to align in parallel (each uses 1 thread).")
@@ -2044,7 +2044,7 @@ phyloai pretree align \
   --seq-dir ./raw_aa \
   --method linsi \
   --seq-type AA \
-  --output-dir ./runs/run001/pretree/align \
+  --output-dir ./runs/pretree/align \
   --threads 4
 ```
 
@@ -2056,7 +2056,7 @@ phyloai pretree align \
   --seq-type AA \
   --backtrans \
   --nt-dir ./raw_nt \
-  --output-dir ./runs/run001/pretree/align \
+  --output-dir ./runs/pretree/align \
   --threads 4
 ```
 
@@ -2069,7 +2069,7 @@ phyloai pretree align \
 | `--seq-type` | `auto` | AA, NT, or auto (auto-detects from first few genes) |
 | `--backtrans` | off | Produce NT codon alignment; requires --nt-dir |
 | `--nt-dir` | — | Unaligned CDS directory for backtrans |
-| `--output-dir` / `-o` | `runs/run001/pretree/align` | Output directory |
+| `--output-dir` / `-o` | `runs/pretree/align` | Output directory |
 | `--threads` / `-t` | 4 | Concurrent alignment tasks (each uses 1 thread) |
 | `--extra-args` | — | Extra args for MAGUS only; ignored for MAFFT methods |
 | `--mafft-path` | — | Explicit MAFFT executable path for MAFFT methods |
@@ -2087,7 +2087,7 @@ Scans `--seq-dir` one level deep for files with extensions: `.fa`, `.fas`, `.fas
 
 **Mode AA or NT only:**
 ```
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 │   ├── gene1.fa
 │   └── ...
@@ -2097,7 +2097,7 @@ runs/run001/pretree/align/
 
 **Mode AA + backtrans:**
 ```
-runs/run001/pretree/align/
+runs/pretree/align/
 ├── seqs/
 │   ├── faa/
 │   │   └── gene1.fa

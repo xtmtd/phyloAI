@@ -48,7 +48,7 @@ def pretree() -> None:
     ),
 )
 @click.option("--input", "input_path", type=click.Path(path_type=Path), required=True, help="Input directory or single sequence/alignment file.")
-@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/run001/pretree/convert"), show_default=True, help="Directory where converted files and result.json are written.")
+@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/convert"), show_default=True, help="Directory where converted files and result.json are written.")
 @click.option("--to", "target_format", type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="fasta", show_default=True, help="Target output format.")
 @click.option("--input-format", type=click.Choice(["auto", "fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="auto", show_default=True, help="Override input format detection for all input files.")
 @click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True, help="Override sequence type detection.")
@@ -157,7 +157,7 @@ def convert_command(
     "--output-dir",
     "output_dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=Path("runs/run001/pretree/stats"),
+    default=Path("runs/pretree/stats"),
     show_default=True,
     help="Directory where result.json and per-gene files are written.",
 )
@@ -380,7 +380,7 @@ def _write_per_gene_csv(results: list[dict], path: Path, fmt: str) -> None:
 @click.option("--nt-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
               help="Directory of unaligned CDS sequences for --backtrans mode.")
 @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
-              default=Path("runs/run001/pretree/align"), show_default=True,
+              default=Path("runs/pretree/align"), show_default=True,
               help="Output directory; contains seqs/, align.log, result.json.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of genes to align in parallel (each uses 1 thread).")

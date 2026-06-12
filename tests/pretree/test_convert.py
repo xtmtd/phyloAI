@@ -10,7 +10,7 @@ def test_convert_single_file_defaults_to_fasta_and_normalizes_nt(tmp_path: Path)
 
     src = tmp_path / "gene.fna"
     src.write_text(">tax one\nacgu?ry!\n")
-    out_dir = tmp_path / "runs" / "run001" / "pretree" / "convert"
+    out_dir = tmp_path / "runs" / "pretree" / "convert"
 
     payload = convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)
 

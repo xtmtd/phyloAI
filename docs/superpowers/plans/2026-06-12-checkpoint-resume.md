@@ -588,7 +588,7 @@ def test_resolved_align_params_includes_required_keys() -> None:
 
     params = _resolved_align_params(
         seq_dir=Path("raw"),
-        output_dir=Path("runs/run001/pretree/align"),
+        output_dir=Path("runs/pretree/align"),
         method="linsi",
         resolved_seq_type="AA",
         backtrans=False,
@@ -1885,7 +1885,7 @@ Add a small example to the Examples section:
 ```markdown
 # Resume an interrupted run
 phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
-  --output-dir ./runs/run001/pretree/align --resume
+  --output-dir ./runs/pretree/align --resume
 ```
 
 - [ ] **Step 3: Update README command index entry if it lists `pretree align`**
