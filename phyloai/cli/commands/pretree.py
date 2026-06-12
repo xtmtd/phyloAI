@@ -29,7 +29,12 @@ def _fail(message: str, exit_code: int) -> None:
     raise click.exceptions.Exit(exit_code)
 
 
-@click.group()
+class _PretreeGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["convert", "stats", "align"]
+
+
+@click.group(cls=_PretreeGroup)
 def pretree() -> None:
     """Pre-tree data preparation commands."""
 
