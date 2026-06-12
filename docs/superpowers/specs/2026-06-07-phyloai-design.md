@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-11 (pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified)  
+**Last updated:** 2026-06-12 (checkpoint/resume policy added for long-running commands; pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified)  
 **Status:** Approved for implementation
 
 ---
@@ -183,6 +183,7 @@ All commands support the shared parameters defined in Section 9.2. Key universal
 | `--run-dir` | Override default run directory |
 | `--quiet` / `-q` | Suppress all output except errors |
 | `--overwrite` | Overwrite existing output directory |
+| `--resume` | Resume long-running commands from `checkpoint.json` |
 
 Commands that read alignment files also support `--input-format` (auto-detect by default; accepted values match `AlignmentFormat` enum). Commands that invoke external tools also support `--extra-args` (see Section 9.7 for merge semantics).
 
@@ -438,6 +439,7 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--dry-run` | | flag | False | all commands |
 | `--quiet` | `-q` | flag | False | all commands |
 | `--overwrite` | | flag | False | all commands producing output directories |
+| `--resume` | | flag | False | long-running pipeline commands only; resume from `checkpoint.json` |
 
 Parameters marked "global, inherited from CLI root" are defined once on the `phyloai` root group and passed via Click context; subcommands do not re-declare them.
 
@@ -522,18 +524,22 @@ This unified structure ensures that:
 - `report collector` can aggregate results by scanning the run directory tree for `result.json` files
 - Users can easily find all outputs from a command in one directory
 
-### 9.5 Output Directory Conflict Policy
+### 9.5 Output Directory Conflict and Resume Policy
 
 - Default behavior: if the output directory already exists and is non-empty, **exit with code 1** and a clear message
 - `--overwrite`: delete and recreate the output directory before running
-- `--resume` is not in scope for Phase 2; may be added for long-running commands (align, genetree) in a later phase
+- `--resume`: for long-running pipeline commands, load `checkpoint.json` from the output directory, require exact parameter match, skip verified successful tasks, and rerun failed, interrupted, pending, or invalid-output tasks
+- `--overwrite` and `--resume` are mutually exclusive
+- Short utility commands such as `pretree convert` and `pretree stats` do not need resume support in the first checkpoint implementation
+
+The detailed checkpoint schema and command adoption rules are defined in `docs/superpowers/specs/2026-06-12-checkpoint-resume-design.md`.
 
 ### 9.6 Display and Logging
 
 - Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators. Non-`doctor` commands always write machine-readable structured output to `result.json`; they do not expose a text/json structured stdout switch.
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
 - Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to its own output directory alongside `result.json`, named `<step>.log` (e.g., `runs/runNNN/pretree/align/align.log`). The log contains: resolved command, tool versions, stderr, wall time, exit code, and stdout only when stdout is diagnostic text rather than the primary data output. Logs are never written to a separate `runs/runNNN/logs/` directory. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
-- Log files are appended (not overwritten) on retry, with a timestamp separator between runs. On `--overwrite` runs the log file is deleted and recreated together with the output directory.
+- Log files are appended (not overwritten) on retry or resume, with a timestamp separator between runs. Resumed log entries should include resume context when useful. On `--overwrite` runs the log file is deleted and recreated together with the output directory.
 - Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
 - When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
 
@@ -595,7 +601,7 @@ Every subcommand implementation must comply with the following binding requireme
 
 1. **Structured output** for all non-`doctor` commands is always saved as `result.json`; terminal Rich display is always on unless `--quiet` is set.
 2. **Output directory structure** follows Section 6; commands with an `--output-dir` parameter default to the appropriate subdirectory under `runs/`.
-3. **Conflict policy** follows Section 9.5: non-empty output directory → exit 1; `--overwrite` to replace.
+3. **Conflict policy** follows Section 9.5: non-empty output directory → exit 1 by default; `--overwrite` replaces; supported long-running commands may use `--resume` with a valid `checkpoint.json`.
 4. **Log file** written to the command output directory as `<step>.log` for all pipeline commands (Section 9.6).
 5. **JSON output schema** follows Section 9.4; `result.json` written to the output directory on success.
 6. **Exit codes** follow Section 9.3.

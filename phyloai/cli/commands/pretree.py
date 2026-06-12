@@ -392,6 +392,12 @@ def _write_per_gene_csv(results: list[dict], path: Path, fmt: str) -> None:
               help="Explicit MAGUS executable path for --method magus; PATH lookup is used when omitted.")
 @click.option("--trimal-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
               help="Explicit trimAl executable path for --backtrans; PATH lookup is used when omitted.")
+@click.option("--resume", is_flag=True, default=False,
+              help=(
+                  "Resume from checkpoint.json in the output directory. "
+                  "Requires the same parameters as the original run. "
+                  "Mutually exclusive with --overwrite."
+              ))
 @click.option("--overwrite", is_flag=True, default=False,
               help="Delete and recreate a non-empty output directory before running.")
 @click.option("--dry-run", is_flag=True, default=False,
@@ -410,6 +416,7 @@ def align_command(
     mafft_path: Path | None,
     magus_path: Path | None,
     trimal_path: Path | None,
+    resume: bool,
     overwrite: bool,
     dry_run: bool,
     quiet: bool,
@@ -438,7 +445,9 @@ def align_command(
             magus_path=magus_path,
             trimal_path=trimal_path,
             overwrite=overwrite,
+            resume=resume,
             dry_run=dry_run,
+            quiet=quiet,
             progress_callback=progress_callback,
         )
 
@@ -463,6 +472,57 @@ def align_command(
 
     if dry_run:
         click.echo(f"Dry run: {payload['data']['summary']['n_input_files']} genes would be aligned.")
+        if resume:
+            from phyloai.core.checkpoint import (
+                load_checkpoint,
+                summarize_resume_tasks,
+                validate_resume_params,
+            )
+            from phyloai.pretree.align import (
+                _detect_seq_type_from_files,
+                _resolved_align_params,
+                _resolve_tool_paths,
+                _scan_input,
+                verify_align_outputs,
+            )
+            from phyloai.pretree.checkpoint_helpers import resume_verifier
+
+            ckpt_path = output_dir / "checkpoint.json"
+            found, _ = _scan_input(seq_dir)
+            resolved_seq_type = seq_type
+            if resolved_seq_type == "auto":
+                resolved_seq_type = _detect_seq_type_from_files(found) if found else "AA"
+            mafft_exe, magus_exe, trimal_exe = _resolve_tool_paths(
+                method=method,
+                backtrans=backtrans,
+                mafft_path=mafft_path,
+                magus_path=magus_path,
+                trimal_path=trimal_path,
+                dry_run=True,
+            )
+            resolved = _resolved_align_params(
+                seq_dir=seq_dir,
+                output_dir=output_dir,
+                method=method,
+                resolved_seq_type=resolved_seq_type,
+                backtrans=backtrans,
+                nt_dir=nt_dir,
+                threads=threads,
+                extra_args=extra_args,
+                mafft_executable=mafft_exe,
+                magus_executable=magus_exe,
+                trimal_executable=trimal_exe,
+                quiet=quiet,
+            )
+            checkpoint = load_checkpoint(ckpt_path)
+            validate_resume_params(checkpoint, resolved, step="pretree.align")
+            summary = summarize_resume_tasks(checkpoint, resume_verifier(verify_align_outputs))
+            click.echo(
+                f"Resume dry-run: skip {summary['skip']} tasks, "
+                f"rerun {summary['rerun']} tasks, "
+                f"invalidate {summary['invalid']} recorded successes.",
+                err=True,
+            )
         for item in payload["data"].get("files", []):
             if item.get("cmd"):
                 click.echo(" ".join(item["cmd"]))

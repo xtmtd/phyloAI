@@ -50,6 +50,7 @@ phyloai pretree align \
 | `--mafft-path` | — | Explicit MAFFT executable path for MAFFT methods |
 | `--magus-path` | — | Explicit MAGUS executable path for `--method magus` |
 | `--trimal-path` | — | Explicit trimAl executable path for `--backtrans` |
+| `--resume` | off | Resume from `checkpoint.json`; requires exact same resolved parameters |
 | `--overwrite` | off | Delete and recreate non-empty output directory |
 | `--dry-run` | off | Print commands, create no files |
 | `--quiet` / `-q` | off | Suppress terminal output except errors |
@@ -67,6 +68,7 @@ runs/run001/pretree/align/
 │   ├── gene1.fa
 │   └── ...
 ├── align.log
+├── checkpoint.json
 └── result.json
 ```
 
@@ -79,6 +81,7 @@ runs/run001/pretree/align/
 │   └── fna/
 │       └── gene1.fa
 ├── align.log
+├── checkpoint.json
 └── result.json
 ```
 
@@ -105,7 +108,22 @@ phyloai pretree align --seq-dir ./raw_aa --method magus \
 
 # Preview commands without running
 phyloai pretree align --seq-dir ./raw_aa --method linsi --dry-run
+
+# Resume an interrupted run
+phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
+  --output-dir ./runs/run001/pretree/align --resume
 ```
+
+## Resume behavior
+
+`pretree align` supports `--resume` to recover from interruption, power loss, or external tool failure without redoing completed work.
+
+- The output directory must already contain `checkpoint.json`.
+- The current invocation's resolved parameters must match the checkpoint exactly. This includes analysis parameters and run-control parameters such as `--threads` and `--quiet`.
+- Tasks with status `success` and still-valid output files are skipped.
+- Tasks with status `failed`, `pending`, `running`, or `success` whose outputs are now missing or invalid are rerun.
+- `--resume` and `--overwrite` are mutually exclusive.
+- Resume appends to `align.log` and rewrites `result.json` on completion.
 
 ## Warnings and Errors
 
@@ -118,6 +136,8 @@ phyloai pretree align --seq-dir ./raw_aa --method linsi --dry-run
 | `trimal` not found with `--backtrans` | Exit 3 |
 | `--method magus` on non-Linux | Exit 1 (MAGUS bundled binaries are Linux-only) |
 | Non-empty output directory | Exit 1 (use `--overwrite`) |
+| `--resume` without checkpoint | Exit 1 |
+| Resume parameter mismatch | Exit 1 |
 | CDS length not multiple of 3 | Backtrans skipped for that gene, warning in result.json |
 | Internal stop codon in CDS | Backtrans skipped for that gene, warning in result.json |
 | trimAl exits non-zero | Backtrans skipped for that gene, stderr captured as warning |
