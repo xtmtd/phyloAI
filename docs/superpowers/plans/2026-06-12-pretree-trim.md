@@ -52,14 +52,22 @@ def test_valid_codon_msa_no_issues():
     assert result.sequences["seq1"] == "ATGGCTTCT"
 
 
-def test_length_not_divisible_by_3_triggers_skip():
+def test_alignment_length_not_divisible_by_3_triggers_skip():
+    # MSA alignment length (all seqs same length) not divisible by 3
     seqs = {
-        "seq1": "ATGGCT",     # 6 nt — ok
-        "seq2": "ATGGCTT",    # 7 nt — not divisible by 3
+        "seq1": "ATGGCT",     # 6 nt alignment columns — ok
+        "seq2": "ATGGCT",
     }
     result = validate_codon_msa(seqs)
-    assert result.skip is True
-    assert any("multiple of 3" in w for w in result.warnings)
+    assert result.skip is False  # 6 % 3 == 0
+
+    seqs_bad = {
+        "seq1": "ATGGCTA",    # 7 nt alignment columns — not divisible by 3
+        "seq2": "ATGGCTA",
+    }
+    result_bad = validate_codon_msa(seqs_bad)
+    assert result_bad.skip is True
+    assert any("multiple of 3" in w for w in result_bad.warnings)
 
 
 def test_internal_stop_codon_warns_but_continues():
@@ -82,6 +90,22 @@ def test_terminal_stop_codon_is_removed():
     assert result.skip is False
     assert result.sequences["seq1"] == "ATGGCT"
     assert result.sequences["seq2"] == "ATGGCT"
+
+
+def test_terminal_stop_with_trailing_gaps_preserved():
+    # MSA has trailing gaps after stop codon; strip stop but preserve gap structure
+    # seq1: ATG GCT --- TAA → after stripping terminal stop: ATG GCT ---
+    # seq2: ATG GCT TCT ---  (no stop)
+    seqs = {
+        "seq1": "ATGGCT---TAA",  # 12 cols; ungapped = ATGGCTTAA; terminal TAA → strip last codon from ungapped, map back
+        "seq2": "ATGGCTTCT---",
+    }
+    result = validate_codon_msa(seqs)
+    assert result.skip is False
+    # seq1 ungapped after strip: ATGGCT (6 nt); alignment cols = 12 - 3 = 9
+    assert len(result.sequences["seq1"].replace("-", "")) == 6
+    # seq2 unchanged
+    assert result.sequences["seq2"] == "ATGGCTTCT---"
 
 
 def test_gap_columns_in_msa_handled():
@@ -140,14 +164,28 @@ def validate_codon_msa(sequences: dict[str, str]) -> CodonMsaValidation:
 
     Rules:
     - Empty input → skip (hard error).
-    - Per-sequence ungapped length not divisible by 3 → skip (hard error).
-    - Terminal stop codon → remove silently (last codon stripped from ungapped seq,
-      gaps preserved at alignment level by trimming from the end of the raw string).
+    - Alignment length (number of columns, shared by all seqs) not divisible by 3 → skip.
+    - Terminal stop codon (in ungapped seq) → remove last codon from each seq that has one,
+      preserving MSA column structure by removing the 3 rightmost non-gap characters.
     - Internal stop codon → warn and continue (lenient, mirrors trimAl -ignorestopcodon).
-    - Gap-only sequences (ungapped length 0) → treated as divisible by 3, no skip.
+    - Gap-only sequences (ungapped length 0) → no codon-level validation needed.
     """
     if not sequences:
         return CodonMsaValidation(skip=True, sequences={}, warnings=["empty sequence dict"])
+
+    # Check alignment-level column count (all seqs must be same length in a valid MSA)
+    lengths = {len(seq) for seq in sequences.values()}
+    if len(lengths) > 1:
+        return CodonMsaValidation(
+            skip=True, sequences=sequences,
+            warnings=[f"MSA sequences have unequal lengths: {sorted(lengths)}"]
+        )
+    aln_len = next(iter(lengths))
+    if aln_len % 3 != 0:
+        return CodonMsaValidation(
+            skip=True, sequences=sequences,
+            warnings=[f"alignment length {aln_len} is not a multiple of 3 (codon_length_not_multiple_of_3)"]
+        )
 
     warnings: list[str] = []
     result_seqs: dict[str, str] = {}
@@ -156,23 +194,24 @@ def validate_codon_msa(sequences: dict[str, str]) -> CodonMsaValidation:
         ungapped = seq.replace("-", "").upper()
 
         if len(ungapped) == 0:
-            # All-gap sequence: no codon to validate
             result_seqs[name] = seq
             continue
 
-        if len(ungapped) % 3 != 0:
-            warnings.append(
-                f"{name}: ungapped CDS length {len(ungapped)} is not a multiple of 3"
-            )
-            return CodonMsaValidation(skip=True, sequences=sequences, warnings=warnings)
-
         codons = [ungapped[i:i+3] for i in range(0, len(ungapped), 3)]
 
-        # Check terminal stop
-        if codons[-1] in STOP_CODONS:
-            # Strip last 3 characters from the raw (gapped) sequence to remove terminal stop
-            seq = seq.rstrip("-")          # remove trailing gaps first
-            seq = seq[:-3]                 # remove last codon
+        # Check and strip terminal stop codon
+        if codons and codons[-1] in STOP_CODONS:
+            # Remove the last 3 non-gap characters from the raw (gapped) sequence
+            # to preserve alignment column structure for other sequences in the MSA.
+            chars = list(seq)
+            removed = 0
+            for i in range(len(chars) - 1, -1, -1):
+                if chars[i] != "-":
+                    chars[i] = "\x00"   # mark for deletion
+                    removed += 1
+                    if removed == 3:
+                        break
+            seq = "".join(c for c in chars if c != "\x00")
             ungapped = seq.replace("-", "").upper()
             codons = [ungapped[i:i+3] for i in range(0, len(ungapped), 3)] if ungapped else []
 
@@ -183,7 +222,7 @@ def validate_codon_msa(sequences: dict[str, str]) -> CodonMsaValidation:
                     f"{name}: internal stop codon '{codon}' at codon position {pos + 1} "
                     "(proceeding with lenient handling)"
                 )
-                break  # one warning per sequence is enough
+                break
 
         result_seqs[name] = seq
 
@@ -197,13 +236,6 @@ python -m pytest tests/core/test_sequence_normalization_codon.py -v
 ```
 
 Expected: all 7 tests PASS.
-
-- [ ] **Step 1.5: Commit**
-
-```bash
-git add phyloai/core/sequence_normalization.py tests/core/test_sequence_normalization_codon.py
-git commit -m "feat(core): add validate_codon_msa to sequence_normalization"
-```
 
 ---
 
@@ -629,13 +661,6 @@ python -m pytest tests/pretree/test_trim.py -v -k "not run_trim"
 
 Expected: all builder/scanner/utility tests PASS.
 
-- [ ] **Step 2.5: Commit**
-
-```bash
-git add phyloai/pretree/trim.py tests/pretree/test_trim.py
-git commit -m "feat(trim): add file scanner, command builders, and codon utilities"
-```
-
 ---
 
 ## Task 3: trimAl per-gene worker
@@ -733,6 +758,7 @@ def _trim_one_trimal(
     gene_stem = msa_path.stem
     aa_out = aa_out_dir / f"{gene_stem}.fa"
     nt_out = (nt_out_dir / f"{gene_stem}.fa") if nt_out_dir else None
+    length_before = _read_msa_col_count(msa_path)
 
     # --- CODON mode: build temp AA MSA + temp unaligned CDS ---
     if seq_type == "CODON":
@@ -790,7 +816,8 @@ def _trim_one_trimal(
 
             return _run_trimal_cmd(cmd, msa_path=msa_path, aa_out=aa_out,
                                    nt_out=nt_out, codon_warnings=validation.warnings,
-                                   fna_target=fna_target, mode="CODON")
+                                   fna_target=fna_target, mode="CODON",
+                                   length_before=length_before)
 
     # --- Mode 4: AA + NT backtrans ---
     if nt_path is not None and seq_type == "AA":
@@ -830,7 +857,8 @@ def _trim_one_trimal(
 
         return _make_success_result(msa_path, aa_out, nt_out,
                                     cmd=" ".join(cmd_nt), wall_time=wall_time,
-                                    tool_stderr=proc_nt.stderr, warnings=[])
+                                    tool_stderr=proc_nt.stderr, warnings=[],
+                                    length_before=length_before)
 
     # --- Mode 1/2: AA-only or NT-only ---
     aa_out.parent.mkdir(parents=True, exist_ok=True)
@@ -850,25 +878,25 @@ def _trim_one_trimal(
 
     return _make_success_result(msa_path, aa_out, None,
                                 cmd=" ".join(cmd), wall_time=wall_time,
-                                tool_stderr=proc.stderr, warnings=[])
+                                tool_stderr=proc.stderr, warnings=[],
+                                length_before=length_before)
 
 
 def _apply_extra_args(cmd: list[str], extra_args: str | None) -> None:
-    """Tokenize extra_args and append to cmd in-place (extra-wins merge)."""
+    """Tokenize extra_args and append to cmd in-place.
+
+    Extra-args are appended after the internally-constructed command.  When a
+    tool processes duplicate flags, later values typically win (trimAl, BMGE,
+    ClipKIT all behave this way), which achieves the spec's "extra-wins merge"
+    semantics without fragile token-level surgery.
+
+    Scope: flag replacement via removal is NOT attempted because reliably
+    distinguishing bool flags from valued flags across three different tools
+    requires tool-specific knowledge.  Simple append is correct and safe.
+    """
     if not extra_args:
         return
-    tokens = shlex.split(extra_args)
-    i = 0
-    while i < len(tokens):
-        tok = tokens[i]
-        # Remove existing occurrence of the same flag to let extra-arg win
-        if tok.startswith("-") and tok in cmd:
-            idx = cmd.index(tok)
-            cmd.pop(idx)
-            if idx < len(cmd) and not cmd[idx].startswith("-"):
-                cmd.pop(idx)  # remove value too
-        cmd.append(tok)
-        i += 1
+    cmd.extend(shlex.split(extra_args))
 
 
 def _run_trimal_cmd(
@@ -880,6 +908,7 @@ def _run_trimal_cmd(
     codon_warnings: list[str],
     fna_target: Path,
     mode: str,
+    length_before: int = 0,
 ) -> dict[str, Any]:
     start = time.monotonic()
     try:
@@ -909,7 +938,21 @@ def _run_trimal_cmd(
         msa_path, aa_out, nt_out,
         cmd=" ".join(cmd), wall_time=wall_time,
         tool_stderr=proc.stderr, warnings=list(codon_warnings),
+        length_before=length_before,
     )
+
+
+def _read_msa_col_count(path: Path) -> int:
+    """Return alignment column count (length of first sequence) from a FASTA MSA.
+
+    Returns 0 if the file cannot be read or is empty.
+    """
+    try:
+        for rec in SeqIO.parse(str(path), "fasta"):
+            return len(rec.seq)
+    except Exception:
+        pass
+    return 0
 
 
 def _make_success_result(
@@ -921,7 +964,9 @@ def _make_success_result(
     wall_time: float,
     tool_stderr: str,
     warnings: list[str],
+    length_before: int = 0,
 ) -> dict[str, Any]:
+    length_after = _read_msa_col_count(aa_out) if aa_out.exists() else 0
     return {
         "status": "success",
         "input": str(msa_path),
@@ -931,6 +976,8 @@ def _make_success_result(
         "tool_stderr": tool_stderr,
         "wall_time": wall_time,
         "warnings": warnings,
+        "length_before": length_before,
+        "length_after": length_after,
     }
 ```
 
@@ -941,13 +988,6 @@ python -m pytest tests/pretree/test_trim.py -v -k "trimal"
 ```
 
 Expected: all trimAl dry-run tests PASS.
-
-- [ ] **Step 3.5: Commit**
-
-```bash
-git add phyloai/pretree/trim.py tests/pretree/test_trim.py
-git commit -m "feat(trim): add trimAl per-gene worker"
-```
 
 ---
 
@@ -1101,6 +1141,7 @@ def _trim_one_bmge(
     is_dual = nt_out_dir is not None
     aa_out = aa_out_dir / f"{gene_stem}.fa"
     nt_out = (nt_out_dir / f"{gene_stem}.fa") if nt_out_dir else None
+    length_before = _read_msa_col_count(msa_path)
 
     # Determine effective seq_type for BMGE: CODON mode is used for dual output
     effective_seq_type = "CODON" if is_dual else seq_type
@@ -1166,6 +1207,7 @@ def _trim_one_bmge(
         msa_path, aa_out, nt_out,
         cmd=" ".join(cmd), wall_time=wall_time,
         tool_stderr=proc.stderr, warnings=list(codon_warnings),
+        length_before=length_before,
     )
 
 
@@ -1190,6 +1232,7 @@ def _trim_one_clipkit(
     gene_stem = msa_path.stem
     aa_out = aa_out_dir / f"{gene_stem}.fa"
     nt_out = (nt_out_dir / f"{gene_stem}.fa") if nt_out_dir else None
+    length_before = _read_msa_col_count(msa_path)
     is_mode4 = nt_path is not None and seq_type == "AA"
     is_codon = seq_type == "CODON"
 
@@ -1237,6 +1280,7 @@ def _trim_one_clipkit(
             msa_path, aa_out, nt_out,
             cmd=" ".join(cmd), wall_time=wall_time,
             tool_stderr=proc.stderr, warnings=[],
+            length_before=length_before,
         )
 
     if is_codon:
@@ -1286,6 +1330,7 @@ def _trim_one_clipkit(
             msa_path, aa_out, nt_out,
             cmd=" ".join(cmd), wall_time=wall_time,
             tool_stderr=proc.stderr, warnings=list(validation.warnings),
+            length_before=length_before,
         )
 
     # Mode 1/2: AA-only or NT-only — no -l needed
@@ -1309,6 +1354,7 @@ def _trim_one_clipkit(
         msa_path, aa_out, None,
         cmd=" ".join(cmd), wall_time=wall_time,
         tool_stderr=proc.stderr, warnings=[],
+        length_before=length_before,
     )
 ```
 
@@ -1319,13 +1365,6 @@ python -m pytest tests/pretree/test_trim.py -v -k "bmge or clipkit"
 ```
 
 Expected: all BMGE and ClipKIT dry-run tests PASS.
-
-- [ ] **Step 4.5: Commit**
-
-```bash
-git add phyloai/pretree/trim.py tests/pretree/test_trim.py
-git commit -m "feat(trim): add BMGE and ClipKIT per-gene workers"
-```
 
 ---
 
@@ -1512,6 +1551,45 @@ def _trim_one_worker(
             nt_path=nt_path, mode=clipkit_mode, seq_type=seq_type,
             extra_args=extra_args, dry_run=dry_run, executable=clipkit_exe,
         )
+
+
+def _detect_trim_tool_versions(
+    tool: str,
+    trimal_path: Path | None,
+    bmge_path: Path | None,
+    clipkit_path: Path | None,
+) -> dict[str, str]:
+    """Return version strings for the active tool (and java for BMGE)."""
+    from phyloai.core.env import TOOL_REGISTRY, ToolEnv, ToolStatus
+
+    tool_paths: dict[str, Path] = {}
+    if trimal_path:
+        tool_paths["trimal"] = trimal_path
+    if bmge_path:
+        tool_paths["bmge"] = bmge_path
+    if clipkit_path:
+        tool_paths["clipkit"] = clipkit_path
+
+    env = ToolEnv(tool_paths=tool_paths)
+    names = [tool]
+    if tool == "bmge":
+        names.append("java")
+
+    versions: dict[str, str] = {}
+    for name in names:
+        meta = TOOL_REGISTRY.get(name, {})
+        info = env._detect_tool(
+            name,
+            version_flag=meta.get("version_flag", ""),
+            version_args=meta.get("version_args"),
+            bundled=meta.get("bundled", False),
+            bundled_dir=meta.get("bundled_dir"),
+            bundled_executable=meta.get("bundled_executable"),
+            path_aliases=meta.get("path_aliases"),
+        )
+        if info.status == ToolStatus.OK and info.version:
+            versions[name] = info.version
+    return versions
 
 
 def _resolve_trim_tool_paths(
@@ -1754,6 +1832,7 @@ def run_trim(
 
     file_results: list[dict[str, Any]] = []
     all_tool_results: list[dict[str, Any]] = []
+    dry_run_cmds: list[str] = []
     skipped: list[dict[str, str]] = list(scan_skipped)
     _last_flush = time.monotonic()
 
@@ -1791,6 +1870,11 @@ def run_trim(
 
                 if result["status"] == "dry_run":
                     all_tool_results.append(result)
+                    cmd_val = result.get("cmd", "")
+                    if isinstance(cmd_val, list):
+                        dry_run_cmds.append(" ".join(cmd_val))
+                    elif cmd_val:
+                        dry_run_cmds.append(cmd_val)
                     if progress_callback:
                         progress_callback(gene_path)
                     continue
@@ -1837,13 +1921,27 @@ def run_trim(
         checkpoint.status = "success"
         checkpoint.completed_at = checkpoint.touch()
         save_checkpoint_atomic(checkpoint, ckpt_path, fsync=True)
+        tool_versions = _detect_trim_tool_versions(
+            tool=tool,
+            trimal_path=trimal_path,
+            bmge_path=bmge_path,
+            clipkit_path=clipkit_path,
+        )
         return _reconstruct_trim_result(
             checkpoint=checkpoint,
             params=resolved_params,
             global_warnings=global_warnings,
             scan_skipped=skipped,
             wall_time=time.monotonic() - run_start,
+            tool_versions=tool_versions,
         )
+
+    tool_versions = _detect_trim_tool_versions(
+        tool=tool,
+        trimal_path=trimal_path,
+        bmge_path=bmge_path,
+        clipkit_path=clipkit_path,
+    ) if not dry_run else {}
 
     return _build_trim_payload(
         file_results=file_results,
@@ -1851,7 +1949,8 @@ def run_trim(
         params=resolved_params,
         global_warnings=global_warnings,
         wall_time=time.monotonic() - run_start,
-        tool=tool,
+        tool_versions=tool_versions,
+        dry_run_cmds=dry_run_cmds,
     )
 
 
@@ -1862,24 +1961,33 @@ def _build_trim_payload(
     params: dict[str, Any],
     global_warnings: list[str],
     wall_time: float,
-    tool: str,
+    tool_versions: dict[str, str],
+    dry_run_cmds: list[str] | None = None,
 ) -> dict[str, Any]:
-    lengths_before = [r.get("length_before", 0) for r in file_results if r.get("length_before")]
-    lengths_after = [r.get("length_after", 0) for r in file_results if r.get("length_after")]
+    lengths_before = [r["length_before"] for r in file_results if r.get("length_before")]
+    lengths_after = [r["length_after"] for r in file_results if r.get("length_after")]
 
     def _stats(values: list[int]) -> dict[str, Any]:
         if not values:
             return {"mean": 0.0, "min": 0, "max": 0}
         return {"mean": round(sum(values) / len(values), 1), "min": min(values), "max": max(values)}
 
+    cols_removed_pct: list[float] = []
+    for r in file_results:
+        lb = r.get("length_before", 0)
+        la = r.get("length_after", 0)
+        if lb and lb > 0:
+            cols_removed_pct.append(round((lb - la) / lb * 100, 1))
+
+    is_dry = bool(dry_run_cmds is not None and not file_results)
     return {
-        "status": "success" if file_results else "error",
+        "status": "success" if (file_results or is_dry) else "error",
         "command": (
             f"phyloai pretree trim --msa-dir {params['msa_dir']} "
             f"--tool {params['tool']} --seq-type {params['seq_type']}"
         ),
         "wall_time": wall_time,
-        "tool_versions": {},
+        "tool_versions": tool_versions,
         "params": params,
         "key_results": {
             "total_genes": len(file_results) + len(skipped),
@@ -1888,13 +1996,14 @@ def _build_trim_payload(
             "skipped_reasons": _count_reasons(skipped),
             "length_before": _stats(lengths_before),
             "length_after": _stats(lengths_after),
-            "columns_removed_pct": _stats([]),
+            "columns_removed_pct": _stats([int(p) for p in cols_removed_pct]),
         },
-        "error": None if file_results else "No genes were trimmed.",
+        "error": None if (file_results or is_dry) else "No genes were trimmed.",
         "data": {
             "mode": _determine_mode(params),
             "skipped": [{"gene": Path(s["path"]).stem, "reason": s["reason"]} for s in skipped],
             "warnings": global_warnings,
+            "dry_run_cmds": dry_run_cmds or [],
             "per_gene": [
                 {
                     "gene": Path(r["input"]).stem,
@@ -1921,6 +2030,7 @@ def _reconstruct_trim_result(
     global_warnings: list[str],
     scan_skipped: list[dict[str, str]],
     wall_time: float,
+    tool_versions: dict[str, str],
 ) -> dict[str, Any]:
     file_results: list[dict[str, Any]] = []
     failed: list[dict[str, str]] = []
@@ -1933,12 +2043,13 @@ def _reconstruct_trim_result(
         if aa_path is None or not aa_path.exists():
             failed.append({"path": task.input, "reason": "missing AA output"})
             continue
+        length_after = _read_msa_col_count(aa_path)
         file_results.append({
             "input": task.input,
             "output_aa": str(aa_path),
             "output_nt": task.outputs.get("nt"),
-            "length_before": 0,
-            "length_after": 0,
+            "length_before": 0,  # not recoverable from checkpoint without re-reading original input
+            "length_after": length_after,
         })
 
     all_skipped = list(scan_skipped) + failed
@@ -1948,7 +2059,7 @@ def _reconstruct_trim_result(
         params=params,
         global_warnings=global_warnings,
         wall_time=wall_time,
-        tool=params.get("tool", "trimal"),
+        tool_versions=tool_versions,
     )
 
 
@@ -2008,13 +2119,6 @@ python -m pytest tests/pretree/test_trim.py tests/core/test_sequence_normalizati
 
 Expected: all tests PASS.
 
-- [ ] **Step 5.5: Commit**
-
-```bash
-git add phyloai/pretree/trim.py tests/pretree/test_trim.py
-git commit -m "feat(trim): add run_trim orchestrator, worker dispatch, validation, logging"
-```
-
 ---
 
 ## Task 6: CLI registration
@@ -2024,27 +2128,25 @@ git commit -m "feat(trim): add run_trim orchestrator, worker dispatch, validatio
 
 - [ ] **Step 6.1: Add trim import and subcommand**
 
-In `phyloai/cli/commands/pretree.py`, find the imports section at the top and the `_PretreeGroup` class.
+In `phyloai/cli/commands/pretree.py`:
 
-First, add `trim` to the command order in `_PretreeGroup.list_commands`:
-
-```python
-# Find this block (around line 32-34):
-class _PretreeGroup(click.Group):
-    def list_commands(self, ctx):
-        return ["convert", "stats", "align"]
-
-# Change to:
-class _PretreeGroup(click.Group):
-    def list_commands(self, ctx):
-        return ["convert", "stats", "align", "trim"]
-```
-
-Then add the import at the top (with other pretree imports):
+**1. Extend existing imports block** (the file already imports `json`, `Path`, `click`, `Console`, `Progress`; add the trim import alongside the existing pretree imports at the top):
 
 ```python
+# Add this line after the existing pretree imports (align, convert, stats):
 from phyloai.pretree.trim import run_trim, render_trim_summary_table, _scan_input as _trim_scan_input
 ```
+
+**2. Update `_PretreeGroup.list_commands`** (line ~34):
+
+```python
+# Change:
+return ["convert", "stats", "align"]
+# To:
+return ["convert", "stats", "align", "trim"]
+```
+
+No other imports are needed; `json`, `Path`, `click`, `Progress`, `console`, and `_fail` are already defined in the file and shared across all subcommands.
 
 - [ ] **Step 6.2: Register the `trim` subcommand**
 
@@ -2186,7 +2288,7 @@ def trim_command(
             trimal_method=trimal_method,
             bmge_matrix=bmge_matrix,
             bmge_entropy=bmge_entropy,
-            clipkit_mode=clipkit_method,
+            clipkit_mode=clipkit_method,   # CLI param is --clipkit-method; library param is clipkit_mode
             trimal_path=trimal_path,
             bmge_path=bmge_path,
             clipkit_path=clipkit_path,
@@ -2219,13 +2321,8 @@ def trim_command(
 
     if dry_run:
         click.echo(f"Dry run: {payload['data']['summary']['n_input_files']} genes would be trimmed.")
-        for item in payload["data"].get("per_gene", []):
-            cmd = item.get("cmd")
-            if cmd:
-                if isinstance(cmd, list):
-                    click.echo(" ".join(cmd))
-                else:
-                    click.echo(cmd)
+        for cmd_str in payload["data"].get("dry_run_cmds", []):
+            click.echo(cmd_str)
         return
 
     result_path = output_dir / "result.json"
@@ -2258,13 +2355,6 @@ python -m pytest tests/ -v --tb=short 2>&1 | tail -20
 ```
 
 Expected: all previously passing tests still PASS.
-
-- [ ] **Step 6.5: Commit**
-
-```bash
-git add phyloai/cli/commands/pretree.py
-git commit -m "feat(cli): register pretree trim subcommand"
-```
 
 ---
 
@@ -2417,11 +2507,17 @@ python -m pytest tests/ -v --tb=short 2>&1 | tail -30
 
 Expected: all tests PASS.
 
-- [ ] **Step 7.4: Final commit**
+- [ ] **Step 7.4: Commit when instructed**
+
+When the user confirms all tasks are complete and tests pass, commit everything together:
 
 ```bash
-git add tests/pretree/test_trim.py
-git commit -m "test(trim): add integration smoke tests for trimAl and ClipKIT"
+git add phyloai/core/sequence_normalization.py \
+        phyloai/pretree/trim.py \
+        phyloai/cli/commands/pretree.py \
+        tests/core/test_sequence_normalization_codon.py \
+        tests/pretree/test_trim.py
+git commit -m "feat: implement pretree trim command (trimAl/BMGE/ClipKIT, AA/NT/CODON/AA+NT modes)"
 ```
 
 ---
@@ -2439,6 +2535,6 @@ git commit -m "test(trim): add integration smoke tests for trimAl and ClipKIT"
 
 **Placeholder scan:** No TBDs, no "similar to" references. All code blocks are complete.
 
-**Type consistency:** `_trim_one_worker` args tuple matches unpacking. `_make_success_result` used consistently in all three workers. `run_trim` returns same schema as `_build_trim_payload`.
+**Type consistency:** `_trim_one_worker` args tuple matches unpacking. `_make_success_result` used consistently in all three workers with `length_before` populated. `run_trim` passes `tool_versions` and `dry_run_cmds` through to `_build_trim_payload`. `_reconstruct_trim_result` passes `tool_versions` parameter.
 
-**One gap noted and filled:** `length_before` and `length_after` are not computed in the per-gene workers in this plan (the tools write directly to files). A follow-up enhancement could read the input MSA column count before trimming and compare to output — but the spec does not require this for the initial implementation. `key_results.length_before/after` will be 0 initially; this is noted in the `_build_trim_payload` implementation.
+**Commit policy:** No per-step commits. A single commit is made at the end of Task 7 when all tests pass, on explicit user instruction.
