@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 
 def test_convert_single_file_defaults_to_fasta_and_normalizes_nt(tmp_path: Path) -> None:
     from phyloai.pretree.convert import convert_input
@@ -147,3 +149,21 @@ def test_convert_aa_special_keep_preserves_special_codes(tmp_path: Path) -> None
     assert replacements["question_to_missing"] == 1
     assert replacements["stop_to_x"] == 1
     assert replacements["invalid_to_missing"] == 1
+
+
+def test_convert_skips_invalid_generated_fasta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from phyloai.pretree import convert
+
+    src = tmp_path / "gene.fa"
+    src.write_text(">taxon1\nACGT\n")
+    out_dir = tmp_path / "out"
+
+    def write_empty(_records, out: Path, _target_format: str, _seq_type: str):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("")
+        return []
+
+    monkeypatch.setattr(convert, "_write_records", write_empty)
+
+    with pytest.raises(ValueError, match="All input entries failed"):
+        convert.convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)

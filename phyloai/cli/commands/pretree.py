@@ -9,6 +9,7 @@ import click
 from rich.console import Console
 from rich.progress import Progress
 
+from phyloai.pretree.align import render_align_summary_table, run_align
 from phyloai.pretree.convert import convert_input, render_convert_summary_table
 from phyloai.pretree.stats import (
     aggregate_summary,
@@ -340,3 +341,138 @@ def _write_per_gene_csv(results: list[dict], path: Path, fmt: str) -> None:
         writer = csv.DictWriter(fh, fieldnames=columns, delimiter=delimiter)
         writer.writeheader()
         writer.writerows(results)
+
+
+@pretree.command(
+    "align",
+    help=(
+        "Align a directory of unaligned sequences using MAFFT or MAGUS.\n\n"
+        "Strategies: fftns1/fftns2 are fastest but least accurate; "
+        "linsi/einsi/ginsi offer high accuracy; "
+        "magus is slowest but best for large or difficult datasets (Linux only).\n\n"
+        "Use --backtrans with --nt-dir to also produce codon-level NT alignments "
+        "from a protein alignment using trimAl backtranslation.\n\n"
+        "--threads controls how many genes are aligned in parallel; each "
+        "individual alignment uses a single thread."
+    ),
+)
+@click.option("--seq-dir", type=click.Path(file_okay=False, path_type=Path),
+              required=True, help="Input directory of unaligned sequence files.")
+@click.option("--method",
+              type=click.Choice(["fftns1", "fftns2", "auto", "linsi", "einsi", "ginsi", "magus"]),
+              default="linsi", show_default=True,
+              help=(
+                  "Alignment strategy. "
+                  "fftns1/fftns2: fast, lower accuracy. "
+                  "auto: MAFFT chooses strategy automatically. "
+                  "linsi/einsi/ginsi: high accuracy. "
+                  "magus: highest accuracy, slowest, best for large datasets (Linux only)."
+              ))
+@click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto",
+              show_default=True, help="Molecule type of input sequences. Auto-detects from first gene if 'auto'.")
+@click.option("--backtrans", is_flag=True, default=False,
+              help="Produce codon NT alignments via trimAl -backtrans. Requires --nt-dir.")
+@click.option("--nt-dir", type=click.Path(file_okay=False, path_type=Path), default=None,
+              help="Directory of unaligned CDS sequences for --backtrans mode.")
+@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+              default=Path("runs/run001/pretree/align"), show_default=True,
+              help="Output directory; contains seqs/, align.log, result.json.")
+@click.option("--threads", "-t", type=int, default=4, show_default=True,
+              help="Number of genes to align in parallel (each uses 1 thread).")
+@click.option("--extra-args", type=str, default=None,
+              help="Extra arguments passed to magus only; ignored with a warning for MAFFT methods.")
+@click.option("--mafft-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Explicit MAFFT executable path for MAFFT methods; PATH lookup is used when omitted.")
+@click.option("--magus-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Explicit MAGUS executable path for --method magus; PATH lookup is used when omitted.")
+@click.option("--trimal-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Explicit trimAl executable path for --backtrans; PATH lookup is used when omitted.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate a non-empty output directory before running.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Print commands without executing; creates no files.")
+@click.option("--quiet", "-q", is_flag=True, default=False,
+              help="Suppress Rich terminal output except errors.")
+def align_command(
+    seq_dir: Path,
+    method: str,
+    seq_type: str,
+    backtrans: bool,
+    nt_dir: Path | None,
+    output_dir: Path,
+    threads: int,
+    extra_args: str | None,
+    mafft_path: Path | None,
+    magus_path: Path | None,
+    trimal_path: Path | None,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    if threads < 1:
+        _fail("--threads must be at least 1.", 1)
+    if not seq_dir.exists():
+        _fail(f"--seq-dir '{seq_dir}' does not exist.", 1)
+    if nt_dir is not None and not nt_dir.exists():
+        _fail(f"--nt-dir '{nt_dir}' does not exist.", 1)
+
+    payload: dict | None = None
+    error_msg: str | None = None
+
+    def _invoke(progress_callback=None):
+        return run_align(
+            seq_dir=seq_dir,
+            output_dir=output_dir,
+            method=method,
+            seq_type=seq_type,
+            backtrans=backtrans,
+            nt_dir=nt_dir,
+            threads=threads,
+            extra_args=extra_args,
+            mafft_path=mafft_path,
+            magus_path=magus_path,
+            trimal_path=trimal_path,
+            overwrite=overwrite,
+            dry_run=dry_run,
+            progress_callback=progress_callback,
+        )
+
+    if not quiet and not dry_run:
+        from phyloai.pretree.align import _scan_input
+        found, _ = _scan_input(seq_dir)
+        with Progress(console=console, transient=True) as progress:
+            task = progress.add_task("Aligning sequences", total=len(found))
+            try:
+                payload = _invoke(progress_callback=lambda _: progress.advance(task))
+            except (ValueError, FileNotFoundError) as exc:
+                error_msg = str(exc)
+    else:
+        try:
+            payload = _invoke()
+        except (ValueError, FileNotFoundError) as exc:
+            error_msg = str(exc)
+
+    if error_msg is not None:
+        exit_code = 3 if "not found" in error_msg.lower() else 1
+        _fail(error_msg, exit_code)
+
+    if dry_run:
+        click.echo(f"Dry run: {payload['data']['summary']['n_input_files']} genes would be aligned.")
+        for item in payload["data"].get("files", []):
+            if item.get("cmd"):
+                click.echo(" ".join(item["cmd"]))
+        return
+
+    result_path = output_dir / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+
+    if not quiet:
+        console.print(render_align_summary_table(payload["data"]["summary"]))
+        click.echo(
+            f"Alignments saved to {output_dir / 'seqs'}", err=True
+        )
+        click.echo(f"Results saved to {result_path}", err=True)
+        for w in payload["data"].get("warnings", []):
+            click.echo(f"Warning: {w}", err=True)

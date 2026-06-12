@@ -13,6 +13,7 @@ from Bio.SeqRecord import SeqRecord
 from rich.table import Table
 
 from phyloai.core.formats import AlignmentFormat, FormatConverter
+from phyloai.core.sequence_output_validation import validate_fasta_output
 from phyloai.core.sequence_normalization import detect_seq_type, expand_dots_from_first_sequence, normalize_sequences
 
 
@@ -114,6 +115,9 @@ def _convert_one(entry: Path, output_dir: Path, target_format: str, input_format
         normalized_records = [SeqRecord(Seq(sequence), id=_safe_record_id(record.description, record.id), description="") for record, sequence in zip(records, normalized.sequences)]
         out = output_dir / f"{entry.stem}{TARGET_SUFFIX[target_format]}"
         writer_name_changes = _write_records(normalized_records, out, target_format, detected_seq_type)
+        output_warnings = _validate_convert_output(out, target_format)
+        if output_warnings:
+            return {"skipped": {"path": str(entry), "reason": "; ".join(output_warnings)}}
         generic_name_changes = [
             {"input": original.id, "output": record.id}
             for original, record in zip(records, normalized_records)
@@ -148,6 +152,12 @@ def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_
         for record in alignment:
             record.annotations["molecule_type"] = molecule_type
     return converter.write_alignment(alignment, out, target=_alignment_format(target_format), molecule_type="DNA" if seq_type == "NT" else "protein")
+
+
+def _validate_convert_output(out: Path, target_format: str) -> list[str]:
+    if target_format != "fasta":
+        return []
+    return validate_fasta_output(out, require_aligned=False).warnings
 
 
 def _merge_name_changes(generic_changes: list[dict[str, str]], writer_changes: list[dict[str, str]]) -> list[dict[str, str]]:

@@ -83,4 +83,5 @@ Fish loads completions from that directory automatically in new shells, so you d
 |---------|---------|---------------|
 | `phyloai doctor` | Inspect external tool availability. | [docs/commands/doctor.md](docs/commands/doctor.md) |
 | `phyloai pretree convert` | Normalize and convert sequence files before downstream analysis. | [docs/commands/pretree-convert.md](docs/commands/pretree-convert.md) |
-| `phyloai pretree stats` | Inspect one sequence/alignment file or summarize a directory of files. | [docs/commands/pretree-stats.md](docs/commands/pretree-stats.md) |
+| `phyloai pretree stats`   | Inspect one sequence/alignment file or summarize a directory of files. | [docs/commands/pretree-stats.md](docs/commands/pretree-stats.md)     |
+| `phyloai pretree align`   | Align sequences with MAFFT or MAGUS.                                   | [docs/commands/pretree-align.md](docs/commands/pretree-align.md)     |

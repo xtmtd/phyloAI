@@ -8,7 +8,7 @@
 
 ## 1. Purpose
 
-`phyloai pretree align` aligns a directory of unaligned sequence files using MAFFT or MAGUS. It supports amino-acid sequences, nucleotide sequences, and a combined AA-alignment + backtranslation mode that produces both protein and codon-level alignments from a single run.
+`phyloai pretree align` aligns a directory of unaligned FASTA sequence files using MAFFT or MAGUS. It supports amino-acid sequences, nucleotide sequences, and a combined AA-alignment + backtranslation mode that produces both protein and codon-level alignments from a single run.
 
 It is the first pipeline command in the `pretree` phase. Its outputs feed directly into `phyloai pretree trim`.
 
@@ -35,9 +35,9 @@ phyloai pretree align --seq-dir ./raw_nt --method linsi --seq-type NT \
 
 ### 2.1 Input scanning
 
-`--seq-dir` is scanned one level deep. Files with extensions `.fa`, `.fas`, `.fasta`, `.faa`, `.fna` are treated as input sequences. Subdirectories, empty files, and unrecognized extensions are silently skipped and recorded in `data.skipped`.
+`--seq-dir` is scanned one level deep. Files with extensions `.fa`, `.fas`, `.fasta`, `.faa`, `.fna` are treated as input FASTA sequences. Subdirectories, empty files, and unrecognized extensions are skipped and recorded in `data.skipped`.
 
-`--input-format` overrides format detection for all input files (default: `auto`). Format detection follows `core/formats.py`.
+`pretree align` is FASTA-only. It does not accept PHYLIP, Nexus, or other alignment container formats directly, because MAFFT and MAGUS are invoked on FASTA inputs. Users should run `phyloai pretree convert --to fasta` before `pretree align` when input data are not already FASTA. For this reason, `pretree align` does not expose `--input-format`.
 
 ### 2.2 Three operating modes
 
@@ -72,6 +72,7 @@ Before invoking trimAl, PhyloAI performs lightweight pre-checks on the CDS seque
 |-------|-------------|-------------|
 | Sequence length not a multiple of 3 | PhyloAI pre-check | Skip backtrans, record warning `CDS length not multiple of 3` |
 | Taxon count mismatch between AA alignment and CDS file | PhyloAI pre-check | Skip backtrans, record warning `taxon count mismatch` |
+| Taxon ID set mismatch between AA alignment and CDS file | PhyloAI pre-check | Skip backtrans, record warning `taxon ID mismatch` |
 | Trailing stop codon (TAA/TAG/TGA at sequence end) | trimAl (`-ignorestopcodon`) | Auto-handled by trimAl; no warning emitted unless trimAl reports one |
 | Internal stop codon | trimAl detection | trimAl exits non-zero; PhyloAI captures stderr, records as warning, skips backtrans for that gene |
 
@@ -105,11 +106,13 @@ PhyloAI always passes `-ignorestopcodon` to trimAl for backtranslation. If trimA
 | `linsi` | `mafft --maxiterate 1000 --localpair --thread 1` | **Default.** High accuracy, recommended for most datasets |
 | `einsi` | `mafft --maxiterate 1000 --genafpair --thread 1` | High accuracy, suitable for sequences with non-homologous regions |
 | `ginsi` | `mafft --maxiterate 1000 --globalpair --thread 1` | High accuracy, global alignment |
-| `magus` | `magus -i ... -o ... -d ... --datatype protein\|dna` | Highest accuracy, slowest; suited for large or difficult datasets |
+| `magus` | `magus -i ... -o ... -d ... --datatype protein\|dna` | Highest accuracy, slowest; suited for large or difficult datasets; Linux-only in Phase 2 |
 
-For MAGUS, `--seq-type AA` maps to `--datatype protein`; `--seq-type NT` maps to `--datatype dna`.
+For MAGUS, `--seq-type AA` maps to `--datatype protein`; `--seq-type NT` maps to `--datatype dna`; `--seq-type auto` is resolved to AA or NT before MAGUS command construction.
 
-`--extra-args` is only meaningful for `--method magus`. If passed with any MAFFT method, a warning is printed and the argument is ignored. The `--extra-args` string is tokenized with `shlex.split()` and appended to the MAGUS command. Conflicting parameters in `--extra-args` override PhyloAI's internal defaults, following the merge semantics in main design Section 9.8. The fully merged command is written to the log before execution.
+`--extra-args` is only meaningful for `--method magus`. If passed with any MAFFT method, a warning is printed and the argument is ignored. The `--extra-args` string is tokenized with `shlex.split()`. Known internal MAGUS parameters (`-i`, `-o`, `-d`, `-np`, `--datatype`) are replaced when the same option is supplied in `--extra-args`; all other extra arguments are appended unchanged. This gives users access to MAGUS-specific options without trying to fully reimplement MAGUS argument parsing. The fully merged command is written to the log before execution.
+
+After each tool run, PhyloAI validates the generated MSA with the shared `core` sequence-output validation helpers before counting the gene as aligned. Empty output files, unparsable FASTA, zero FASTA records, empty sequences, or unequal sequence lengths are treated as per-gene failures and recorded in the skipped list with a warning/reason.
 
 ---
 
@@ -152,14 +155,16 @@ Follows main design Section 9.5: if `--output-dir` exists and is non-empty, exit
 
 ## 5. Logging
 
-`align` is a pipeline command and writes a log file `align.log` to the output directory (alongside `result.json`). This deviates from the main design's `runs/runNNN/logs/` convention; the rationale is that the log is most useful when co-located with the outputs it describes.
+`align` is a pipeline command and writes a log file `align.log` to the output directory (alongside `result.json`), following the shared pipeline logging convention.
 
 Each gene's log entry appended to `align.log` contains:
 - Tool name and version
 - Full resolved command (after `--extra-args` merge)
-- stdout and stderr
+- stderr when present; stdout only when it is diagnostic text rather than the primary alignment output
 - Wall time
 - Exit code
+
+For MAFFT, stdout is the aligned FASTA data stream and is already written to `seqs/`, so it is not duplicated in `align.log` or retained in per-gene success records.
 
 Log entries are separated by a timestamp header. On `--overwrite` runs the log file is also deleted and recreated.
 
@@ -171,13 +176,15 @@ Log entries are separated by a timestamp header. On `--overwrite` runs the log f
 |-----------|-------|------|---------|-------|
 | `--seq-dir` | | Path | required | Input directory of unaligned sequences |
 | `--method` | | `fftns1\|fftns2\|auto\|linsi\|einsi\|ginsi\|magus` | `linsi` | Alignment strategy |
-| `--seq-type` | | `AA\|NT` | `AA` | Molecule type |
+| `--seq-type` | | `AA\|NT\|auto` | `auto` | Molecule type; auto-detected from the first few genes |
 | `--backtrans` | | flag | `False` | Produce NT codon alignment via trimAl backtranslation |
 | `--nt-dir` | | Path | — | Required when `--backtrans` is set; directory of unaligned CDS sequences |
 | `--output-dir` | `-o` | Path | `runs/run001/pretree/align` | Output directory |
 | `--threads` | `-t` | int | `4` | Number of concurrent alignment tasks |
 | `--extra-args` | | str | — | Extra arguments passed to MAGUS only; ignored with warning for MAFFT methods |
-| `--input-format` | | str | `auto` | Override format detection for all input files |
+| `--mafft-path` | | Path | — | Optional explicit MAFFT executable path; used only for MAFFT methods |
+| `--magus-path` | | Path | — | Optional explicit MAGUS executable path; used only for `--method magus` |
+| `--trimal-path` | | Path | — | Optional explicit trimAl executable path; used only with `--backtrans` |
 | `--overwrite` | | flag | `False` | Overwrite existing non-empty output directory |
 | `--dry-run` | | flag | `False` | Print commands without executing; exit 0 |
 | `--quiet` | `-q` | flag | `False` | Suppress terminal output except errors |
@@ -187,7 +194,9 @@ Log entries are separated by a timestamp header. On `--overwrite` runs the log f
 - `--backtrans` without `--nt-dir` → exit 1
 - `--nt-dir` without `--backtrans` → warning only (not an error; `--nt-dir` is ignored)
 - `--seq-type NT` with `--backtrans` → exit 1 (backtrans requires AA alignment as input)
+- `--seq-type auto` with `--backtrans` → auto-detect first; if detected as NT, exit 1
 - `--threads` < 1 → exit 1
+- `--method magus` on non-Linux platforms → exit 1 (bundled MAGUS binaries are Linux-only)
 
 ---
 
@@ -212,7 +221,9 @@ Log entries are separated by a timestamp header. On `--overwrite` runs the log f
     "output_dir": "./runs/run001/pretree/align",
     "threads": 4,
     "extra_args": null,
-    "input_format": "auto",
+    "mafft_path": null,
+    "magus_path": null,
+    "trimal_path": null,
     "overwrite": false
   },
   "key_results": {
@@ -272,7 +283,9 @@ def run_align(
     nt_dir: Path | None = None,
     threads: int = 4,
     extra_args: str | None = None,
-    input_format: str = "auto",
+    mafft_path: Path | None = None,
+    magus_path: Path | None = None,
+    trimal_path: Path | None = None,
     overwrite: bool = False,
     dry_run: bool = False,
     progress_callback: Callable[[Path], None] | None = None,
@@ -283,24 +296,26 @@ The return value matches the JSON schema in Section 7. The CLI layer writes this
 
 Internal helpers (not part of the public API):
 
-- `_build_mafft_cmd(input_file, output_file, method)` → `list[str]`
-- `_build_magus_cmd(input_file, output_file, work_dir, seq_type, extra_args)` → `list[str]`
-- `_align_one(gene_path, output_dir, method, seq_type, extra_args, dry_run)` → per-gene result dict
-- `_backtrans_one(aa_aln_path, nt_path, output_nt_path, dry_run)` → per-gene backtrans result dict
-- `_validate_cds(nt_sequences)` → list of warning strings
-- `_scan_input(seq_dir, input_format)` → list of valid input Paths + skipped list
+- `_build_mafft_cmd(input_file, output_file, method, executable="mafft")` → `list[str]`
+- `_build_magus_cmd(input_file, output_file, work_dir, seq_type, extra_args, executable="magus")` → `list[str]`
+- `_align_one(gene_path, output_dir, method, seq_type, extra_args, dry_run, mafft_executable="mafft", magus_executable="magus")` → per-gene result dict
+- `_backtrans_one(aa_aln_path, nt_path, output_nt_path, dry_run, executable="trimal")` → per-gene backtrans result dict
+- `_validate_cds(nt_sequences, n_aa_taxa=None, aa_taxa=None)` → list of warning strings
+- `_scan_input(seq_dir)` → list of valid FASTA input Paths + skipped list
 
 ---
 
 ## 9. Environment Requirements
 
-Checked via `core/env.py` (`ToolEnv.require()`) before execution:
+MAFFT, MAGUS, and trimAl are user-provided external tools. By default, PhyloAI resolves them from the active environment `PATH`. Users who keep tools outside `PATH` can pass `--mafft-path /path/to/mafft`, `--magus-path /path/to/magus`, or `--trimal-path /path/to/trimal`.
+
+Checked via `core/env.py` (`ToolEnv.require()` for PATH lookup or explicit executable validation for explicit path options) before execution:
 
 | Tool | When required |
 |------|--------------|
-| `mafft` | All MAFFT methods (`fftns1`, `fftns2`, `auto`, `linsi`, `einsi`, `ginsi`) |
-| `magus` | `--method magus` |
-| `trimal` | `--backtrans` |
+| `mafft` | All MAFFT methods (`fftns1`, `fftns2`, `auto`, `linsi`, `einsi`, `ginsi`); resolved from PATH or `--mafft-path` |
+| `magus` | `--method magus`; resolved from PATH or `--magus-path` |
+| `trimal` | `--backtrans`; resolved from `--trimal-path` or PATH via `ToolEnv` |
 
 Missing tool → exit 3 (environment error), consistent with main design Section 9.3.
 
@@ -308,7 +323,7 @@ Missing tool → exit 3 (environment error), consistent with main design Section
 
 ## 10. Integration with Adjacent Commands
 
-- **Upstream:** `phyloai pretree convert` or user-provided raw sequences. `pretree align` does not perform format conversion; inputs must be FASTA or another auto-detectable format.
+- **Upstream:** `phyloai pretree convert --to fasta` or user-provided raw FASTA sequences. `pretree align` does not perform format conversion; inputs must be FASTA.
 - **Downstream:** `phyloai pretree trim` reads `seqs/` (or `seqs/faa/` and `seqs/fna/` in backtrans mode). The `--msa-dir` argument of `pretree trim` should point to the appropriate subdirectory.
 - **Report:** `key_results` supplies alignment count, method, and mean length for the Methods paragraph (e.g., "X genes were aligned using MAFFT L-INS-i; mean alignment length Y aa").
 
@@ -339,16 +354,7 @@ Unless `--quiet` is set:
 
 The main design (`2026-06-07-phyloai-design.md`) requires one correction:
 
-**Section 9.4** example directory structure for `pretree align` currently shows aligned files directly in the top-level output directory:
-
-```
-runs/run001/pretree/align/
-├── gene1.aln
-├── gene2.aln
-└── result.json
-```
-
-This should be updated to match the unified `seqs/` convention:
+**Section 9.4** example directory structure for `pretree align` should continue to use the unified `seqs/` convention:
 
 ```
 runs/run001/pretree/align/
@@ -359,7 +365,11 @@ runs/run001/pretree/align/
 └── result.json
 ```
 
-The log file location also deviates from the main design's `runs/runNNN/logs/<step>.log` convention (Section 9.6). This spec places `align.log` inside the output directory. The main design's convention remains the default for other pipeline commands; this deviation is specific to `pretree align` and should be noted in the main design.
+The log file location is the shared pipeline convention: `align.log` lives inside the output directory alongside `result.json`.
+
+Section 9.6 should not require full stdout for commands where stdout is primary data already saved elsewhere. For `pretree align`, MAFFT stdout is the aligned FASTA and is saved under `seqs/`; `align.log` records command metadata and stderr without duplicating that data stream.
+
+Section 10 should note the Phase 2 tool-specific exception that MAGUS is Linux-only because the pip-distributed MAGUS bundle includes Linux binaries.
 
 ---
 
@@ -381,14 +391,18 @@ Tests should cover:
 - MAGUS command construction with and without `--extra-args`
 - `--extra-args` ignored with warning for MAFFT methods
 - `--seq-type NT` maps to `--datatype dna` for MAGUS
+- `--seq-type auto` detection for AA and NT inputs
+- `--seq-type auto` with detected NT and `--backtrans` exits 1
 - Backtrans mode: correct pairing, correct `seqs/faa/` and `seqs/fna/` output layout
 - CDS pre-checks: length-not-multiple-of-3 and taxon-count-mismatch skip with warning
 - trimAl non-zero exit captured as warning, gene skipped
+- Generated MSA validation: empty file, no FASTA records, empty sequences, unequal sequence lengths
 - `--backtrans` without `--nt-dir` exits 1
 - `--seq-type NT` with `--backtrans` exits 1
 - Partial failure: some genes fail, exit 0 with skipped list
 - All genes fail: exit 1
 - `--dry-run` prints commands, creates no files
+- MAGUS dry-run does not create temporary work directories
 - Output directory conflict with and without `--overwrite`
 - `result.json` schema shape and `key_results` field correctness
 - MAGUS temp directory created per gene and cleaned up after task

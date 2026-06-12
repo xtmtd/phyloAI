@@ -41,7 +41,7 @@ phyloai/
 │   ├── runner.py       # unified external tool call interface, timeout, retry
 │   ├── formats.py      # format detection & conversion (FASTA/Nexus/Phylip/Phylip-PAML)
 │   ├── schema.py       # shared data structures (MSACollection, TreeSet, RunRecord)
-│   └── logger.py       # per-step log files under runs/runNNN/logs/
+│   └── logger.py       # per-step log file writer for command output dirs
 │
 ├── pretree/
 │   ├── convert.py      # format conversion between FASTA/Phylip/Nexus/Phylip-PAML;
@@ -119,7 +119,7 @@ phyloai doctor
 # Pre-tree
 phyloai pretree convert  --input ./raw --output-dir ./runs/run001/pretree/convert --to fasta
 phyloai pretree stats    --seq-dir ./runs/run001/pretree/convert
-phyloai pretree align    --msa-dir ./raw --method linsi [--nt-dir ./raw_nt] \
+phyloai pretree align    --seq-dir ./raw --method linsi [--nt-dir ./raw_nt] \
                          [--backtrans] [--extra-args "--op 1 --bl"]
 phyloai pretree trim     --msa-dir ./aligned --tool bmge [--model BLOSUM90] \
                          [--extra-args "-h 0.4"]
@@ -339,7 +339,7 @@ runs/
         └── run_record.yaml
 ```
 
-Log file content per step: tool version, full command, stdout/stderr, wall time, exit code. Commands that produce multiple output files under a subdirectory (e.g., `seqs/`) place the log directly in the output directory root alongside `result.json`, without a separate `logs/` subdirectory.
+Log file content per step: tool version, full command, stderr, wall time, exit code, and stdout only when stdout is diagnostic text. Commands must not duplicate large primary data streams in logs when stdout is the primary output and that output is already saved to a dedicated file or subdirectory (e.g., aligned FASTA files under `seqs/`). Commands that produce multiple output files under a subdirectory (e.g., `seqs/`) place the log directly in the output directory root alongside `result.json`, without a separate `logs/` subdirectory.
 
 ---
 
@@ -428,7 +428,7 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--tree-dir` | | Path | — | commands requiring a gene tree directory |
 | `--output-dir` | `-o` | Path | auto under `runs/` | all commands producing output files |
 | `--threads` | `-t` | int | 4 | all commands invoking multi-threaded tools |
-| `--seq-type` | | AA \| NT | AA | commands where molecule type affects behavior |
+| `--seq-type` | | AA \| NT \| auto | auto where safe; command-specific otherwise | commands where molecule type affects behavior |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
 | `--input-format` | | str | auto-detect | all commands reading alignment files |
 | `--output-format` | | text \| json | text | `doctor` only |
@@ -532,7 +532,7 @@ This unified structure ensures that:
 
 - Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators. Non-`doctor` commands always write machine-readable structured output to `result.json`; they do not expose a text/json structured stdout switch.
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
-- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to its own output directory alongside `result.json`, named `<step>.log` (e.g., `runs/runNNN/pretree/align/align.log`). The log contains: resolved command, tool versions, full stdout/stderr, wall time, exit code. If a command produces only a single log file, it is placed directly in the output directory root with no `logs/` subdirectory. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
+- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to its own output directory alongside `result.json`, named `<step>.log` (e.g., `runs/runNNN/pretree/align/align.log`). The log contains: resolved command, tool versions, stderr, wall time, exit code, and stdout only when stdout is diagnostic text rather than the primary data output. Logs are never written to a separate `runs/runNNN/logs/` directory. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
 - Log files are appended (not overwritten) on retry, with a timestamp separator between runs. On `--overwrite` runs the log file is deleted and recreated together with the output directory.
 - Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
 - When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
@@ -549,6 +549,13 @@ Commands that produce auxiliary tabular output (per-gene tables, per-taxon table
 4. The fully merged command is logged before execution
 5. Format of `--extra-args` must match the target tool's own CLI conventions; PhyloAI does not validate tool-specific argument semantics
 
+### 9.9 Generated Sequence and Alignment Validation
+
+- Commands that generate sequence or alignment files in bulk (`pretree convert`, `pretree align`, `pretree trim`, and related future steps) must validate generated files before counting them as successful outputs.
+- Validation is implemented through shared `core` helpers, not one-off command-local checks. FASTA validation must detect missing/empty files, unparsable FASTA, zero FASTA records, and empty sequences. MSA validation must additionally detect unequal sequence lengths.
+- Per-file validation failures are recorded in `result.json` under `data.skipped` or per-file warnings, depending on whether the command can continue. If all generated files fail validation, the command exits with code 1.
+- Input scanning follows the same principle: empty files, directories, unrecognized file types, and unparsable sequence files are skipped with explicit reasons; if no valid inputs remain, the command exits with code 1.
+
 ---
 
 ## 10. Platform Support
@@ -556,6 +563,7 @@ Commands that produce auxiliary tabular output (per-gene tables, per-taxon table
 - **Primary:** Linux, macOS
 - **Secondary:** WSL (Windows Subsystem for Linux)
 - **Not supported:** Native Windows
+- Tool-specific exceptions are allowed when upstream binaries are not cross-platform. In Phase 2, `pretree align --method magus` is Linux-only because the pip-distributed MAGUS dependency bundle includes Linux binaries.
 
 ---
 
@@ -588,7 +596,7 @@ Every subcommand implementation must comply with the following binding requireme
 1. **Structured output** for all non-`doctor` commands is always saved as `result.json`; terminal Rich display is always on unless `--quiet` is set.
 2. **Output directory structure** follows Section 6; commands with an `--output-dir` parameter default to the appropriate subdirectory under `runs/`.
 3. **Conflict policy** follows Section 9.5: non-empty output directory → exit 1; `--overwrite` to replace.
-4. **Log file** written to `runs/runNNN/logs/<step>.log` for all pipeline commands (Section 9.6).
+4. **Log file** written to the command output directory as `<step>.log` for all pipeline commands (Section 9.6).
 5. **JSON output schema** follows Section 9.4; `result.json` written to the output directory on success.
 6. **Exit codes** follow Section 9.3.
 
