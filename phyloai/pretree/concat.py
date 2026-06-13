@@ -420,7 +420,7 @@ def _render_concat_panels(overview: dict[str, Any], variant_stats: list[dict[str
             else:
                 entry = sp.get(metric, {})
                 if isinstance(entry, dict):
-                    row.append(f"{entry.get('count', 0)} ({entry.get('ratio', 0):.2f})")
+                    row.append(f"{entry.get('count', 0)} ({entry.get('ratio', 0):.4f})")
                 else:
                     row.append(str(entry))
         site_table.add_row(*row)
