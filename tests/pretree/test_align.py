@@ -112,7 +112,7 @@ def test_build_magus_cmd_aa(tmp_path: Path) -> None:
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "gene1_aln.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args=None)
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args=None)
 
     assert cmd[0] == "magus"
     assert "-i" in cmd
@@ -132,19 +132,19 @@ def test_build_magus_cmd_nt(tmp_path: Path) -> None:
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="NT", extra_args=None)
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="NT", tool_args=None)
 
     idx = cmd.index("--datatype")
     assert cmd[idx + 1] == "dna"
 
 
-def test_build_magus_cmd_extra_args(tmp_path: Path) -> None:
+def test_build_magus_cmd_tool_args(tmp_path: Path) -> None:
     from phyloai.pretree.align import _build_magus_cmd
 
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args="--maxsubsetsize 50 --recurse true")
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args="--maxsubsetsize 50 --recurse true")
 
     assert "--maxsubsetsize" in cmd
     assert "50" in cmd
@@ -152,20 +152,17 @@ def test_build_magus_cmd_extra_args(tmp_path: Path) -> None:
     assert "true" in cmd
 
 
-def test_build_magus_cmd_extra_args_override(tmp_path: Path) -> None:
+def test_build_magus_cmd_tool_args_rejects_managed_args(tmp_path: Path) -> None:
     from phyloai.pretree.align import _build_magus_cmd
 
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args="--datatype dna")
-
-    pairs = list(zip(cmd, cmd[1:]))
-    datatype_values = [b for a, b in pairs if a == "--datatype"]
-    assert datatype_values == ["dna"]
+    with pytest.raises(ValueError, match="PhyloAI-managed MAGUS"):
+        _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args="--datatype dna")
 
 
-def test_build_magus_cmd_preserves_unknown_extra_args(tmp_path: Path) -> None:
+def test_build_magus_cmd_preserves_unknown_tool_args(tmp_path: Path) -> None:
     from phyloai.pretree.align import _build_magus_cmd
 
     inp = tmp_path / "gene1.fa"
@@ -176,7 +173,7 @@ def test_build_magus_cmd_preserves_unknown_extra_args(tmp_path: Path) -> None:
         out,
         work_dir=work,
         seq_type="AA",
-        extra_args="--maxsubsetsize 50 --recurse --some-flag=value",
+        tool_args="--maxsubsetsize 50 --recurse --some-flag=value",
     )
 
     assert cmd[-4:] == ["--maxsubsetsize", "50", "--recurse", "--some-flag=value"]
@@ -188,7 +185,7 @@ def test_build_magus_cmd_accepts_explicit_executable(tmp_path: Path) -> None:
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args=None, executable="/opt/bin/magus")
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args=None, executable="/opt/bin/magus")
 
     assert cmd[0] == "/opt/bin/magus"
 
@@ -252,7 +249,7 @@ def test_align_one_mafft_linsi_produces_output(tmp_path: Path) -> None:
     out_dir.mkdir()
 
     result = _align_one(inp, out_dir, method="linsi", seq_type="AA",
-                        extra_args=None, dry_run=False)
+                        tool_args=None, dry_run=False)
 
     assert result["status"] == "success"
     assert Path(result["output_aa"]).exists()
@@ -270,7 +267,7 @@ def test_align_one_dry_run_creates_no_files(tmp_path: Path) -> None:
     out_dir.mkdir()
 
     result = _align_one(inp, out_dir, method="linsi", seq_type="AA",
-                        extra_args=None, dry_run=True)
+                        tool_args=None, dry_run=True)
 
     assert result["status"] == "dry_run"
     assert result["cmd"] is not None
@@ -286,7 +283,7 @@ def test_align_one_failed_tool_returns_skipped(tmp_path: Path) -> None:
     out_dir.mkdir()
 
     result = _align_one(inp, out_dir, method="linsi", seq_type="AA",
-                        extra_args=None, dry_run=False)
+                        tool_args=None, dry_run=False)
 
     assert result["status"] in {"skipped", "success"}
 
@@ -411,7 +408,7 @@ def test_run_align_nt_seq_type_with_backtrans_raises(tmp_path: Path) -> None:
                   seq_type="NT", backtrans=True, nt_dir=nt_dir)
 
 
-def test_run_align_extra_args_ignored_for_mafft_emits_warning(tmp_path: Path) -> None:
+def test_run_align_tool_args_ignored_for_mafft_emits_warning(tmp_path: Path) -> None:
     from phyloai.pretree.align import run_align
 
     seq_dir = tmp_path / "seqs"
@@ -424,7 +421,7 @@ def test_run_align_extra_args_ignored_for_mafft_emits_warning(tmp_path: Path) ->
         output_dir=out_dir,
         method="linsi",
         seq_type="AA",
-        extra_args="--maxsubsetsize 50",
+        tool_args="--maxsubsetsize 50",
         dry_run=True,
     )
 
@@ -586,7 +583,7 @@ def test_align_one_magus_dry_run_does_not_create_tempdir(tmp_path: Path, monkeyp
         raise AssertionError("dry-run must not create MAGUS temp directories")
 
     monkeypatch.setattr(align.tempfile, "mkdtemp", fail_mkdtemp)
-    result = align._align_one(inp, out_dir, method="magus", seq_type="AA", extra_args=None, dry_run=True)
+    result = align._align_one(inp, out_dir, method="magus", seq_type="AA", tool_args=None, dry_run=True)
 
     assert result["status"] == "dry_run"
     assert not out_dir.exists()
@@ -610,7 +607,7 @@ def test_align_one_magus_cleans_tempdir_when_subprocess_raises(tmp_path: Path, m
     monkeypatch.setattr(align.tempfile, "mkdtemp", fake_mkdtemp)
     monkeypatch.setattr(align.subprocess, "run", fail_run)
 
-    result = align._align_one(inp, out_dir, method="magus", seq_type="AA", extra_args=None, dry_run=False)
+    result = align._align_one(inp, out_dir, method="magus", seq_type="AA", tool_args=None, dry_run=False)
 
     assert result["status"] == "skipped"
     assert not work_dir.exists()
@@ -642,7 +639,7 @@ def test_align_one_magus_success_path_writes_and_validates_output(tmp_path: Path
     monkeypatch.setattr(align.tempfile, "mkdtemp", fake_mkdtemp)
     monkeypatch.setattr(align.subprocess, "run", fake_run)
 
-    result = align._align_one(inp, out_dir, method="magus", seq_type="AA", extra_args=None, dry_run=False)
+    result = align._align_one(inp, out_dir, method="magus", seq_type="AA", tool_args=None, dry_run=False)
 
     assert result["status"] == "success"
     assert result["n_taxa"] == 2
@@ -684,7 +681,7 @@ def test_align_one_success_does_not_return_alignment_stdout(tmp_path: Path, monk
 
     monkeypatch.setattr(align.subprocess, "run", lambda *_args, **_kwargs: Proc())
 
-    result = align._align_one(inp, out_dir, method="linsi", seq_type="AA", extra_args=None, dry_run=False)
+    result = align._align_one(inp, out_dir, method="linsi", seq_type="AA", tool_args=None, dry_run=False)
 
     assert result["status"] == "success"
     assert result.get("tool_stdout", "") == ""
@@ -742,7 +739,7 @@ def test_align_one_skips_invalid_generated_msa(tmp_path: Path, monkeypatch: pyte
 
     monkeypatch.setattr(align.subprocess, "run", lambda *_args, **_kwargs: Proc())
 
-    result = align._align_one(inp, out_dir, method="linsi", seq_type="AA", extra_args=None, dry_run=False)
+    result = align._align_one(inp, out_dir, method="linsi", seq_type="AA", tool_args=None, dry_run=False)
 
     assert result["status"] == "skipped"
     assert "empty" in result["reason"].lower()

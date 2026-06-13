@@ -110,7 +110,7 @@ def _build_magus_cmd(
     output_file: Path,
     work_dir: Path,
     seq_type: str,
-    extra_args: str | None,
+    tool_args: str | None,
     executable: str = "magus",
 ) -> list[str]:
     datatype = "protein" if seq_type == "AA" else "dna"
@@ -122,26 +122,16 @@ def _build_magus_cmd(
         "--datatype": datatype,
         "-np": "1",
     }
-    known_internal = set(internal)
-
-    extra: list[str] = shlex.split(extra_args) if extra_args else []
-    passthrough: list[str] = []
-    i = 0
-    while i < len(extra):
-        token = extra[i]
-        if token in known_internal:
-            if i + 1 >= len(extra):
-                raise ValueError(f"MAGUS option {token!r} requires a value in --extra-args")
-            internal[token] = extra[i + 1]
-            i += 2
-        else:
-            passthrough.append(token)
-            i += 1
+    extra: list[str] = shlex.split(tool_args) if tool_args else []
+    managed = {"-i", "-o", "-d", "--datatype", "-np"}
+    blocked = managed.intersection(extra)
+    if blocked:
+        raise ValueError(f"--tool-args cannot include PhyloAI-managed MAGUS argument(s): {', '.join(sorted(blocked))}")
 
     cmd = [executable]
     for key, val in internal.items():
         cmd += [key, val]
-    return cmd + passthrough
+    return cmd + extra
 
 
 def _validate_cds(
@@ -216,7 +206,7 @@ def _resolved_align_params(
     backtrans: bool,
     nt_dir: Path | None,
     threads: int,
-    extra_args: str | None,
+    tool_args: str | None,
     mafft_executable: str,
     magus_executable: str,
     trimal_executable: str,
@@ -230,7 +220,7 @@ def _resolved_align_params(
         "backtrans": backtrans,
         "nt_dir": str(nt_dir) if nt_dir is not None else None,
         "threads": int(threads),
-        "extra_args": extra_args,
+        "tool_args": tool_args,
         "mafft_executable": mafft_executable,
         "magus_executable": magus_executable,
         "trimal_executable": trimal_executable,
@@ -323,7 +313,7 @@ def _align_one(
     output_dir: Path,
     method: str,
     seq_type: str,
-    extra_args: str | None,
+    tool_args: str | None,
     dry_run: bool,
     mafft_executable: str = "mafft",
     magus_executable: str = "magus",
@@ -338,7 +328,7 @@ def _align_one(
             if dry_run
             else Path(tempfile.mkdtemp(prefix="phyloai_magus_"))
         )
-        cmd = _build_magus_cmd(gene_path, out_aa, work_dir, seq_type, extra_args, executable=magus_executable)
+        cmd = _build_magus_cmd(gene_path, out_aa, work_dir, seq_type, tool_args, executable=magus_executable)
 
     if dry_run:
         return {"status": "dry_run", "input": str(gene_path), "cmd": cmd}
@@ -426,13 +416,13 @@ def _align_one(
 
 
 def _align_one_worker(args: tuple[Path, Path, str, str, str | None, bool, str, str]) -> dict[str, Any]:
-    gene_path, output_dir, method, seq_type, extra_args, dry_run, mafft_exe, magus_exe = args
+    gene_path, output_dir, method, seq_type, tool_args, dry_run, mafft_exe, magus_exe = args
     return _align_one(
         gene_path,
         output_dir,
         method=method,
         seq_type=seq_type,
-        extra_args=extra_args,
+        tool_args=tool_args,
         dry_run=dry_run,
         mafft_executable=mafft_exe,
         magus_executable=magus_exe,
@@ -634,7 +624,7 @@ def run_align(
     backtrans: bool = False,
     nt_dir: Path | None = None,
     threads: int = 4,
-    extra_args: str | None = None,
+    tool_args: str | None = None,
     mafft_path: Path | None = None,
     magus_path: Path | None = None,
     trimal_path: Path | None = None,
@@ -671,12 +661,12 @@ def run_align(
         )
 
     global_warnings: list[str] = []
-    if extra_args and method in MAFFT_METHODS:
+    if tool_args and method in MAFFT_METHODS:
         global_warnings.append(
-            f"--extra-args is ignored for MAFFT method '{method}'; "
+            f"--tool-args is ignored for MAFFT method '{method}'; "
             "it is only used with --method magus."
         )
-        extra_args = None
+        tool_args = None
 
     found, scan_skipped = _scan_input(seq_dir)
 
@@ -710,7 +700,7 @@ def run_align(
         backtrans=backtrans,
         nt_dir=nt_dir,
         threads=threads,
-        extra_args=extra_args,
+        tool_args=tool_args,
         mafft_executable=mafft_exe,
         magus_executable=magus_exe,
         trimal_executable=trimal_exe,
@@ -815,7 +805,7 @@ def run_align(
     file_results: list[dict[str, Any]] = []
 
     worker_args = [
-        (g, aa_out_dir, method, seq_type, extra_args, dry_run, mafft_exe, magus_exe)
+        (g, aa_out_dir, method, seq_type, tool_args, dry_run, mafft_exe, magus_exe)
         for g in found
     ]
     all_tool_results: list[dict[str, Any]] = []
@@ -955,7 +945,7 @@ def run_align(
             "nt_dir": str(nt_dir) if nt_dir else None,
             "output_dir": str(output_dir),
             "threads": threads,
-            "extra_args": extra_args,
+            "tool_args": tool_args,
             "mafft_path": str(mafft_path) if mafft_path else None,
             "magus_path": str(magus_path) if magus_path else None,
             "trimal_path": str(trimal_path) if trimal_path else None,

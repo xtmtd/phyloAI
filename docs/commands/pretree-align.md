@@ -46,7 +46,7 @@ phyloai pretree align \
 | `--nt-dir` | — | Unaligned CDS directory for backtrans |
 | `--output-dir` / `-o` | `runs/pretree/align` | Output directory |
 | `--threads` / `-t` | 4 | Concurrent alignment tasks (each uses 1 thread) |
-| `--extra-args` | — | Extra args for MAGUS only; ignored for MAFFT methods |
+| `--tool-args` | — | MAGUS strategy args only; ignored for MAFFT methods |
 | `--mafft-path` | — | Explicit MAFFT executable path for MAFFT methods |
 | `--magus-path` | — | Explicit MAGUS executable path for `--method magus` |
 | `--trimal-path` | — | Explicit trimAl executable path for `--backtrans` |
@@ -102,9 +102,9 @@ phyloai pretree align --seq-dir ./raw_aa --seq-type AA \
 # NT direct alignment
 phyloai pretree align --seq-dir ./raw_nt --seq-type NT --method linsi
 
-# MAGUS with extra options
+# MAGUS with tool strategy options
 phyloai pretree align --seq-dir ./raw_aa --method magus \
-  --extra-args "--maxsubsetsize 200" --threads 4
+  --tool-args "--maxsubsetsize 200" --threads 4
 
 # Preview commands without running
 phyloai pretree align --seq-dir ./raw_aa --method linsi --dry-run
@@ -143,7 +143,7 @@ phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
 | trimAl exits non-zero | Backtrans skipped for that gene, stderr captured as warning |
 | Generated MSA is empty, unparsable, or has unequal sequence lengths | Gene skipped with reason in result.json |
 | All genes fail | Exit 1 |
-| `--extra-args` used with MAFFT method | Warning printed, args ignored |
+| `--tool-args` used with MAFFT method | Warning printed, args ignored |
 
 ## Notes
 

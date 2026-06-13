@@ -13,6 +13,7 @@ NT_AMBIGUOUS = set("RYSWKMBDHVN")
 NT_AUTO_CHARS = set("ACGTURYSWKMBDHVN")
 GAP_CHARS = set("-?")
 NT_MISSING = set("-?N")
+STOP_CODONS = frozenset({"TAA", "TAG", "TGA"})
 
 
 @dataclass
@@ -20,6 +21,13 @@ class NormalizationResult:
     sequences: list[str]
     seq_type: str
     replacements: dict[str, int] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CodonMsaValidation:
+    skip: bool
+    sequences: dict[str, str]
     warnings: list[str] = field(default_factory=list)
 
 
@@ -139,3 +147,73 @@ def classify_char(char: str, seq_type: str) -> str:
     if upper in gap_chars(seq_type):
         return "gap"
     return "ambiguous"
+
+
+def validate_codon_msa(sequences: dict[str, str]) -> CodonMsaValidation:
+    """Validate a codon-aligned MSA and strip terminal stop codons.
+
+    The validation is gap-aware: alignment column count must be divisible by 3,
+    but stop codon checks operate on each sequence after removing gaps.
+    """
+    if not sequences:
+        return CodonMsaValidation(skip=True, sequences={}, warnings=["empty sequence dict"])
+
+    lengths = {len(seq) for seq in sequences.values()}
+    if len(lengths) > 1:
+        return CodonMsaValidation(
+            skip=True,
+            sequences=sequences,
+            warnings=[f"MSA sequences have unequal lengths: {sorted(lengths)}"],
+        )
+
+    aln_len = next(iter(lengths))
+    if aln_len % 3 != 0:
+        return CodonMsaValidation(
+            skip=True,
+            sequences=sequences,
+            warnings=[f"alignment length {aln_len} is not a multiple of 3 (codon_length_not_multiple_of_3)"],
+        )
+
+    warnings: list[str] = []
+    validated: dict[str, str] = {}
+
+    stop_columns_to_remove: set[int] = set()
+
+    for raw_seq in sequences.values():
+        ungapped = raw_seq.replace("-", "").upper()
+        if not ungapped:
+            continue
+        codons = [ungapped[i:i + 3] for i in range(0, len(ungapped), 3)]
+        if codons and codons[-1] in STOP_CODONS:
+            removed = 0
+            for idx in range(len(raw_seq) - 1, -1, -1):
+                if raw_seq[idx] != "-":
+                    stop_columns_to_remove.add(idx)
+                    removed += 1
+                    if removed == 3:
+                        break
+
+    for name, raw_seq in sequences.items():
+        seq = raw_seq
+        ungapped = seq.replace("-", "").upper()
+        if not ungapped:
+            validated[name] = "".join(char for idx, char in enumerate(seq) if idx not in stop_columns_to_remove)
+            continue
+
+        codons = [ungapped[i:i + 3] for i in range(0, len(ungapped), 3)]
+        if stop_columns_to_remove:
+            seq = "".join(char for idx, char in enumerate(seq) if idx not in stop_columns_to_remove)
+            ungapped = seq.replace("-", "").upper()
+            codons = [ungapped[i:i + 3] for i in range(0, len(ungapped), 3)] if ungapped else []
+
+        for pos, codon in enumerate(codons[:-1]):
+            if codon in STOP_CODONS:
+                warnings.append(
+                    f"{name}: internal stop codon '{codon}' at codon position {pos + 1} "
+                    "(proceeding with lenient handling)"
+                )
+                break
+
+        validated[name] = seq
+
+    return CodonMsaValidation(skip=False, sequences=validated, warnings=warnings)

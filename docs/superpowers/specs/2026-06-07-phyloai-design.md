@@ -119,10 +119,9 @@ phyloai doctor
 # Pre-tree
 phyloai pretree convert  --input ./raw --output-dir ./runs/pretree/convert --to fasta
 phyloai pretree stats    --seq-dir ./runs/pretree/convert
-phyloai pretree align    --seq-dir ./raw --method linsi [--nt-dir ./raw_nt] \
-                         [--backtrans] [--extra-args "--op 1 --bl"]
-phyloai pretree trim     --msa-dir ./aligned --tool bmge [--model BLOSUM90] \
-                         [--extra-args "-h 0.4"]
+phyloai pretree align    --seq-dir ./raw --method magus [--tool-args "--maxsubsetsize 50"]
+phyloai pretree trim     --msa-dir ./aligned --tool bmge [--bmge-matrix BLOSUM90] \
+                         [--tool-args "-g 0.5"]
 phyloai pretree metrics  --msa-dir ./trimmed [--tree-dir ./genetrees] [--advanced]
 phyloai pretree filter   --msa-dir ./trimmed --metrics-dir ./metrics \
                          [--tree-dir ./genetrees] \
@@ -185,7 +184,7 @@ All commands support the shared parameters defined in Section 9.2. Key universal
 | `--overwrite` | Overwrite existing output directory |
 | `--resume` | Resume long-running commands from `checkpoint.json` |
 
-Commands that read alignment files also support `--input-format` (auto-detect by default; accepted values match `AlignmentFormat` enum). Commands that invoke external tools also support `--extra-args` (see Section 9.7 for merge semantics).
+Commands that read alignment files also support `--input-format` (auto-detect by default; accepted values match `AlignmentFormat` enum). Commands that invoke external tools also support `--tool-args` for tool strategy parameters only. PhyloAI always manages input, output, work directory, data type, threads, logs, and codon/projection arguments.
 
 **Format handling policy:** Each module uses the format required by its underlying tool. `pretree convert` and `core/formats.py` provide conversion as needed. There is no global FASTA-only mandate; modules handle format requirements internally.
 
@@ -432,7 +431,7 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
 | `--input-format` | | str | auto-detect | all commands reading alignment files |
 | `--output-format` | | text \| json | text | `doctor` only |
-| `--extra-args` | | str | — | all commands invoking external tools |
+| `--tool-args` | | str | — | all commands invoking external tools; strategy parameters only |
 | `--config` | | Path | — | all commands (global, inherited from CLI root) |
 | `--run-dir` | | Path | `./runs/` | all commands except `stats` and `convert` (global, inherited from CLI root) |
 | `--dry-run` | | flag | False | all commands |
@@ -546,13 +545,14 @@ The detailed checkpoint schema and command adoption rules are defined in `docs/s
 
 Commands that produce auxiliary tabular output (per-gene tables, per-taxon tables, metric tables) default to **CSV** format. TSV is available via command-specific table format flags such as `--per-gene-format tsv`, or by explicit output-file conventions when a command defines them. Structured command results always use `result.json`.
 
-### 9.8 `--extra-args` Merge Semantics
+### 9.8 `--tool-args` Strategy-Only Semantics
 
-1. PhyloAI builds its internal parameter set using tool-native argument format
-2. `--extra-args` string is tokenized with standard shell splitting (respects quoted strings)
-3. Any parameter in `--extra-args` that conflicts with an internal parameter **replaces** it (extra-args win)
-4. The fully merged command is logged before execution
-5. Format of `--extra-args` must match the target tool's own CLI conventions; PhyloAI does not validate tool-specific argument semantics
+1. PhyloAI builds managed input, output, work directory, data type, threads, logs, and codon/projection arguments first.
+2. `--tool-args` is tokenized with standard shell splitting (respects quoted strings).
+3. If `--tool-args` includes a PhyloAI-managed flag, the command exits with code 1 and names the blocked flag.
+4. Non-managed strategy parameters are appended unchanged to the command and logged before execution.
+5. Format of `--tool-args` must match the target tool's own CLI conventions; PhyloAI validates managed-flag conflicts but does not reimplement each tool's full parser.
+6. Only `--tool-args` is supported for user-supplied external-tool strategy parameters.
 
 ### 9.9 Generated Sequence and Alignment Validation
 
@@ -618,7 +618,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | filter.py unifies MSA + tree + TAPER filtering | Single entry point reduces cognitive load; TAPER as lightweight option within filter avoids an orphan command |
 | metrics is prerequisite for filter | Decouples metric computation from filtering decisions; users can inspect metrics before committing to a filter strategy |
 | metrics layered (core + --advanced) | Core metrics are fast and always needed; UMAP/correlation are expensive and optional |
-| --extra-args with extra-wins merge | Avoids duplicate parameters in final command; behavior is deterministic and logged; users follow tool's own documentation |
+| --tool-args strategy-only model | Keeps batch input/output and result schemas deterministic while still exposing tool-specific strategy knobs |
 | Format handling per-module, not global | Different tools require different formats; per-module handling via core/formats.py is more correct than forcing a global FASTA mandate |
 | backtrans in align, not a separate command | It is a direct post-processing of the alignment step and uses trimAl which is already a dependency |
 | syserror.py exposed as atomic ops only | Full diagnosis requires iterative human decisions; CLI atomics + Skill orchestration is the correct separation |

@@ -56,7 +56,7 @@ Mode is determined automatically from `--seq-type` and whether `--nt-dir` is pro
 - Output: `seqs/faa/` (Python-translated AA) + `seqs/fna/` (trimmed codon)
 - All three tools supported; this is also the recommended path for BMGE AA+NT output
 - trimAl: Python translate codon MSA → temp AA MSA FASTA; Python strip gaps from codon MSA → temp unaligned CDS FASTA; `trimal -in <temp_aa_msa> -out <faa/gene.fa> -<method> -backtrans <temp_unaligned_cds> -ignorestopcodon`; both temp files in `tempfile.TemporaryDirectory`
-- BMGE: `java -jar BMGE.jar -i <codon_msa> -t CODON -m <matrix> -h <entropy> -of <fna/gene.fa>` → Python translate trimmed codon MSA → `faa/`
+- BMGE: Python translate codon MSA → temp AA FASTA; run BMGE in AA mode; infer kept AA columns from the BMGE AA output; project kept columns back to the codon MSA → `fna/`
 - ClipKIT: `clipkit <codon_msa> -o <fna/gene.fa> -m <method> --codon` → Python translate → `faa/`
 
 ### Mode 4 — AA+NT
@@ -66,7 +66,7 @@ Mode is determined automatically from `--seq-type` and whether `--nt-dir` is pro
 - **`--nt-dir` content differs by tool** (documented in CLI help):
   - trimAl: unaligned CDS sequences (same as `pretree align --nt-dir`)
   - ClipKIT: codon-aligned NT MSA (must be pre-aligned)
-  - BMGE: codon-aligned NT MSA — auto-downgrade to CODON mode (see below)
+  - BMGE: codon-aligned NT MSA; BMGE runs on AA while PhyloAI projects kept AA columns to NT
 - trimAl: `trimal -in <aa_msa> -out <faa/gene.fa> -<method> -backtrans <nt_cds> -ignorestopcodon`; AA MSA separately trimmed for `faa/`
 - ClipKIT: `clipkit <aa_msa> -o <faa/gene.fa> -m <method> -l` → parse `.log` → Python project kept columns onto codon-aligned NT MSA → `fna/`
 - BMGE + Mode 4: **auto-downgrade with warning** — BMGE does not support AA+NT directly; when `--tool bmge --seq-type AA --nt-dir` is specified, a `[WARN]` is emitted and the command automatically uses `--nt-dir` files in CODON mode (`-t CODON`); `params.effective_seq_type` in `result.json` records `CODON`
@@ -92,10 +92,10 @@ Mode is determined automatically from `--seq-type` and whether `--nt-dir` is pro
 | `--msa-dir` | | Path | required | Input MSA directory |
 | `--output-dir` | `-o` | Path | `runs/pretree/trim` | Output directory |
 | `--seq-type` | | `AA`\|`NT`\|`CODON`\|`auto` | `auto` | `auto` detects AA vs NT only; CODON must be explicit |
-| `--nt-dir` | | Path | — | NT directory; content differs by tool — trimAl: unaligned CDS; ClipKIT: codon-aligned NT MSA; BMGE: codon-aligned NT MSA (auto-downgrade to CODON mode) |
+| `--nt-dir` | | Path | — | NT directory; content differs by tool — trimAl: unaligned CDS; ClipKIT/BMGE: codon-aligned NT MSA |
 | `--tool` | | `trimal`\|`bmge`\|`clipkit` | `trimal` | Trimming tool |
 | `--threads` | `-t` | int | 4 | Parallel workers |
-| `--extra-args` | | str | — | Extra arguments passed to tool (extra-wins merge semantics per main design Section 9.8) |
+| `--tool-args` | | str | — | Tool strategy parameters only; PhyloAI manages input/output/log/codon/thread arguments |
 | `--dry-run` | | flag | False | Print commands without executing |
 | `--quiet` | `-q` | flag | False | Suppress Rich output |
 | `--overwrite` | | flag | False | Delete and recreate output directory |
@@ -140,13 +140,13 @@ Mode is determined automatically from `--seq-type` and whether `--nt-dir` is pro
 **trimAl:**
 - Mode 1/2: `trimal -in <msa> -out <out> -<method>`
 - Mode 3 (CODON): Python translate codon MSA → temp AA FASTA (with gaps, normal MSA); Python strip gaps from codon MSA → temp unaligned CDS FASTA; then `trimal -in <temp_aa_msa> -out <faa/gene.fa> -<method> -backtrans <temp_unaligned_cds> -ignorestopcodon`; both temp files managed via `tempfile.TemporaryDirectory`
-- Mode 4 (AA + `--nt-dir`): `trimal -in <aa_msa> -out <faa/gene.fa> -<method> -backtrans <nt_cds> -ignorestopcodon`; AA MSA also separately trimmed → `faa/`
+- Mode 4 (AA + `--nt-dir`): PhyloAI trims the AA MSA with trimAl, and for backtranslation first writes a temporary gapless CDS FASTA from the matching `--nt-dir` file before running `trimal -backtrans`; this allows either raw CDS or codon-aligned NT input with gaps.
 
 **BMGE:**
 - Mode 1 (AA): `java -jar BMGE.jar -i <msa> -t AA -m <matrix> -h <entropy> -of <out>`
 - Mode 2 (NT): `java -jar BMGE.jar -i <msa> -t DNA -m <matrix> -h <entropy> -of <out>`
-- Mode 3 (CODON): `java -jar BMGE.jar -i <codon_msa> -t CODON -m <matrix> -h <entropy> -of <fna/gene.fa>` → Python translate trimmed codon MSA → `faa/`
-- Mode 4 auto-downgrade: emit `[WARN]`, switch to CODON logic using `--nt-dir` files
+- Mode 3 (CODON): Python translate codon MSA → temp AA FASTA; run `java -jar BMGE.jar -i <temp_aa> -t AA -m <matrix> -h <entropy> -of <faa/gene.fa>`; infer kept AA columns from the BMGE output; project those columns onto the original codon MSA → `fna/`
+- Mode 4 (AA+NT): run BMGE `-t AA` on AA MSA; infer kept AA columns from the BMGE output; project those columns onto the codon-aligned NT MSA from `--nt-dir`
 
 **ClipKIT:**
 - Mode 1/2: `clipkit <msa> -o <out> -m <method>`
@@ -267,7 +267,7 @@ Follows `docs/superpowers/specs/2026-06-12-checkpoint-resume-design.md` exactly.
     "bmge_entropy": null,
     "clipkit_method": null,
     "threads": 4,
-    "extra_args": null
+    "tool_args": null
   },
   "tasks": {
     "gene1": {
@@ -325,7 +325,7 @@ All output files use `.fa` suffix regardless of input suffix, consistent with `p
 ## 10. Logging
 
 `trim.log` content per gene entry:
-- Fully merged command (including `--extra-args` tokens, after extra-wins merge)
+- Fully resolved command (including allowed `--tool-args` tokens)
 - Tool version
 - Wall time
 - Exit code
@@ -362,7 +362,7 @@ On `--overwrite`: log file deleted and recreated with the output directory.
     "bmge_entropy": null,
     "clipkit_method": null,
     "threads": 4,
-    "extra_args": null,
+    "tool_args": null,
     "output_dir": "runs/pretree/trim"
   },
   "key_results": {

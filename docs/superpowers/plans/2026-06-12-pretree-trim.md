@@ -689,7 +689,7 @@ def test_trim_one_trimal_dry_run(tmp_path: Path) -> None:
         nt_path=None,
         method="automated1",
         seq_type="AA",
-        extra_args=None,
+        tool_args=None,
         dry_run=True,
         executable="trimal",
     )
@@ -715,7 +715,7 @@ def test_trim_one_trimal_codon_dry_run(tmp_path: Path) -> None:
         nt_path=None,
         method="automated1",
         seq_type="CODON",
-        extra_args=None,
+        tool_args=None,
         dry_run=True,
         executable="trimal",
     )
@@ -743,7 +743,7 @@ def _trim_one_trimal(
     nt_path: Path | None,
     method: str,
     seq_type: str,
-    extra_args: str | None,
+    tool_args: str | None,
     dry_run: bool,
     executable: str = "trimal",
 ) -> dict[str, Any]:
@@ -812,7 +812,7 @@ def _trim_one_trimal(
             fna_target = nt_out if nt_out else aa_out.parent / f"{gene_stem}_nt.fa"
             cmd = _build_trimal_cmd(tmp_aa_msa, fna_target, method=method,
                                     executable=executable, backtrans_path=tmp_cds)
-            _apply_extra_args(cmd, extra_args)
+            _apply_tool_args(cmd, tool_args)
 
             return _run_trimal_cmd(cmd, msa_path=msa_path, aa_out=aa_out,
                                    nt_out=nt_out, codon_warnings=validation.warnings,
@@ -827,7 +827,7 @@ def _trim_one_trimal(
 
         # Trim AA separately first
         cmd_aa = _build_trimal_cmd(msa_path, aa_out, method=method, executable=executable)
-        _apply_extra_args(cmd_aa, extra_args)
+        _apply_tool_args(cmd_aa, tool_args)
 
         if dry_run:
             cmd_nt = _build_trimal_cmd(msa_path, nt_out or Path("/dev/null"), method=method,
@@ -846,7 +846,7 @@ def _trim_one_trimal(
         # Run NT backtrans
         cmd_nt = _build_trimal_cmd(msa_path, nt_out or aa_out.parent / f"{gene_stem}_nt.fa",
                                    method=method, executable=executable, backtrans_path=nt_path)
-        _apply_extra_args(cmd_nt, extra_args)
+        _apply_tool_args(cmd_nt, tool_args)
         proc_nt = subprocess.run(cmd_nt, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         wall_time = time.monotonic() - start
 
@@ -863,7 +863,7 @@ def _trim_one_trimal(
     # --- Mode 1/2: AA-only or NT-only ---
     aa_out.parent.mkdir(parents=True, exist_ok=True)
     cmd = _build_trimal_cmd(msa_path, aa_out, method=method, executable=executable)
-    _apply_extra_args(cmd, extra_args)
+    _apply_tool_args(cmd, tool_args)
 
     if dry_run:
         return {"status": "dry_run", "input": str(msa_path), "cmd": cmd}
@@ -882,8 +882,8 @@ def _trim_one_trimal(
                                 length_before=length_before)
 
 
-def _apply_extra_args(cmd: list[str], extra_args: str | None) -> None:
-    """Tokenize extra_args and append to cmd in-place.
+def _apply_tool_args(cmd: list[str], tool_args: str | None) -> None:
+    """Tokenize tool_args and append to cmd in-place.
 
     Extra-args are appended after the internally-constructed command.  When a
     tool processes duplicate flags, later values typically win (trimAl, BMGE,
@@ -894,9 +894,9 @@ def _apply_extra_args(cmd: list[str], extra_args: str | None) -> None:
     distinguishing bool flags from valued flags across three different tools
     requires tool-specific knowledge.  Simple append is correct and safe.
     """
-    if not extra_args:
+    if not tool_args:
         return
-    cmd.extend(shlex.split(extra_args))
+    cmd.extend(shlex.split(tool_args))
 
 
 def _run_trimal_cmd(
@@ -1017,7 +1017,7 @@ def test_trim_one_bmge_dry_run(tmp_path: Path) -> None:
         seq_type="AA",
         matrix="BLOSUM62",
         entropy=0.5,
-        extra_args=None,
+        tool_args=None,
         dry_run=True,
         java_executable="java",
         bmge_jar="/fake/BMGE.jar",
@@ -1044,7 +1044,7 @@ def test_trim_one_bmge_codon_dry_run(tmp_path: Path) -> None:
         seq_type="CODON",
         matrix="BLOSUM62",
         entropy=0.5,
-        extra_args=None,
+        tool_args=None,
         dry_run=True,
         java_executable="java",
         bmge_jar="/fake/BMGE.jar",
@@ -1068,7 +1068,7 @@ def test_trim_one_clipkit_dry_run(tmp_path: Path) -> None:
         nt_path=None,
         mode="smart-gap",
         seq_type="AA",
-        extra_args=None,
+        tool_args=None,
         dry_run=True,
         executable="clipkit",
     )
@@ -1096,7 +1096,7 @@ def test_trim_one_clipkit_mode4_dry_run(tmp_path: Path) -> None:
         nt_path=nt_msa,
         mode="smart-gap",
         seq_type="AA",
-        extra_args=None,
+        tool_args=None,
         dry_run=True,
         executable="clipkit",
     )
@@ -1124,7 +1124,7 @@ def _trim_one_bmge(
     seq_type: str,
     matrix: str,
     entropy: float,
-    extra_args: str | None,
+    tool_args: str | None,
     dry_run: bool,
     java_executable: str = "java",
     bmge_jar: str = "BMGE.jar",
@@ -1155,7 +1155,7 @@ def _trim_one_bmge(
         java_executable=java_executable,
         bmge_jar=bmge_jar,
     )
-    _apply_extra_args(cmd, extra_args)
+    _apply_tool_args(cmd, tool_args)
 
     if dry_run:
         return {"status": "dry_run", "input": str(msa_path), "cmd": cmd}
@@ -1218,7 +1218,7 @@ def _trim_one_clipkit(
     nt_path: Path | None,
     mode: str,
     seq_type: str,
-    extra_args: str | None,
+    tool_args: str | None,
     dry_run: bool,
     executable: str = "clipkit",
 ) -> dict[str, Any]:
@@ -1252,7 +1252,7 @@ def _trim_one_clipkit(
             log_path = Path(str(tmp_aa_out) + ".log")
             cmd = _build_clipkit_cmd(msa_path, tmp_aa_out, mode=mode, codon=False,
                                      log_path=log_path, executable=executable)
-            _apply_extra_args(cmd, extra_args)
+            _apply_tool_args(cmd, tool_args)
 
             start = time.monotonic()
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -1288,7 +1288,7 @@ def _trim_one_clipkit(
         nt_primary = nt_out if nt_out else aa_out_dir / f"{gene_stem}.fa"
         cmd = _build_clipkit_cmd(msa_path, nt_primary, mode=mode, codon=True,
                                  log_path=None, executable=executable)
-        _apply_extra_args(cmd, extra_args)
+        _apply_tool_args(cmd, tool_args)
 
         if dry_run:
             return {"status": "dry_run", "input": str(msa_path), "cmd": cmd}
@@ -1337,7 +1337,7 @@ def _trim_one_clipkit(
     aa_out.parent.mkdir(parents=True, exist_ok=True)
     cmd = _build_clipkit_cmd(msa_path, aa_out, mode=mode, codon=False,
                              log_path=None, executable=executable)
-    _apply_extra_args(cmd, extra_args)
+    _apply_tool_args(cmd, tool_args)
 
     if dry_run:
         return {"status": "dry_run", "input": str(msa_path), "cmd": cmd}
@@ -1524,32 +1524,32 @@ def _trim_one_worker(
 
     args = (msa_path, aa_out_dir, nt_out_dir, nt_path,
             tool, seq_type, trimal_method,
-            clipkit_mode, bmge_matrix, bmge_entropy, extra_args,
+            clipkit_mode, bmge_matrix, bmge_entropy, tool_args,
             dry_run, trimal_exe, java_exe, bmge_jar, clipkit_exe)
     """
     (msa_path, aa_out_dir, nt_out_dir, nt_path,
      tool, seq_type, trimal_method,
-     clipkit_mode, bmge_matrix, bmge_entropy, extra_args,
+     clipkit_mode, bmge_matrix, bmge_entropy, tool_args,
      dry_run, trimal_exe, java_exe, bmge_jar, clipkit_exe) = args
 
     if tool == "trimal":
         return _trim_one_trimal(
             msa_path=msa_path, aa_out_dir=aa_out_dir, nt_out_dir=nt_out_dir,
             nt_path=nt_path, method=trimal_method, seq_type=seq_type,
-            extra_args=extra_args, dry_run=dry_run, executable=trimal_exe,
+            tool_args=tool_args, dry_run=dry_run, executable=trimal_exe,
         )
     elif tool == "bmge":
         return _trim_one_bmge(
             msa_path=msa_path, aa_out_dir=aa_out_dir, nt_out_dir=nt_out_dir,
             seq_type=seq_type, matrix=bmge_matrix, entropy=bmge_entropy,
-            extra_args=extra_args, dry_run=dry_run,
+            tool_args=tool_args, dry_run=dry_run,
             java_executable=java_exe, bmge_jar=bmge_jar,
         )
     else:  # clipkit
         return _trim_one_clipkit(
             msa_path=msa_path, aa_out_dir=aa_out_dir, nt_out_dir=nt_out_dir,
             nt_path=nt_path, mode=clipkit_mode, seq_type=seq_type,
-            extra_args=extra_args, dry_run=dry_run, executable=clipkit_exe,
+            tool_args=tool_args, dry_run=dry_run, executable=clipkit_exe,
         )
 
 
@@ -1639,7 +1639,7 @@ def run_trim(
     bmge_path: Path | None = None,
     clipkit_path: Path | None = None,
     threads: int = 4,
-    extra_args: str | None = None,
+    tool_args: str | None = None,
     overwrite: bool = False,
     resume: bool = False,
     dry_run: bool = False,
@@ -1726,7 +1726,7 @@ def run_trim(
         "bmge_entropy": bmge_entropy,
         "clipkit_mode": clipkit_mode,
         "threads": int(threads),
-        "extra_args": extra_args,
+        "tool_args": tool_args,
         "output_dir": str(output_dir),
         "bmge_mode4_downgrade": bmge_mode4_downgrade,
     }
@@ -1824,7 +1824,7 @@ def run_trim(
             _effective_msa(g), aa_out_dir, nt_out_dir,
             _nt_path_for(g) if not bmge_mode4_downgrade else None,
             tool, effective_seq_type_for_worker, trimal_method,
-            clipkit_mode, bmge_matrix, bmge_entropy, extra_args,
+            clipkit_mode, bmge_matrix, bmge_entropy, tool_args,
             dry_run, trimal_exe, java_exe, bmge_jar, clipkit_exe,
         )
         for g in found
@@ -2225,10 +2225,10 @@ Append to `phyloai/cli/commands/pretree.py` (after the `align_command` function)
               help="Explicit clipkit executable path; PATH lookup used when omitted.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of genes to trim in parallel.")
-@click.option("--extra-args", type=str, default=None,
+@click.option("--tool-args", type=str, default=None,
               help=(
                   "Extra arguments passed directly to the trimming tool. "
-                  "Conflicts with internal arguments are resolved by extra-args winning."
+                  "Conflicts with internal arguments are rejected as PhyloAI-managed flags."
               ))
 @click.option("--resume", is_flag=True, default=False,
               help=(
@@ -2256,7 +2256,7 @@ def trim_command(
     bmge_path: Path | None,
     clipkit_path: Path | None,
     threads: int,
-    extra_args: str | None,
+    tool_args: str | None,
     resume: bool,
     overwrite: bool,
     dry_run: bool,
@@ -2293,7 +2293,7 @@ def trim_command(
             bmge_path=bmge_path,
             clipkit_path=clipkit_path,
             threads=threads,
-            extra_args=extra_args,
+            tool_args=tool_args,
             overwrite=overwrite,
             resume=resume,
             dry_run=dry_run,

@@ -64,3 +64,5 @@ If some files are invalid, they are skipped and listed in the output. If all inp
 ## Notes
 
 Use `pretree convert` before `pretree stats` when raw input files may contain mixed formats or non-standard characters.
+
+Even if the source files are already FASTA, running `pretree convert --to fasta` is still recommended before downstream steps when the data source is uncertain. It re-checks parsing, normalizes sequence characters, and can catch malformed records, unexpected symbols, or other input problems early.

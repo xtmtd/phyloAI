@@ -26,7 +26,7 @@
 - `--seq-type` accepts `AA`, `NT`, or `auto`; default is `auto`. Auto-detection samples the first few genes and resolves to one molecule type before command construction. `--backtrans` still requires the resolved type to be `AA`.
 - `--method magus` is Linux-only in Phase 2 because the pip-distributed MAGUS bundle includes Linux binaries. Non-Linux platforms should fail early with a user-facing error.
 - Generated MSA files are validated through shared `core` sequence-output validation helpers before a gene is counted as aligned. Empty output, unparsable FASTA, zero FASTA records, empty sequences, or unequal sequence lengths are skipped with a recorded reason.
-- MAGUS `--extra-args` are tokenized with `shlex.split()`. Known internal MAGUS options (`-i`, `-o`, `-d`, `-np`, `--datatype`) are replaced when supplied by the user; all other extra args are appended unchanged.
+- MAGUS `--tool-args` are tokenized with `shlex.split()`. Known internal MAGUS options (`-i`, `-o`, `-d`, `-np`, `--datatype`) are replaced when supplied by the user; all other extra args are appended unchanged.
 - Parallel workers must be top-level functions or use top-level callables only. Do not submit nested/local functions to `ProcessPoolExecutor`, because that fails under macOS spawn semantics.
 - Backtranslation validation checks both CDS length and AA/CDS taxon identity. A matching taxon count alone is not sufficient.
 
@@ -156,7 +156,7 @@ def test_build_magus_cmd_aa(tmp_path: Path) -> None:
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "gene1_aln.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args=None)
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args=None)
 
     assert cmd[0] == "magus"
     assert "-i" in cmd
@@ -176,19 +176,19 @@ def test_build_magus_cmd_nt(tmp_path: Path) -> None:
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="NT", extra_args=None)
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="NT", tool_args=None)
 
     idx = cmd.index("--datatype")
     assert cmd[idx + 1] == "dna"
 
 
-def test_build_magus_cmd_extra_args(tmp_path: Path) -> None:
+def test_build_magus_cmd_tool_args(tmp_path: Path) -> None:
     from phyloai.pretree.align import _build_magus_cmd
 
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args="--maxsubsetsize 50 --recurse true")
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args="--maxsubsetsize 50 --recurse true")
 
     assert "--maxsubsetsize" in cmd
     assert "50" in cmd
@@ -196,21 +196,21 @@ def test_build_magus_cmd_extra_args(tmp_path: Path) -> None:
     assert "true" in cmd
 
 
-def test_build_magus_cmd_extra_args_override(tmp_path: Path) -> None:
+def test_build_magus_cmd_tool_args_override(tmp_path: Path) -> None:
     from phyloai.pretree.align import _build_magus_cmd
 
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    # --datatype is a known internal option, so extra_args should replace it.
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args="--datatype dna")
+    # --datatype is a known internal option, so tool_args should replace it.
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args="--datatype dna")
 
     pairs = list(zip(cmd, cmd[1:]))
     datatype_values = [b for a, b in pairs if a == "--datatype"]
     assert datatype_values == ["dna"]
 
 
-def test_build_magus_cmd_preserves_unknown_extra_args(tmp_path: Path) -> None:
+def test_build_magus_cmd_preserves_unknown_tool_args(tmp_path: Path) -> None:
     from phyloai.pretree.align import _build_magus_cmd
 
     inp = tmp_path / "gene1.fa"
@@ -221,7 +221,7 @@ def test_build_magus_cmd_preserves_unknown_extra_args(tmp_path: Path) -> None:
         out,
         work_dir=work,
         seq_type="AA",
-        extra_args="--maxsubsetsize 50 --recurse --some-flag=value",
+        tool_args="--maxsubsetsize 50 --recurse --some-flag=value",
     )
 
     assert cmd[-4:] == ["--maxsubsetsize", "50", "--recurse", "--some-flag=value"]
@@ -233,7 +233,7 @@ def test_build_magus_cmd_accepts_explicit_executable(tmp_path: Path) -> None:
     inp = tmp_path / "gene1.fa"
     out = tmp_path / "out.fa"
     work = tmp_path / "work"
-    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", extra_args=None, executable="/opt/bin/magus")
+    cmd = _build_magus_cmd(inp, out, work_dir=work, seq_type="AA", tool_args=None, executable="/opt/bin/magus")
 
     assert cmd[0] == "/opt/bin/magus"
 ```
@@ -340,10 +340,10 @@ def _build_magus_cmd(
     output_file: Path,
     work_dir: Path,
     seq_type: str,
-    extra_args: str | None,
+    tool_args: str | None,
     executable: str = "magus",
 ) -> list[str]:
-    """Build a magus command list with controlled extra_args overrides."""
+    """Build a magus command list with controlled tool_args overrides."""
     datatype = "protein" if seq_type == "AA" else "dna"
 
     internal: dict[str, str] = {
@@ -356,14 +356,14 @@ def _build_magus_cmd(
     known_internal = set(internal)
 
     # Replace only known internal options. Preserve all other MAGUS args unchanged.
-    extra: list[str] = shlex.split(extra_args) if extra_args else []
+    extra: list[str] = shlex.split(tool_args) if tool_args else []
     passthrough: list[str] = []
     i = 0
     while i < len(extra):
         token = extra[i]
         if token in known_internal:
             if i + 1 >= len(extra):
-                raise ValueError(f"MAGUS option {token!r} requires a value in --extra-args")
+                raise ValueError(f"MAGUS option {token!r} requires a value in --tool-args")
             internal[token] = extra[i + 1]
             i += 2
         else:
@@ -389,9 +389,9 @@ pytest tests/pretree/test_align.py::test_scan_input_finds_fasta_files \
        tests/pretree/test_align.py::test_build_mafft_cmd_ginsi \
        tests/pretree/test_align.py::test_build_magus_cmd_aa \
        tests/pretree/test_align.py::test_build_magus_cmd_nt \
-       tests/pretree/test_align.py::test_build_magus_cmd_extra_args \
-       tests/pretree/test_align.py::test_build_magus_cmd_extra_args_override \
-       tests/pretree/test_align.py::test_build_magus_cmd_preserves_unknown_extra_args \
+       tests/pretree/test_align.py::test_build_magus_cmd_tool_args \
+       tests/pretree/test_align.py::test_build_magus_cmd_tool_args_override \
+       tests/pretree/test_align.py::test_build_magus_cmd_preserves_unknown_tool_args \
        tests/pretree/test_align.py::test_build_magus_cmd_accepts_explicit_executable \
        -v
 ```
@@ -597,7 +597,7 @@ def test_align_one_mafft_linsi_produces_output(tmp_path: Path) -> None:
     out_dir.mkdir()
 
     result = _align_one(inp, out_dir, method="linsi", seq_type="AA",
-                        extra_args=None, dry_run=False)
+                        tool_args=None, dry_run=False)
 
     assert result["status"] == "success"
     assert Path(result["output_aa"]).exists()
@@ -615,7 +615,7 @@ def test_align_one_dry_run_creates_no_files(tmp_path: Path) -> None:
     out_dir.mkdir()
 
     result = _align_one(inp, out_dir, method="linsi", seq_type="AA",
-                        extra_args=None, dry_run=True)
+                        tool_args=None, dry_run=True)
 
     assert result["status"] == "dry_run"
     assert result["cmd"] is not None
@@ -632,7 +632,7 @@ def test_align_one_failed_tool_returns_skipped(tmp_path: Path) -> None:
     out_dir.mkdir()
 
     result = _align_one(inp, out_dir, method="linsi", seq_type="AA",
-                        extra_args=None, dry_run=False)
+                        tool_args=None, dry_run=False)
 
     assert result["status"] == "skipped"
     assert "reason" in result
@@ -696,7 +696,7 @@ def _align_one(
     output_dir: Path,
     method: str,
     seq_type: str,
-    extra_args: str | None,
+    tool_args: str | None,
     dry_run: bool,
     mafft_executable: str = "mafft",
     magus_executable: str = "magus",
@@ -708,7 +708,7 @@ def _align_one(
         cmd = _build_mafft_cmd(gene_path, out_aa, method, executable=mafft_executable)
     else:
         work_dir = Path(tempfile.mkdtemp(prefix="phyloai_magus_"))
-        cmd = _build_magus_cmd(gene_path, out_aa, work_dir, seq_type, extra_args, executable=magus_executable)
+        cmd = _build_magus_cmd(gene_path, out_aa, work_dir, seq_type, tool_args, executable=magus_executable)
 
     if dry_run:
         return {"status": "dry_run", "input": str(gene_path), "cmd": cmd}
@@ -794,13 +794,13 @@ def _align_one(
 
 def _align_one_worker(args: tuple[Path, Path, str, str, str | None, bool, str, str]) -> dict[str, Any]:
     """Top-level worker for ProcessPoolExecutor; required for macOS spawn."""
-    gene_path, output_dir, method, seq_type, extra_args, dry_run, mafft_exe, magus_exe = args
+    gene_path, output_dir, method, seq_type, tool_args, dry_run, mafft_exe, magus_exe = args
     return _align_one(
         gene_path,
         output_dir,
         method=method,
         seq_type=seq_type,
-        extra_args=extra_args,
+        tool_args=tool_args,
         dry_run=dry_run,
         mafft_executable=mafft_exe,
         magus_executable=magus_exe,
@@ -1019,7 +1019,7 @@ def test_run_align_nt_seq_type_with_backtrans_raises(tmp_path: Path) -> None:
                   seq_type="NT", backtrans=True, nt_dir=nt_dir)
 
 
-def test_run_align_extra_args_ignored_for_mafft_emits_warning(tmp_path: Path) -> None:
+def test_run_align_tool_args_ignored_for_mafft_emits_warning(tmp_path: Path) -> None:
     from phyloai.pretree.align import run_align
 
     seq_dir = tmp_path / "seqs"
@@ -1032,7 +1032,7 @@ def test_run_align_extra_args_ignored_for_mafft_emits_warning(tmp_path: Path) ->
         output_dir=out_dir,
         method="linsi",
         seq_type="AA",
-        extra_args="--maxsubsetsize 50",
+        tool_args="--maxsubsetsize 50",
         dry_run=True,
     )
 
@@ -1070,7 +1070,7 @@ pytest tests/pretree/test_align.py::test_run_align_aa_only_dry_run \
        tests/pretree/test_align.py::test_run_align_all_skipped_returns_error \
        tests/pretree/test_align.py::test_run_align_backtrans_requires_nt_dir \
        tests/pretree/test_align.py::test_run_align_nt_seq_type_with_backtrans_raises \
-       tests/pretree/test_align.py::test_run_align_extra_args_ignored_for_mafft_emits_warning \
+       tests/pretree/test_align.py::test_run_align_tool_args_ignored_for_mafft_emits_warning \
        -v
 ```
 
@@ -1093,7 +1093,7 @@ def run_align(
     backtrans: bool = False,
     nt_dir: Path | None = None,
     threads: int = 4,
-    extra_args: str | None = None,
+    tool_args: str | None = None,
     mafft_path: Path | None = None,
     magus_path: Path | None = None,
     trimal_path: Path | None = None,
@@ -1117,12 +1117,12 @@ def run_align(
         raise ValueError("--backtrans requires --seq-type AA (backtrans produces NT from AA alignment).")
 
     global_warnings: list[str] = []
-    if extra_args and method in MAFFT_METHODS:
+    if tool_args and method in MAFFT_METHODS:
         global_warnings.append(
-            f"--extra-args is ignored for MAFFT method '{method}'; "
+            f"--tool-args is ignored for MAFFT method '{method}'; "
             "it is only used with --method magus."
         )
-        extra_args = None
+        tool_args = None
 
     mafft_exe, magus_exe, trimal_exe = _resolve_tool_paths(
         method=method,
@@ -1168,7 +1168,7 @@ def run_align(
     file_results: list[dict[str, Any]] = []
 
     worker_args = [
-        (g, aa_out_dir, method, seq_type, extra_args, dry_run, mafft_exe, magus_exe)
+        (g, aa_out_dir, method, seq_type, tool_args, dry_run, mafft_exe, magus_exe)
         for g in found
     ]
     all_tool_results: list[dict[str, Any]] = []
@@ -1271,7 +1271,7 @@ def run_align(
             "nt_dir": str(nt_dir) if nt_dir else None,
             "output_dir": str(output_dir),
             "threads": threads,
-            "extra_args": extra_args,
+            "tool_args": tool_args,
             "mafft_path": str(mafft_path) if mafft_path else None,
             "magus_path": str(magus_path) if magus_path else None,
             "trimal_path": str(trimal_path) if trimal_path else None,
@@ -1382,7 +1382,7 @@ pytest tests/pretree/test_align.py::test_run_align_aa_only_dry_run \
        tests/pretree/test_align.py::test_run_align_all_skipped_returns_error \
        tests/pretree/test_align.py::test_run_align_backtrans_requires_nt_dir \
        tests/pretree/test_align.py::test_run_align_nt_seq_type_with_backtrans_raises \
-       tests/pretree/test_align.py::test_run_align_extra_args_ignored_for_mafft_emits_warning \
+       tests/pretree/test_align.py::test_run_align_tool_args_ignored_for_mafft_emits_warning \
        -v
 ```
 
@@ -1888,7 +1888,7 @@ Add the subcommand after the `convert` command block:
               help="Output directory; contains seqs/, align.log, result.json.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of genes to align in parallel (each uses 1 thread).")
-@click.option("--extra-args", type=str, default=None,
+@click.option("--tool-args", type=str, default=None,
               help="Extra arguments passed to magus only; ignored with a warning for MAFFT methods.")
 @click.option("--mafft-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
               help="Explicit MAFFT executable path for MAFFT methods; PATH lookup is used when omitted.")
@@ -1910,7 +1910,7 @@ def align_command(
     nt_dir: Path | None,
     output_dir: Path,
     threads: int,
-    extra_args: str | None,
+    tool_args: str | None,
     mafft_path: Path | None,
     magus_path: Path | None,
     trimal_path: Path | None,
@@ -1937,7 +1937,7 @@ def align_command(
             backtrans=backtrans,
             nt_dir=nt_dir,
             threads=threads,
-            extra_args=extra_args,
+            tool_args=tool_args,
             mafft_path=mafft_path,
             magus_path=magus_path,
             trimal_path=trimal_path,
@@ -2071,7 +2071,7 @@ phyloai pretree align \
 | `--nt-dir` | — | Unaligned CDS directory for backtrans |
 | `--output-dir` / `-o` | `runs/pretree/align` | Output directory |
 | `--threads` / `-t` | 4 | Concurrent alignment tasks (each uses 1 thread) |
-| `--extra-args` | — | Extra args for MAGUS only; ignored for MAFFT methods |
+| `--tool-args` | — | Extra args for MAGUS only; ignored for MAFFT methods |
 | `--mafft-path` | — | Explicit MAFFT executable path for MAFFT methods |
 | `--magus-path` | — | Explicit MAGUS executable path for `--method magus` |
 | `--trimal-path` | — | Explicit trimAl executable path for `--backtrans` |
@@ -2124,7 +2124,7 @@ phyloai pretree align --seq-dir ./raw_nt --seq-type NT --method linsi
 
 # MAGUS with extra options
 phyloai pretree align --seq-dir ./raw_aa --method magus \
-  --extra-args "--maxsubsetsize 200" --threads 4
+  --tool-args "--maxsubsetsize 200" --threads 4
 
 # Preview commands without running
 phyloai pretree align --seq-dir ./raw_aa --method linsi --dry-run
@@ -2146,7 +2146,7 @@ phyloai pretree align --seq-dir ./raw_aa --method linsi --dry-run
 | trimAl exits non-zero | Backtrans skipped for that gene, stderr captured as warning |
 | Generated MSA is empty, unparsable, or has unequal sequence lengths | Gene skipped with reason in result.json |
 | All genes fail | Exit 1 |
-| `--extra-args` used with MAFFT method | Warning printed, args ignored |
+| `--tool-args` used with MAFFT method | Warning printed, args ignored |
 
 ## Notes
 

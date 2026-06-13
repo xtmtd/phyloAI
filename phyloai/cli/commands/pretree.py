@@ -20,6 +20,7 @@ from phyloai.pretree.stats import (
     stats_directory,
     stats_single_file,
 )
+from phyloai.pretree.trim import render_trim_summary_table, run_trim, _scan_input as _trim_scan_input
 
 console = Console()
 
@@ -31,7 +32,7 @@ def _fail(message: str, exit_code: int) -> None:
 
 class _PretreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["convert", "stats", "align"]
+        return ["convert", "stats", "align", "trim"]
 
 
 @click.group(cls=_PretreeGroup)
@@ -384,8 +385,8 @@ def _write_per_gene_csv(results: list[dict], path: Path, fmt: str) -> None:
               help="Output directory; contains seqs/, align.log, result.json.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of genes to align in parallel (each uses 1 thread).")
-@click.option("--extra-args", type=str, default=None,
-              help="Extra arguments passed to magus only; ignored with a warning for MAFFT methods.")
+@click.option("--tool-args", type=str, default=None,
+              help="MAGUS strategy arguments only. PhyloAI manages input, output, work dir, datatype, and threads.")
 @click.option("--mafft-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
               help="Explicit MAFFT executable path for MAFFT methods; PATH lookup is used when omitted.")
 @click.option("--magus-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
@@ -412,7 +413,7 @@ def align_command(
     nt_dir: Path | None,
     output_dir: Path,
     threads: int,
-    extra_args: str | None,
+    tool_args: str | None,
     mafft_path: Path | None,
     magus_path: Path | None,
     trimal_path: Path | None,
@@ -440,7 +441,7 @@ def align_command(
             backtrans=backtrans,
             nt_dir=nt_dir,
             threads=threads,
-            extra_args=extra_args,
+            tool_args=tool_args,
             mafft_path=mafft_path,
             magus_path=magus_path,
             trimal_path=trimal_path,
@@ -508,7 +509,7 @@ def align_command(
                 backtrans=backtrans,
                 nt_dir=nt_dir,
                 threads=threads,
-                extra_args=extra_args,
+                tool_args=tool_args,
                 mafft_executable=mafft_exe,
                 magus_executable=magus_exe,
                 trimal_executable=trimal_exe,
@@ -541,3 +542,128 @@ def align_command(
         click.echo(f"Results saved to {result_path}", err=True)
         for w in payload["data"].get("warnings", []):
             click.echo(f"Warning: {w}", err=True)
+
+
+@pretree.command(
+    "trim",
+    help=(
+        "PhyloAI batch-trims aligned FASTA MSAs using trimAl, BMGE, or ClipKIT.\n\n"
+        "Modes are inferred from --seq-type and --nt-dir: AA-only, NT-only, "
+        "CODON, or AA+NT dual output. CODON produces seqs/faa and seqs/fna. "
+        "AA+NT mode: --msa-dir is aligned AA MSAs. trimAl accepts raw CDS or "
+        "gapped codon-aligned NT in --nt-dir because PhyloAI strips NT gaps "
+        "before backtranslation. ClipKIT and BMGE expect codon-aligned NT MSAs."
+    ),
+)
+@click.option("--msa-dir", type=click.Path(file_okay=False, path_type=Path), required=True, help="Input directory of aligned MSA files. In AA+NT mode, this is the aligned AA MSA directory; --nt-dir supplies matching NT/CDS files.")
+@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/trim"), show_default=True, help="Output directory; contains seqs/, trim.log, checkpoint.json, result.json.")
+@click.option("--tool", type=click.Choice(["trimal", "bmge", "clipkit"]), default="trimal", show_default=True, help="Trimming tool to use.")
+@click.option("--seq-type", type=click.Choice(["AA", "NT", "CODON", "auto"]), default="auto", show_default=True, help="Molecule type. 'auto' detects AA vs NT only; CODON must be explicit.")
+@click.option("--nt-dir", type=click.Path(file_okay=False, path_type=Path), default=None, help="NT directory for AA+NT dual output. trimAl accepts raw CDS or gapped codon-aligned NT because PhyloAI strips NT gaps before backtranslation; ClipKIT/BMGE expect codon-aligned NT MSAs.")
+@click.option("--trimal-method", type=click.Choice(["automated1", "gappyout", "strict", "strictplus"]), default="automated1", show_default=True, help="trimAl automated trimming strategy.")
+@click.option("--bmge-matrix", type=str, default=None, help="BMGE substitution matrix (-m). Defaults: AA/CODON=BLOSUM62; NT=DNAPAM100:2. Common AA options include BLOSUM30, BLOSUM62, BLOSUM90; common NT options include DNAPAM100:2.")
+@click.option("--bmge-entropy", type=float, default=0.5, show_default=True, help="BMGE entropy cutoff (-h). Lower values are more stringent.")
+@click.option("--clipkit-method", type=click.Choice(["smart-gap", "entropy", "gappy", "block-gappy", "gappyout", "composition-bias", "heterotachy", "kpic", "kpic-smart-gap", "kpic-gappy", "kpi", "kpi-smart-gap", "kpi-gappy", "cst", "c3"]), default="smart-gap", show_default=True, help="ClipKIT trimming mode (-m).")
+@click.option("--trimal-path", type=click.Path(dir_okay=False, path_type=Path), default=None, help="Explicit trimAl executable path.")
+@click.option("--bmge-path", type=click.Path(dir_okay=False, path_type=Path), default=None, help="Explicit BMGE.jar path.")
+@click.option("--clipkit-path", type=click.Path(dir_okay=False, path_type=Path), default=None, help="Explicit clipkit executable path.")
+@click.option("--threads", "-t", type=int, default=4, show_default=True, help="Number of genes to trim in parallel.")
+@click.option("--tool-args", type=str, default=None, help='Tool strategy arguments only. PhyloAI manages input/output/log/codon/threads, e.g. --tool-args "-g 0.8" for ClipKIT or --tool-args "-m BLOSUM90 -h 0.4" for BMGE.')
+@click.option("--resume", is_flag=True, default=False, help="Resume from checkpoint.json in the output directory.")
+@click.option("--overwrite", is_flag=True, default=False, help="Delete and recreate a non-empty output directory before running.")
+@click.option("--dry-run", is_flag=True, default=False, help="Print commands without executing; creates no files.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress Rich terminal output except errors.")
+def trim_command(
+    msa_dir: Path,
+    output_dir: Path,
+    tool: str,
+    seq_type: str,
+    nt_dir: Path | None,
+    trimal_method: str,
+    bmge_matrix: str | None,
+    bmge_entropy: float,
+    clipkit_method: str,
+    trimal_path: Path | None,
+    bmge_path: Path | None,
+    clipkit_path: Path | None,
+    threads: int,
+    tool_args: str | None,
+    resume: bool,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    if threads < 1:
+        _fail("--threads must be at least 1.", 1)
+    if not msa_dir.exists():
+        _fail(f"--msa-dir '{msa_dir}' does not exist.", 1)
+    if nt_dir is not None and not nt_dir.exists():
+        _fail(f"--nt-dir '{nt_dir}' does not exist.", 1)
+    for flag, path in [("--trimal-path", trimal_path), ("--bmge-path", bmge_path), ("--clipkit-path", clipkit_path)]:
+        if path is not None and not path.exists():
+            _fail(f"{flag} '{path}' does not exist.", 1)
+
+    payload: dict | None = None
+    error_msg: str | None = None
+
+    def _invoke(progress_callback=None):
+        return run_trim(
+            msa_dir=msa_dir,
+            output_dir=output_dir,
+            tool=tool,
+            seq_type=seq_type,
+            nt_dir=nt_dir,
+            trimal_method=trimal_method,
+            bmge_matrix=bmge_matrix,
+            bmge_entropy=bmge_entropy,
+            clipkit_mode=clipkit_method,
+            trimal_path=trimal_path,
+            bmge_path=bmge_path,
+            clipkit_path=clipkit_path,
+            threads=threads,
+            tool_args=tool_args,
+            overwrite=overwrite,
+            resume=resume,
+            dry_run=dry_run,
+            quiet=quiet,
+            progress_callback=progress_callback,
+        )
+
+    if not quiet and not dry_run:
+        found, _ = _trim_scan_input(msa_dir)
+        with Progress(console=console, transient=True) as progress:
+            task = progress.add_task("Trimming alignments", total=len(found))
+            try:
+                payload = _invoke(progress_callback=lambda _path: progress.advance(task))
+            except (ValueError, FileNotFoundError) as exc:
+                error_msg = str(exc)
+    else:
+        try:
+            payload = _invoke()
+        except (ValueError, FileNotFoundError) as exc:
+            error_msg = str(exc)
+
+    if error_msg is not None:
+        if "No genes were trimmed" in error_msg:
+            exit_code = 2
+        else:
+            exit_code = 3 if "not found" in error_msg.lower() else 1
+        _fail(error_msg, exit_code)
+
+    if dry_run:
+        click.echo(f"Dry run: {payload['data']['summary']['n_input_files']} genes would be trimmed.")
+        for cmd_str in payload["data"].get("dry_run_cmds", []):
+            click.echo(cmd_str)
+        return
+
+    result_path = output_dir / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+
+    if not quiet:
+        console.print(render_trim_summary_table(payload["data"]["summary"]))
+        click.echo(f"Trimmed alignments saved to {output_dir / 'seqs'}", err=True)
+        click.echo(f"Results saved to {result_path}", err=True)
+        for warning in payload["data"].get("warnings", []):
+            click.echo(f"Warning: {warning}", err=True)

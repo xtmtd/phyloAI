@@ -177,7 +177,7 @@ Site pattern computation excludes gap/missing/ambiguous characters when determin
 | `--threads`       | `-t`  | int      | 4           | directory mode only: files processed in parallel (ProcessPoolExecutor) |
 | `--quiet`         | `-q`  | flag     | False       | suppress all output except errors                        |
 
-No `--extra-args` (no external tool invoked).  
+No external tool strategy argument flag is needed (no external tool invoked).  
 No `--overwrite` (read-only command, no output directory created).
 
 ---
