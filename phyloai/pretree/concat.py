@@ -333,9 +333,12 @@ def _render_concat_panels(overview: dict[str, Any], variant_stats: list[dict[str
             if metric in ("seq_type", "total_length"):
                 row.append(str(v.get(metric, "")))
             else:
-                cs = v.get("character_summary", {})
-                val = cs.get(metric, "")
-                row.append(f"{val:.4f}" if isinstance(val, float) else str(val))
+                cs = v.get("character_summary")
+                if cs is None:
+                    row.append("\u2014")
+                else:
+                    val = cs.get(metric, "")
+                    row.append(f"{val:.4f}" if isinstance(val, float) else str(val))
         char_table.add_row(*row)
 
     site_table = Table(title="Site Patterns")
@@ -347,8 +350,10 @@ def _render_concat_panels(overview: dict[str, Any], variant_stats: list[dict[str
     for metric in site_metrics:
         row = [metric]
         for v in variant_stats:
-            sp = v.get("site_patterns", {})
-            if metric == "alignment_length":
+            sp = v.get("site_patterns")
+            if sp is None:
+                row.append("\u2014")
+            elif metric == "alignment_length":
                 row.append(str(sp.get(metric, "")))
             else:
                 entry = sp.get(metric, {})
@@ -482,7 +487,7 @@ def run_concat(
         })
 
     if recoding:
-        recoded_seq_type = "NT" if recoding in NT_RECODING_TABLES else "AA"
+        recoded_seq_type = "other"
         recoded_matrix, rw = _apply_recoding(matrix, recoding)
         recoding_warnings = rw
         recoded_matrix = _reorder_outgroup(recoded_matrix, outgroup)
@@ -551,13 +556,13 @@ def run_concat(
         "site_patterns": orig_stats["site_patterns"],
     })
     if recoding:
-        rec_stats = _compute_concat_stats(recoded_matrix, recoded_seq_type)
+        recoded_len = len(list(recoded_matrix.values())[0]) if recoded_matrix else 0
         variant_stats.append({
             "variant": "recoded",
             "seq_type": recoded_seq_type,
-            "total_length": rec_stats["alignment_length"],
-            "character_summary": rec_stats["character_summary"],
-            "site_patterns": rec_stats["site_patterns"],
+            "total_length": recoded_len,
+            "character_summary": None,
+            "site_patterns": None,
         })
     if resolved_seq_type == "CODON" and translate_codon:
         tr_stats = _compute_concat_stats(translated_matrix, "AA")
