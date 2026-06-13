@@ -84,19 +84,5 @@ Fish loads completions from that directory automatically in new shells, so you d
 | `phyloai doctor` | Inspect external tool availability. | [docs/commands/doctor.md](docs/commands/doctor.md) |
 | `phyloai pretree convert` | Normalize and convert sequence files before downstream analysis. | [docs/commands/pretree-convert.md](docs/commands/pretree-convert.md) |
 | `phyloai pretree stats`   | Inspect one sequence/alignment file or summarize a directory of files. | [docs/commands/pretree-stats.md](docs/commands/pretree-stats.md)     |
-| `phyloai pretree align`   | Align sequences with MAFFT or MAGUS. `--resume` supported for long runs. | [docs/commands/pretree-align.md](docs/commands/pretree-align.md)     |
-| `phyloai pretree trim`    | Batch-trim aligned MSAs with PhyloAI using trimAl, BMGE, or ClipKIT backends. `--resume` supported for long runs. | [docs/commands/pretree-trim.md](docs/commands/pretree-trim.md)       |
-
-## Pretree Trim
-
-`phyloai pretree trim` is PhyloAI's batch MSA-trimming command for already aligned FASTA inputs. It runs one trimming workflow per gene with the selected backend tool and writes structured results to `result.json`.
-
-```bash
-phyloai pretree trim --msa-dir ./runs/pretree/align/seqs
-```
-
-For AA+NT paired output, `--msa-dir` should contain aligned AA MSAs and `--nt-dir` should contain matching NT files by stem:
-
-- `trimAl`: `--nt-dir` may contain raw CDS or gapped codon-aligned NT files. PhyloAI strips NT gaps before `-backtrans`.
-- `BMGE`: `--nt-dir` should contain codon-aligned NT MSAs. PhyloAI trims AA first, then projects kept columns to NT.
-- `ClipKIT`: `--nt-dir` should contain codon-aligned NT MSAs. PhyloAI trims AA first, then projects kept columns to NT.
+| `phyloai pretree align`   | Align sequences with MAFFT or MAGUS. | [docs/commands/pretree-align.md](docs/commands/pretree-align.md)     |
+| `phyloai pretree trim`    | Batch-trim aligned MSAs with PhyloAI using trimAl, BMGE, or ClipKIT backends. | [docs/commands/pretree-trim.md](docs/commands/pretree-trim.md)       |
