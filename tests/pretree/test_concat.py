@@ -299,3 +299,27 @@ def test_reorder_outgroup_none_returns_unchanged() -> None:
     matrix = {"A": "ACGT", "B": "ACGT"}
     result = _reorder_outgroup(matrix, None)
     assert list(result.keys()) == ["A", "B"]
+
+
+def test_write_matrix_fasta(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_matrix
+
+    matrix = {"tax1": "ACGT", "tax2": "ACGT"}
+    out_path = tmp_path / "out.fa"
+    _write_matrix(matrix, out_path, "fasta", "NT")
+
+    content = out_path.read_text()
+    assert ">tax1" in content
+    assert "ACGT" in content
+
+
+def test_write_matrix_phylip_relaxed(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_matrix
+
+    matrix = {"tax1": "ACGT", "tax2": "ACGT"}
+    out_path = tmp_path / "out.phy"
+    _write_matrix(matrix, out_path, "phylip-relaxed", "NT")
+
+    content = out_path.read_text()
+    assert "2 4" in content
+    assert "tax1" in content

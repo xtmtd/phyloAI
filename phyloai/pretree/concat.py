@@ -257,3 +257,17 @@ def _reorder_outgroup(matrix: dict[str, str], outgroup: str | None) -> dict[str,
         if taxon != outgroup:
             reordered[taxon] = seq
     return reordered
+
+
+def _write_matrix(
+    matrix: dict[str, str],
+    out_path: Path,
+    target_format: str,
+    seq_type: str,
+) -> list[dict[str, str]]:
+    fmt = AlignmentFormat(target_format)
+    records = [SeqRecord(Seq(seq), id=taxon, description="") for taxon, seq in matrix.items()]
+    alignment = MultipleSeqAlignment(records)
+    molecule_type = "protein" if seq_type == "AA" else "DNA"
+    converter = FormatConverter()
+    return converter.write_alignment(alignment, out_path, fmt, molecule_type=molecule_type)
