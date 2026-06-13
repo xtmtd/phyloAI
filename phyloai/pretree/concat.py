@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import shutil
+import time
 from pathlib import Path
 from typing import Any
 
 from Bio.Align import MultipleSeqAlignment
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from rich.panel import Panel
+from rich.table import Table
 
 from phyloai.core.formats import AlignmentFormat, FormatConverter
 from phyloai.core.schema import COMMON_ALIGNMENT_EXTENSIONS
@@ -273,10 +278,6 @@ def _write_matrix(
     return converter.write_alignment(alignment, out_path, fmt, molecule_type=molecule_type)
 
 
-from rich.panel import Panel
-from rich.table import Table
-
-
 def _compute_concat_stats(matrix: dict[str, str], seq_type: str) -> dict[str, Any]:
     from phyloai.pretree.stats import compute_site_patterns, _summarize_per_taxon, per_taxon_stats
 
@@ -343,11 +344,6 @@ def _render_concat_panels(stats: dict[str, Any]) -> list[Panel]:
         Panel(character, title="Character Summary"),
         Panel(site_table, title="Site Patterns"),
     ]
-
-
-import json
-import shutil
-import time
 
 
 def run_concat(

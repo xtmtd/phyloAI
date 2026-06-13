@@ -375,7 +375,6 @@ def test_render_concat_panels_shows_all_overview_fields() -> None:
 
 def test_render_concat_panels_hides_recoding_when_none() -> None:
     from phyloai.pretree.concat import _render_concat_panels
-    from rich.panel import Panel
 
     stats = {
         "prefix": "matrix",
@@ -436,3 +435,141 @@ def test_run_concat_basic(tmp_path: Path) -> None:
     assert ">A" in content
     assert "ACGTGGCC" in content
     assert (output_dir / "concat.log").exists()
+
+
+def test_run_concat_with_recoding_and_warnings(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    payload = run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.0, recoding="RY-nucleotide",
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=False, overwrite=False,
+    )
+
+    assert payload["status"] == "success"
+    recoded_path = output_dir / "matrix.recoded.fa"
+    assert recoded_path.exists()
+    content = recoded_path.read_text()
+    assert "RYRY" in content
+    assert "recoding_warnings" in payload["data"]
+
+
+def test_run_concat_occupancy_filtering(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n>C\nACGT\n")
+    (msa_dir / "gene2.fa").write_text(">A\nGGCC\n")
+
+    output_dir = tmp_path / "out"
+    payload = run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.5, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=False, overwrite=False,
+    )
+
+    assert payload["key_results"]["n_msa_used"] == 1
+    assert payload["key_results"]["n_msa_dropped"] == 1
+    assert (output_dir / "dropped_alignments.csv").exists()
+
+
+def test_run_concat_outgroup_reordering(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n>C\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.0, recoding=None,
+        outgroup="C", to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=False, overwrite=False,
+    )
+
+    content = (output_dir / "matrix.fa").read_text()
+    lines = content.strip().split("\n")
+    assert lines[0] == ">C"
+
+
+def test_run_concat_dry_run_writes_no_files(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    payload = run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.0, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=True, overwrite=False,
+    )
+
+    assert payload["status"] == "success"
+    assert payload["key_results"]["n_taxa"] == 2
+    assert not (output_dir / "matrix.fa").exists()
+    assert not (output_dir / "result.json").exists()
+    assert not (output_dir / "concat.log").exists()
+
+
+def test_run_concat_recoding_validation_rejects_aa_scheme_on_nt(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match="requires AA seq_type"):
+        run_concat(
+            msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+            seq_type="NT", taxa_occupancy=0.0, recoding="Dayhoff-6",
+            outgroup=None, to_format="fasta",
+            translate_codon=False, exclude_codon3=False,
+            dry_run=False, overwrite=False,
+        )
+
+
+def test_run_concat_output_dir_conflict(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    (output_dir / "old.txt").write_text("old")
+
+    with pytest.raises(ValueError, match="non-empty"):
+        run_concat(
+            msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+            seq_type="NT", taxa_occupancy=0.0, recoding=None,
+            outgroup=None, to_format="fasta",
+            translate_codon=False, exclude_codon3=False,
+            dry_run=False, overwrite=False,
+        )
+
+    payload = run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.0, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=False, overwrite=True,
+    )
+    assert payload["status"] == "success"
