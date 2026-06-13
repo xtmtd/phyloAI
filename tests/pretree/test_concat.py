@@ -79,3 +79,42 @@ def test_apply_recoding_ry_nucleotide() -> None:
     matrix = {"tax1": "ACGTN--?."}
     recoded, warnings = _apply_recoding(matrix, "RY-nucleotide")
     assert recoded["tax1"] == "RYRY?--?."
+
+
+def test_translate_codon_standard_genetic_code() -> None:
+    from phyloai.pretree.concat import _translate_codon
+
+    assert _translate_codon("ATGCGTAAA") == "MRK"
+    assert _translate_codon("TTTGGGCCC") == "FGP"
+
+
+def test_translate_codon_with_gaps_preserves_codon_structure() -> None:
+    from phyloai.pretree.concat import _translate_codon
+
+    assert _translate_codon("ATG---AAA") == "M-K"
+    assert _translate_codon("---ATGCGT") == "-MR"
+    assert _translate_codon("ATG-AA-TAA") == "M--"
+
+
+def test_translate_codon_trims_incomplete_codon_at_end() -> None:
+    from phyloai.pretree.concat import _translate_codon
+
+    assert _translate_codon("ATGCG") == "M"
+
+
+def test_translate_codon_all_gaps_then_bases() -> None:
+    from phyloai.pretree.concat import _translate_codon
+
+    assert _translate_codon("---ATGAAA") == "-MK"
+
+
+def test_exclude_codon3_drops_every_third_position() -> None:
+    from phyloai.pretree.concat import _exclude_codon3
+
+    assert _exclude_codon3("ATGCGTAAATTT") == "ATCGAATT"
+
+
+def test_exclude_codon3_preserves_gaps_at_kept_positions() -> None:
+    from phyloai.pretree.concat import _exclude_codon3
+
+    assert _exclude_codon3("A-GC-T---") == "A-C---"

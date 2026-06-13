@@ -153,3 +153,19 @@ def _apply_recoding(
                 )
         result[taxon] = "".join(chars)
     return result, sorted(warnings_set)
+
+
+def _translate_codon(seq: str) -> str:
+    n_complete = (len(seq) // 3) * 3
+    result: list[str] = []
+    for i in range(0, n_complete, 3):
+        codon = seq[i:i + 3]
+        if "-" in codon:
+            result.append("-")
+        else:
+            result.append(str(Seq(codon).translate()))
+    return "".join(result)
+
+
+def _exclude_codon3(seq: str) -> str:
+    return "".join(ch for i, ch in enumerate(seq) if i % 3 != 2)
