@@ -118,3 +118,77 @@ def test_exclude_codon3_preserves_gaps_at_kept_positions() -> None:
     from phyloai.pretree.concat import _exclude_codon3
 
     assert _exclude_codon3("A-GC-T---") == "A-C---"
+
+
+def test_scan_msa_files_finds_supported_extensions(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _scan_msa_files
+
+    (tmp_path / "gene1.fa").write_text(">a\nACGT\n")
+    (tmp_path / "gene2.fasta").write_text(">a\nACGT\n")
+    (tmp_path / "gene3.phy").write_text("2 4\na ACGT\nb ACGT\n")
+    (tmp_path / "notes.txt").write_text("not an alignment")
+    (tmp_path / "subdir").mkdir()
+
+    found = _scan_msa_files(tmp_path)
+    names = sorted(p.name for p in found)
+    assert names == ["gene1.fa", "gene2.fasta", "gene3.phy"]
+
+
+def test_scan_msa_files_empty_dir_returns_empty(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _scan_msa_files
+
+    assert _scan_msa_files(tmp_path) == []
+
+
+def test_read_msa_fasta(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _read_msa
+
+    msa_path = tmp_path / "gene.fa"
+    msa_path.write_text(">tax1\nACGT\n>tax2\nACGT\n")
+
+    taxa, seqs, length = _read_msa(msa_path)
+    assert taxa == ["tax1", "tax2"]
+    assert seqs == ["ACGT", "ACGT"]
+    assert length == 4
+
+
+def test_read_msa_phylip_paml(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _read_msa
+
+    msa_path = tmp_path / "gene.phy"
+    msa_path.write_text("2 4\ntax1  ACGT\ntax2  ACGT\n")
+
+    taxa, seqs, length = _read_msa(msa_path)
+    assert taxa == ["tax1", "tax2"]
+    assert seqs == ["ACGT", "ACGT"]
+    assert length == 4
+
+
+def test_read_msa_headers_fasta(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _read_msa_headers
+
+    msa_path = tmp_path / "gene.fa"
+    msa_path.write_text(">tax1\nACGT\n>tax2\nGGCC\n")
+
+    taxa = _read_msa_headers(msa_path)
+    assert taxa == ["tax1", "tax2"]
+
+
+def test_read_msa_headers_phylip(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _read_msa_headers
+
+    msa_path = tmp_path / "gene.phy"
+    msa_path.write_text("2 4\ntax1  ACGT\ntax2  ACGT\n")
+
+    taxa = _read_msa_headers(msa_path)
+    assert taxa == ["tax1", "tax2"]
+
+
+def test_read_msa_headers_is_fast_and_does_not_parse_sequences(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _read_msa_headers
+
+    msa_path = tmp_path / "big.fa"
+    msa_path.write_text(">tax1\n" + ("A" * 10000 + "\n") * 100)
+
+    taxa = _read_msa_headers(msa_path)
+    assert taxa == ["tax1"]

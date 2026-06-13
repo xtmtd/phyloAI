@@ -169,3 +169,37 @@ def _translate_codon(seq: str) -> str:
 
 def _exclude_codon3(seq: str) -> str:
     return "".join(ch for i, ch in enumerate(seq) if i % 3 != 2)
+
+
+def _scan_msa_files(msa_dir: Path) -> list[Path]:
+    found = []
+    for ext in COMMON_ALIGNMENT_EXTENSIONS:
+        found.extend(msa_dir.glob(f"*{ext}"))
+    return sorted(set(found))
+
+
+def _read_msa(path: Path) -> tuple[list[str], list[str], int]:
+    converter = FormatConverter()
+    fmt = converter.detect(path)
+    alignment = converter.read(path, source_format=fmt)
+    taxa = [record.id for record in alignment]
+    seqs = [str(record.seq).upper() for record in alignment]
+    length = alignment.get_alignment_length()
+    return taxa, seqs, length
+
+
+def _read_msa_headers(path: Path) -> list[str]:
+    suffix = path.suffix.lower()
+    if suffix in (".fa", ".faa", ".ffn", ".frn", ".fasta", ".fas"):
+        ids = []
+        with open(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith(">"):
+                    ids.append(line[1:].split(None, 1)[0])
+        return ids
+    else:
+        converter = FormatConverter()
+        fmt = converter.detect(path)
+        alignment = converter.read(path, source_format=fmt)
+        return [record.id for record in alignment]
