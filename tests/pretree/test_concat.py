@@ -192,3 +192,68 @@ def test_read_msa_headers_is_fast_and_does_not_parse_sequences(tmp_path: Path) -
 
     taxa = _read_msa_headers(msa_path)
     assert taxa == ["tax1"]
+
+
+def test_filter_by_occupancy_keeps_msas_at_or_above_threshold(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _filter_by_occupancy
+
+    msa_paths = [tmp_path / "gene1.fa", tmp_path / "gene2.fa", tmp_path / "gene3.fa"]
+    msa_taxa = {
+        str(msa_paths[0]): {"A", "B", "C", "D"},
+        str(msa_paths[1]): {"A", "B", "C", "D"},
+        str(msa_paths[2]): {"A", "B"},
+    }
+    total_taxa = {"A", "B", "C", "D"}
+
+    kept, dropped = _filter_by_occupancy(msa_paths, msa_taxa, total_taxa, 0.5)
+    assert len(kept) == 3
+    assert len(dropped) == 0
+
+
+def test_filter_by_occupancy_drops_msas_below_threshold(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _filter_by_occupancy
+
+    msa_paths = [tmp_path / "gene1.fa", tmp_path / "gene2.fa", tmp_path / "gene3.fa"]
+    msa_taxa = {
+        str(msa_paths[0]): {"A", "B", "C", "D"},
+        str(msa_paths[1]): {"A", "B", "C"},
+        str(msa_paths[2]): {"A"},
+    }
+    total_taxa = {"A", "B", "C", "D"}
+
+    kept, dropped = _filter_by_occupancy(msa_paths, msa_taxa, total_taxa, 0.5)
+    assert len(kept) == 2
+    assert msa_paths[0] in kept
+    assert msa_paths[1] in kept
+    assert len(dropped) == 1
+    assert dropped[0]["filename"] == "gene3.fa"
+    assert dropped[0]["n_taxa"] == 1
+    assert dropped[0]["occupancy_ratio"] == 0.25
+
+
+def test_filter_by_occupancy_zero_keeps_all(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _filter_by_occupancy
+
+    msa_paths = [tmp_path / "gene1.fa"]
+    msa_taxa = {str(msa_paths[0]): {"A"}}
+    total_taxa = {"A", "B", "C", "D"}
+
+    kept, dropped = _filter_by_occupancy(msa_paths, msa_taxa, total_taxa, 0.0)
+    assert len(kept) == 1
+    assert len(dropped) == 0
+
+
+def test_filter_by_occupancy_one_keeps_only_full(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _filter_by_occupancy
+
+    msa_paths = [tmp_path / "gene1.fa", tmp_path / "gene2.fa"]
+    msa_taxa = {
+        str(msa_paths[0]): {"A", "B", "C"},
+        str(msa_paths[1]): {"A", "B"},
+    }
+    total_taxa = {"A", "B", "C"}
+
+    kept, dropped = _filter_by_occupancy(msa_paths, msa_taxa, total_taxa, 1.0)
+    assert len(kept) == 1
+    assert msa_paths[0] in kept
+    assert len(dropped) == 1

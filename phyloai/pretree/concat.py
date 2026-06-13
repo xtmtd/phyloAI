@@ -203,3 +203,28 @@ def _read_msa_headers(path: Path) -> list[str]:
         fmt = converter.detect(path)
         alignment = converter.read(path, source_format=fmt)
         return [record.id for record in alignment]
+
+
+def _filter_by_occupancy(
+    msa_paths: list[Path],
+    msa_taxa: dict[str, set[str]],
+    total_taxa: set[str],
+    threshold: float,
+) -> tuple[list[Path], list[dict[str, Any]]]:
+    n_total = len(total_taxa)
+    kept: list[Path] = []
+    dropped: list[dict[str, Any]] = []
+    for path in msa_paths:
+        taxa = msa_taxa[str(path)]
+        n_taxa = len(taxa)
+        ratio = n_taxa / n_total if n_total > 0 else 0.0
+        if ratio >= threshold:
+            kept.append(path)
+        else:
+            dropped.append({
+                "filename": path.name,
+                "n_taxa": n_taxa,
+                "occupancy_ratio": round(ratio, 4),
+                "total_taxa": n_total,
+            })
+    return kept, dropped
