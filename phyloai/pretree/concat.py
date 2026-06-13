@@ -482,15 +482,16 @@ def run_concat(
         })
 
     if recoding:
+        recoded_seq_type = "NT" if recoding in NT_RECODING_TABLES else "AA"
         recoded_matrix, rw = _apply_recoding(matrix, recoding)
         recoding_warnings = rw
         recoded_matrix = _reorder_outgroup(recoded_matrix, outgroup)
         if not dry_run:
             recoded_path = output_dir / f"{prefix}.recoded{ext}"
-            _write_matrix(recoded_matrix, recoded_path, to_format, resolved_seq_type)
+            _write_matrix(recoded_matrix, recoded_path, to_format, recoded_seq_type)
             variants.append({
                 "variant": "recoded", "path": str(recoded_path),
-                "seq_type": resolved_seq_type,
+                "seq_type": recoded_seq_type,
                 "length": len(list(recoded_matrix.values())[0]) if recoded_matrix else 0,
             })
 
@@ -550,10 +551,10 @@ def run_concat(
         "site_patterns": orig_stats["site_patterns"],
     })
     if recoding:
-        rec_stats = _compute_concat_stats(recoded_matrix, resolved_seq_type)
+        rec_stats = _compute_concat_stats(recoded_matrix, recoded_seq_type)
         variant_stats.append({
             "variant": "recoded",
-            "seq_type": resolved_seq_type,
+            "seq_type": recoded_seq_type,
             "total_length": rec_stats["alignment_length"],
             "character_summary": rec_stats["character_summary"],
             "site_patterns": rec_stats["site_patterns"],
