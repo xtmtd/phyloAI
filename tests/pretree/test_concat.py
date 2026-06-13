@@ -257,3 +257,45 @@ def test_filter_by_occupancy_one_keeps_only_full(tmp_path: Path) -> None:
     assert len(kept) == 1
     assert msa_paths[0] in kept
     assert len(dropped) == 1
+
+
+def test_concat_alignments_builds_supermatrix(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _concat_alignments
+
+    msa_paths = [tmp_path / "gene1.fa", tmp_path / "gene2.fa"]
+    msa_data = {
+        str(msa_paths[0]): (["A", "B"], ["ACGT", "ACGT"], 4),
+        str(msa_paths[1]): (["A", "C"], ["GGCC", "GGCC"], 4),
+    }
+    total_taxa = {"A", "B", "C"}
+
+    matrix, taxon_order = _concat_alignments(msa_paths, msa_data, total_taxa)
+    assert set(matrix.keys()) == {"A", "B", "C"}
+    assert matrix["A"] == "ACGTGGCC"
+    assert matrix["B"] == "ACGT????"
+    assert matrix["C"] == "????GGCC"
+    assert taxon_order == ["A", "B", "C"]
+
+
+def test_reorder_outgroup_moves_taxon_to_first() -> None:
+    from phyloai.pretree.concat import _reorder_outgroup
+
+    matrix = {"A": "ACGT", "B": "ACGT", "C": "ACGT"}
+    reordered = _reorder_outgroup(matrix, "B")
+    assert list(reordered.keys())[0] == "B"
+
+
+def test_reorder_outgroup_not_found_raises() -> None:
+    from phyloai.pretree.concat import _reorder_outgroup
+
+    matrix = {"A": "ACGT", "B": "ACGT"}
+    with pytest.raises(ValueError, match="Outgroup taxon 'X' not found"):
+        _reorder_outgroup(matrix, "X")
+
+
+def test_reorder_outgroup_none_returns_unchanged() -> None:
+    from phyloai.pretree.concat import _reorder_outgroup
+
+    matrix = {"A": "ACGT", "B": "ACGT"}
+    result = _reorder_outgroup(matrix, None)
+    assert list(result.keys()) == ["A", "B"]

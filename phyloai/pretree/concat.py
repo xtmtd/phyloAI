@@ -228,3 +228,32 @@ def _filter_by_occupancy(
                 "total_taxa": n_total,
             })
     return kept, dropped
+
+
+def _concat_alignments(
+    msa_paths: list[Path],
+    msa_data: dict[str, tuple[list[str], list[str], int]],
+    total_taxa: set[str],
+) -> tuple[dict[str, str], list[str]]:
+    matrix: dict[str, list[str]] = {taxon: [] for taxon in total_taxa}
+    for path in msa_paths:
+        taxa, seqs, length = msa_data[str(path)]
+        taxon_to_seq = dict(zip(taxa, seqs))
+        for taxon in total_taxa:
+            seq = taxon_to_seq.get(taxon, "?" * length)
+            matrix[taxon].append(seq)
+    concatenated = {taxon: "".join(parts) for taxon, parts in matrix.items()}
+    taxon_order = sorted(total_taxa)
+    return concatenated, taxon_order
+
+
+def _reorder_outgroup(matrix: dict[str, str], outgroup: str | None) -> dict[str, str]:
+    if outgroup is None:
+        return matrix
+    if outgroup not in matrix:
+        raise ValueError(f"Outgroup taxon {outgroup!r} not found in matrix")
+    reordered = {outgroup: matrix[outgroup]}
+    for taxon, seq in matrix.items():
+        if taxon != outgroup:
+            reordered[taxon] = seq
+    return reordered
