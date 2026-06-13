@@ -21,6 +21,7 @@ from phyloai.pretree.stats import (
     stats_single_file,
 )
 from phyloai.pretree.trim import render_trim_summary_table, run_trim, _scan_input as _trim_scan_input
+from phyloai.pretree.concat import run_concat, _render_concat_panels
 
 console = Console()
 
@@ -32,7 +33,7 @@ def _fail(message: str, exit_code: int) -> None:
 
 class _PretreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["convert", "stats", "align", "trim"]
+        return ["convert", "stats", "align", "trim", "concat"]
 
 
 @click.group(cls=_PretreeGroup)
@@ -667,3 +668,134 @@ def trim_command(
         click.echo(f"Results saved to {result_path}", err=True)
         for warning in payload["data"].get("warnings", []):
             click.echo(f"Warning: {warning}", err=True)
+
+
+@pretree.command(
+    "concat",
+    help=(
+        "Concatenate multiple MSA files into a supermatrix for phylogenetic inference. "
+        "Supports occupancy filtering, recoding, codon variants, outgroup reordering, "
+        "and multi-format output."
+    ),
+)
+@click.option(
+    "--msa-dir", type=click.Path(file_okay=False, path_type=Path),
+    required=True, help="Directory of input MSA files.",
+)
+@click.option(
+    "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/pretree/concat"), show_default=True, help="Output directory.",
+)
+@click.option(
+    "--prefix", type=str, default="matrix", show_default=True,
+    help="Prefix for output filenames.",
+)
+@click.option(
+    "--seq-type", type=click.Choice(["AA", "NT", "CODON", "auto"]),
+    default="auto", show_default=True, help="Sequence type.",
+)
+@click.option(
+    "--taxa-occupancy", type=float, default=0.5, show_default=True,
+    help="Min taxon ratio for MSA inclusion (0.0-1.0).",
+)
+@click.option(
+    "--recoding", type=str, default=None,
+    help="Recoding scheme: RY-nucleotide, Dayhoff-6/9/12/15/18, SandR-6, KGB-6.",
+)
+@click.option(
+    "--outgroup", type=str, default=None,
+    help="Taxon name to move to first position.",
+)
+@click.option(
+    "--to", "to_format",
+    type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]),
+    default="fasta", show_default=True, help="Output format.",
+)
+@click.option(
+    "--translate-codon", is_flag=True, default=False,
+    help="Also produce CDS-->AA translated matrix (CODON only).",
+)
+@click.option(
+    "--exclude-codon3", is_flag=True, default=False,
+    help="Also produce codon1+2 matrix (CODON only).",
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False,
+    help="Validate inputs and report planned actions without writing files.",
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False,
+    help="Suppress Rich terminal output.",
+)
+@click.option(
+    "--overwrite", is_flag=True, default=False,
+    help="Delete and recreate non-empty output directory.",
+)
+def concat_command(
+    msa_dir: Path,
+    output_dir: Path,
+    prefix: str,
+    seq_type: str,
+    taxa_occupancy: float,
+    recoding: str | None,
+    outgroup: str | None,
+    to_format: str,
+    translate_codon: bool,
+    exclude_codon3: bool,
+    dry_run: bool,
+    quiet: bool,
+    overwrite: bool,
+) -> None:
+    if not msa_dir.exists():
+        _fail(f"MSA directory '{msa_dir}' does not exist.", 1)
+    if not (0.0 <= taxa_occupancy <= 1.0):
+        _fail("--taxa-occupancy must be between 0.0 and 1.0.", 1)
+
+    payload: dict | None = None
+    error_msg: str | None = None
+    try:
+        payload = run_concat(
+            msa_dir=msa_dir,
+            output_dir=output_dir,
+            prefix=prefix,
+            seq_type=seq_type,
+            taxa_occupancy=taxa_occupancy,
+            recoding=recoding,
+            outgroup=outgroup,
+            to_format=to_format,
+            translate_codon=translate_codon,
+            exclude_codon3=exclude_codon3,
+            dry_run=dry_run,
+            overwrite=overwrite,
+        )
+    except ValueError as exc:
+        error_msg = str(exc)
+
+    if error_msg is not None:
+        _fail(error_msg, 1)
+
+    if not quiet and payload is not None:
+        display_stats = {
+            "prefix": prefix,
+            "seq_type": payload["params"]["seq_type"],
+            "to_format": payload["params"]["to_format"],
+            "n_taxa": payload["key_results"]["n_taxa"],
+            "n_msa_input": payload["key_results"]["n_msa_input"],
+            "n_msa_used": payload["key_results"]["n_msa_used"],
+            "n_msa_dropped": payload["key_results"]["n_msa_dropped"],
+            "total_length": payload["key_results"]["total_length"],
+            "taxon_occupancy_threshold": payload["params"]["taxa_occupancy"],
+            "recoding": payload["params"].get("recoding"),
+            "outgroup": payload["params"].get("outgroup"),
+            "variants_produced": payload["key_results"]["variants_produced"],
+            "character_summary": payload["data"]["character_summary"],
+            "site_patterns": payload["data"]["site_patterns"],
+        }
+        panels = _render_concat_panels(display_stats)
+        for panel in panels:
+            console.print(panel)
+
+    if payload is not None and not dry_run:
+        click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
+    elif dry_run:
+        click.echo("[dry-run] No files written.", err=True)
