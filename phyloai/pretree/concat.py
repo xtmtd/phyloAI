@@ -271,3 +271,75 @@ def _write_matrix(
     molecule_type = "protein" if seq_type == "AA" else "DNA"
     converter = FormatConverter()
     return converter.write_alignment(alignment, out_path, fmt, molecule_type=molecule_type)
+
+
+from rich.panel import Panel
+from rich.table import Table
+
+
+def _compute_concat_stats(matrix: dict[str, str], seq_type: str) -> dict[str, Any]:
+    from phyloai.pretree.stats import compute_site_patterns, _summarize_per_taxon, per_taxon_stats
+
+    records = [SeqRecord(Seq(seq), id=taxon) for taxon, seq in matrix.items()]
+    sequences = [str(record.seq) for record in records]
+    n_taxa = len(sequences)
+    alignment_length = len(sequences[0]) if sequences else 0
+    stats_seq_type = "NT" if seq_type == "CODON" else seq_type
+
+    per_taxon = [per_taxon_stats(record, stats_seq_type) for record in records]
+    summary = _summarize_per_taxon(per_taxon)
+    site_patterns = compute_site_patterns(sequences, stats_seq_type)
+
+    return {
+        "n_taxa": n_taxa,
+        "alignment_length": alignment_length,
+        "n_msa_used": 0,
+        "seq_type": seq_type,
+        "character_summary": summary,
+        "site_patterns": site_patterns,
+        "per_taxon": per_taxon,
+    }
+
+
+def _render_concat_panels(stats: dict[str, Any]) -> list[Panel]:
+    overview = Table(show_header=False)
+    overview.add_column("Metric")
+    overview.add_column("Value")
+    overview.add_row("prefix", str(stats.get("prefix", "")))
+    overview.add_row("seq_type", str(stats.get("seq_type", "")))
+    overview.add_row("to_format", str(stats.get("to_format", "")))
+    overview.add_row("n_taxa", str(stats.get("n_taxa", "")))
+    overview.add_row("n_msa_input", str(stats.get("n_msa_input", "")))
+    overview.add_row("n_msa_used", str(stats.get("n_msa_used", "")))
+    overview.add_row("n_msa_dropped", str(stats.get("n_msa_dropped", "")))
+    overview.add_row("total_length", str(stats.get("total_length", stats.get("alignment_length", ""))))
+    overview.add_row("taxon_occupancy_threshold", str(stats.get("taxon_occupancy_threshold", "")))
+    if stats.get("recoding"):
+        overview.add_row("recoding", str(stats["recoding"]))
+    if stats.get("outgroup"):
+        overview.add_row("outgroup", str(stats["outgroup"]))
+    overview.add_row("variants_produced", str(stats.get("variants_produced", "")))
+
+    character = Table(show_header=False)
+    character.add_column("Metric")
+    character.add_column("Value")
+    for key in stats.get("character_summary", {}):
+        character.add_row(key, str(stats["character_summary"][key]))
+
+    site_table = Table(title="Site Patterns")
+    site_table.add_column("Metric")
+    site_table.add_column("Count")
+    site_table.add_column("Ratio")
+    site_table.add_row("MSA length", str(stats["site_patterns"]["alignment_length"]), "1.0")
+    for key in ["distinct_patterns", "constant_sites", "parsimony_informative", "singleton_sites"]:
+        site_table.add_row(
+            key,
+            str(stats["site_patterns"][key]["count"]),
+            str(stats["site_patterns"][key]["ratio"]),
+        )
+
+    return [
+        Panel(overview, title="Overview"),
+        Panel(character, title="Character Summary"),
+        Panel(site_table, title="Site Patterns"),
+    ]

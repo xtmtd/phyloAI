@@ -323,3 +323,82 @@ def test_write_matrix_phylip_relaxed(tmp_path: Path) -> None:
     content = out_path.read_text()
     assert "2 4" in content
     assert "tax1" in content
+
+
+def test_compute_concat_stats_uses_per_taxon_stats() -> None:
+    from phyloai.pretree.concat import _compute_concat_stats
+
+    matrix = {"tax1": "ACGT", "tax2": "ACGT", "tax3": "ACGT"}
+    stats = _compute_concat_stats(matrix, "NT")
+
+    assert stats["n_taxa"] == 3
+    assert stats["alignment_length"] == 4
+    assert stats["character_summary"]["gap_ratio"] == 0.0
+    assert stats["character_summary"]["ambiguous_ratio"] == 0.0
+    assert stats["site_patterns"]["constant_sites"]["count"] == 4
+
+
+def test_render_concat_panels_shows_all_overview_fields() -> None:
+    from phyloai.pretree.concat import _render_concat_panels
+    from rich.panel import Panel
+
+    stats = {
+        "prefix": "matrix",
+        "seq_type": "AA",
+        "to_format": "fasta",
+        "n_taxa": 10,
+        "n_msa_input": 50,
+        "n_msa_used": 45,
+        "n_msa_dropped": 5,
+        "alignment_length": 100,
+        "total_length": 100,
+        "taxon_occupancy_threshold": 0.5,
+        "recoding": "Dayhoff-6",
+        "outgroup": "Sp_A",
+        "variants_produced": ["matrix.fa", "matrix.recoded.fa"],
+        "character_summary": {
+            "gap_ratio": 0.1, "ambiguous_ratio": 0.02,
+            "gap_ambiguous_ratio": 0.12, "standard_ratio": 0.88,
+        },
+        "site_patterns": {
+            "alignment_length": 100,
+            "distinct_patterns": {"count": 50, "ratio": 0.5},
+            "constant_sites": {"count": 30, "ratio": 0.3},
+            "parsimony_informative": {"count": 15, "ratio": 0.15},
+            "singleton_sites": {"count": 5, "ratio": 0.05},
+        },
+    }
+    panels = _render_concat_panels(stats)
+    assert len(panels) == 3
+    assert all(isinstance(p, Panel) for p in panels)
+
+
+def test_render_concat_panels_hides_recoding_when_none() -> None:
+    from phyloai.pretree.concat import _render_concat_panels
+    from rich.panel import Panel
+
+    stats = {
+        "prefix": "matrix",
+        "seq_type": "NT",
+        "to_format": "fasta",
+        "n_taxa": 5,
+        "n_msa_input": 10,
+        "n_msa_used": 10,
+        "n_msa_dropped": 0,
+        "alignment_length": 200,
+        "total_length": 200,
+        "taxon_occupancy_threshold": 0.5,
+        "recoding": None,
+        "outgroup": None,
+        "variants_produced": ["matrix.fa"],
+        "character_summary": {"gap_ratio": 0.0, "ambiguous_ratio": 0.0, "gap_ambiguous_ratio": 0.0, "standard_ratio": 1.0},
+        "site_patterns": {
+            "alignment_length": 200,
+            "distinct_patterns": {"count": 10, "ratio": 0.05},
+            "constant_sites": {"count": 180, "ratio": 0.9},
+            "parsimony_informative": {"count": 5, "ratio": 0.025},
+            "singleton_sites": {"count": 5, "ratio": 0.025},
+        },
+    }
+    panels = _render_concat_panels(stats)
+    assert len(panels) == 3
