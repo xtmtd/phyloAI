@@ -18,15 +18,7 @@ from rich.table import Table
 from phyloai.core.formats import AlignmentFormat, FormatConverter
 from phyloai.core.schema import COMMON_ALIGNMENT_EXTENSIONS
 from phyloai.core.sequence_normalization import (
-    AA_STANDARD,
-    GAP_CHARS,
-    NT_AUTO_CHARS,
-    NT_MISSING,
-    NT_STANDARD,
-    classify_char,
-    detect_seq_type,
     gap_chars,
-    normalize_pattern_char,
     resolve_seq_type,
     standard_chars,
 )
@@ -141,14 +133,10 @@ def compute_site_patterns(sequences: list[str], seq_type: str) -> dict[str, Any]
     parsimony_informative = 0
     singleton_sites = 0
     standard_codes = {ord(char) for char in standard_chars(seq_type)}
-    question_code = ord("?")
     gap_code = ord("-")
     distinct_pattern_set: set[bytes] = set()
     for column in zip(*(sequence.encode("ascii") for sequence in sequences)):
-        if question_code in column:
-            distinct_pattern_set.add(bytes(gap_code if char == question_code else char for char in column))
-        else:
-            distinct_pattern_set.add(bytes(column))
+        distinct_pattern_set.add(bytes(gap_code if ch not in standard_codes else ch for ch in column))
 
         standard_counts: dict[int, int] = {}
         for char in column:
