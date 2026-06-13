@@ -285,6 +285,68 @@ def _compute_concat_stats(matrix: dict[str, str], seq_type: str) -> dict[str, An
     sequences = [str(record.seq) for record in records]
     n_taxa = len(sequences)
     alignment_length = len(sequences[0]) if sequences else 0
+
+    if seq_type == "other":
+        gap_set = {"-", "?"}
+        total_chars = sum(len(s) for s in sequences)
+        total_gap = sum(sum(1 for ch in s if ch in gap_set) for s in sequences)
+        gap_ratio = round(total_gap / total_chars, 4) if total_chars > 0 else 0.0
+
+        per_taxon = []
+        for record in records:
+            seq = str(record.seq)
+            raw = len(seq)
+            gc = sum(1 for ch in seq if ch in gap_set)
+            per_taxon.append({
+                "name": record.id, "raw_length": raw, "ungapped_length": raw - gc,
+                "gap_ratio": round(gc / raw, 4) if raw > 0 else 0.0,
+                "ambiguous_ratio": 0.0,
+                "standard_ratio": round(1 - gc / raw, 4) if raw > 0 else 1.0,
+            })
+
+        character_summary = {
+            "gap_ratio": gap_ratio, "ambiguous_ratio": 0.0,
+            "gap_ambiguous_ratio": gap_ratio,
+            "standard_ratio": round(1 - gap_ratio, 4),
+        }
+
+        gap_codes = {ord("-"), ord("?")}
+        distinct: set[bytes] = set()
+        pi = 0
+        ss = 0
+        for col in zip(*(s.encode("ascii") for s in sequences)):
+            distinct.add(bytes(ord("-") if ch in gap_codes else ch for ch in col))
+            counts: dict[int, int] = {}
+            for ch in col:
+                if ch not in gap_codes:
+                    counts[ch] = counts.get(ch, 0) + 1
+            if sum(counts.values()) < 2:
+                continue
+            if len(counts) == 1:
+                continue
+            repeated = sum(1 for v in counts.values() if v >= 2)
+            if repeated >= 2:
+                pi += 1
+            else:
+                ss += 1
+        var = pi + ss
+        const = alignment_length - var
+
+        site_patterns = {
+            "alignment_length": alignment_length,
+            "distinct_patterns": {"count": len(distinct), "ratio": round(len(distinct) / alignment_length, 4) if alignment_length > 0 else 0.0},
+            "constant_sites": {"count": const, "ratio": round(const / alignment_length, 4) if alignment_length > 0 else 0.0},
+            "parsimony_informative": {"count": pi, "ratio": round(pi / alignment_length, 4) if alignment_length > 0 else 0.0},
+            "singleton_sites": {"count": ss, "ratio": round(ss / alignment_length, 4) if alignment_length > 0 else 0.0},
+        }
+
+        return {
+            "n_taxa": n_taxa, "alignment_length": alignment_length,
+            "n_msa_used": 0, "seq_type": seq_type,
+            "character_summary": character_summary,
+            "site_patterns": site_patterns, "per_taxon": per_taxon,
+        }
+
     stats_seq_type = "NT" if seq_type == "CODON" else seq_type
 
     per_taxon = [per_taxon_stats(record, stats_seq_type) for record in records]
@@ -556,13 +618,13 @@ def run_concat(
         "site_patterns": orig_stats["site_patterns"],
     })
     if recoding:
-        recoded_len = len(list(recoded_matrix.values())[0]) if recoded_matrix else 0
+        rec_stats = _compute_concat_stats(recoded_matrix, recoded_seq_type)
         variant_stats.append({
             "variant": "recoded",
             "seq_type": recoded_seq_type,
-            "total_length": recoded_len,
-            "character_summary": None,
-            "site_patterns": None,
+            "total_length": rec_stats["alignment_length"],
+            "character_summary": rec_stats["character_summary"],
+            "site_patterns": rec_stats["site_patterns"],
         })
     if resolved_seq_type == "CODON" and translate_codon:
         tr_stats = _compute_concat_stats(translated_matrix, "AA")
