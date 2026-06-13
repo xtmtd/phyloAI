@@ -402,3 +402,37 @@ def test_render_concat_panels_hides_recoding_when_none() -> None:
     }
     panels = _render_concat_panels(stats)
     assert len(panels) == 3
+
+
+def test_run_concat_basic(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n>C\nACGT\n")
+    (msa_dir / "gene2.fa").write_text(">A\nGGCC\n>B\nGGCC\n>C\nGGCC\n")
+
+    output_dir = tmp_path / "out"
+    payload = run_concat(
+        msa_dir=msa_dir,
+        output_dir=output_dir,
+        prefix="matrix",
+        seq_type="NT",
+        taxa_occupancy=0.5,
+        recoding=None,
+        outgroup=None,
+        to_format="fasta",
+        translate_codon=False,
+        exclude_codon3=False,
+        dry_run=False,
+        overwrite=False,
+    )
+
+    assert payload["status"] == "success"
+    assert payload["key_results"]["n_taxa"] == 3
+    assert payload["key_results"]["n_msa_used"] == 2
+    assert (output_dir / "matrix.fa").exists()
+    content = (output_dir / "matrix.fa").read_text()
+    assert ">A" in content
+    assert "ACGTGGCC" in content
+    assert (output_dir / "concat.log").exists()

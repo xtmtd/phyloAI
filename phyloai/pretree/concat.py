@@ -343,3 +343,249 @@ def _render_concat_panels(stats: dict[str, Any]) -> list[Panel]:
         Panel(character, title="Character Summary"),
         Panel(site_table, title="Site Patterns"),
     ]
+
+
+import json
+import shutil
+import time
+
+
+def run_concat(
+    msa_dir: Path,
+    output_dir: Path,
+    prefix: str = "matrix",
+    seq_type: str = "auto",
+    taxa_occupancy: float = 0.5,
+    recoding: str | None = None,
+    outgroup: str | None = None,
+    to_format: str = "fasta",
+    translate_codon: bool = False,
+    exclude_codon3: bool = False,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    start_time = time.time()
+
+    if not msa_dir.exists():
+        raise ValueError(f"MSA directory '{msa_dir}' does not exist")
+    if not msa_dir.is_dir():
+        raise ValueError(f"'{msa_dir}' is not a directory")
+
+    if output_dir.exists() and any(output_dir.iterdir()):
+        if not overwrite:
+            raise ValueError(
+                f"Output directory '{output_dir}' is non-empty. Use --overwrite to replace."
+            )
+        shutil.rmtree(output_dir)
+    if not dry_run:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    msa_paths = _scan_msa_files(msa_dir)
+    if not msa_paths:
+        raise ValueError(f"No alignment files found in '{msa_dir}'")
+
+    # --- Pass 1: Header-first scan ---------------------------------------------
+    all_taxa: set[str] = set()
+    msa_taxa_map: dict[str, set[str]] = {}
+    for path in msa_paths:
+        taxa = _read_msa_headers(path)
+        all_taxa.update(taxa)
+        msa_taxa_map[str(path)] = set(taxa)
+
+    # --- Auto-detect seq_type (sample 3 files with full read) -------------------
+    if seq_type == "auto":
+        sample_seqs: list[str] = []
+        for path in msa_paths[:3]:
+            _, seqs, _ = _read_msa(path)
+            sample_seqs.extend(seqs[:10])
+        resolved_seq_type = detect_seq_type(sample_seqs)
+    else:
+        resolved_seq_type = seq_type
+
+    # --- Validation -------------------------------------------------------------
+    if resolved_seq_type != "CODON" and (translate_codon or exclude_codon3):
+        raise ValueError(
+            "--translate-codon and --exclude-codon3 require --seq-type CODON, "
+            f"got {resolved_seq_type}"
+        )
+    if recoding:
+        if recoding in AA_RECODING_TABLES and resolved_seq_type not in ("AA",):
+            raise ValueError(
+                f"Recoding scheme '{recoding}' requires AA seq_type, got {resolved_seq_type}"
+            )
+        if recoding in NT_RECODING_TABLES and resolved_seq_type not in ("NT", "CODON"):
+            raise ValueError(
+                f"Recoding scheme '{recoding}' requires NT or CODON seq_type, got {resolved_seq_type}"
+            )
+
+    # --- Occupancy filtering ----------------------------------------------------
+    kept_paths, dropped = _filter_by_occupancy(msa_paths, msa_taxa_map, all_taxa, taxa_occupancy)
+    if not kept_paths:
+        raise ValueError("No MSAs passed occupancy filtering")
+
+    # --- Pass 2: Streaming concat -----------------------------------------------
+    def _accumulate_replacements(counts: dict[str, int]) -> None:
+        for key, value in counts.items():
+            all_normalization_replacements[key] = all_normalization_replacements.get(key, 0) + value
+
+    all_normalization_replacements: dict[str, int] = {}
+    norm_seq_type = "NT" if resolved_seq_type == "CODON" else resolved_seq_type
+    needs_variant_data = resolved_seq_type == "CODON" and (translate_codon or exclude_codon3)
+    msa_data: dict[str, tuple[list[str], list[str], int]] = {}
+
+    matrix_parts: dict[str, list[str]] = {taxon: [] for taxon in all_taxa}
+    for path in kept_paths:
+        taxa, seqs, length = _read_msa(path)
+        norm = normalize_sequences(seqs, norm_seq_type)
+        _accumulate_replacements(norm.replacements)
+        normalized_seqs = norm.sequences
+
+        if needs_variant_data:
+            msa_data[str(path)] = (taxa, normalized_seqs, length)
+
+        taxon_to_seq = dict(zip(taxa, normalized_seqs))
+        for taxon in all_taxa:
+            seq = taxon_to_seq.get(taxon, "?" * length)
+            matrix_parts[taxon].append(seq)
+
+    matrix = {taxon: "".join(parts) for taxon, parts in matrix_parts.items()}
+
+    # --- Variant generation -----------------------------------------------------
+    variants: list[dict[str, Any]] = []
+    ext_map = {"fasta": ".fa", "phylip-relaxed": ".phy", "phylip-paml": ".phy", "nexus": ".nex"}
+    ext = ext_map.get(to_format, ".fa")
+    recoding_warnings: list[str] = []
+
+    matrix = _reorder_outgroup(matrix, outgroup)
+    if not dry_run:
+        original_path = output_dir / f"{prefix}{ext}"
+        _write_matrix(matrix, original_path, to_format, resolved_seq_type)
+        variants.append({
+            "variant": "original", "path": str(original_path),
+            "seq_type": resolved_seq_type,
+            "length": len(list(matrix.values())[0]) if matrix else 0,
+        })
+
+    if recoding:
+        recoded_matrix, rw = _apply_recoding(matrix, recoding)
+        recoding_warnings = rw
+        recoded_matrix = _reorder_outgroup(recoded_matrix, outgroup)
+        if not dry_run:
+            recoded_path = output_dir / f"{prefix}.recoded{ext}"
+            _write_matrix(recoded_matrix, recoded_path, to_format, resolved_seq_type)
+            variants.append({
+                "variant": "recoded", "path": str(recoded_path),
+                "seq_type": resolved_seq_type,
+                "length": len(list(recoded_matrix.values())[0]) if recoded_matrix else 0,
+            })
+
+    if resolved_seq_type == "CODON" and translate_codon:
+        translated_data: dict[str, tuple[list[str], list[str], int]] = {}
+        for path in kept_paths:
+            taxa, seqs, _ = msa_data[str(path)]
+            translated_seqs = [_translate_codon(seq) for seq in seqs]
+            translated_len = len(translated_seqs[0]) if translated_seqs else 0
+            translated_data[str(path)] = (taxa, translated_seqs, translated_len)
+        translated_matrix, _ = _concat_alignments(kept_paths, translated_data, all_taxa)
+        translated_taxa = list(translated_matrix.keys())
+        tnorm = normalize_sequences([translated_matrix[t] for t in translated_taxa], "AA")
+        translated_matrix = dict(zip(translated_taxa, tnorm.sequences))
+        _accumulate_replacements(tnorm.replacements)
+        translated_matrix = _reorder_outgroup(translated_matrix, outgroup)
+        if not dry_run:
+            translated_path = output_dir / f"{prefix}.translated{ext}"
+            _write_matrix(translated_matrix, translated_path, to_format, "AA")
+            variants.append({
+                "variant": "translated", "path": str(translated_path),
+                "seq_type": "AA",
+                "length": len(list(translated_matrix.values())[0]) if translated_matrix else 0,
+            })
+
+    if resolved_seq_type == "CODON" and exclude_codon3:
+        cds12_data: dict[str, tuple[list[str], list[str], int]] = {}
+        for path in kept_paths:
+            taxa, seqs, _ = msa_data[str(path)]
+            cds12_seqs = [_exclude_codon3(seq) for seq in seqs]
+            cds12_len = len(cds12_seqs[0]) if cds12_seqs else 0
+            cds12_data[str(path)] = (taxa, cds12_seqs, cds12_len)
+        cds12_matrix, _ = _concat_alignments(kept_paths, cds12_data, all_taxa)
+        cds12_taxa = list(cds12_matrix.keys())
+        cnorm = normalize_sequences([cds12_matrix[t] for t in cds12_taxa], "NT")
+        cds12_matrix = dict(zip(cds12_taxa, cnorm.sequences))
+        _accumulate_replacements(cnorm.replacements)
+        cds12_matrix = _reorder_outgroup(cds12_matrix, outgroup)
+        if not dry_run:
+            cds12_path = output_dir / f"{prefix}.cds12{ext}"
+            _write_matrix(cds12_matrix, cds12_path, to_format, "NT")
+            variants.append({
+                "variant": "cds12", "path": str(cds12_path),
+                "seq_type": "NT",
+                "length": len(list(cds12_matrix.values())[0]) if cds12_matrix else 0,
+            })
+
+    stats = _compute_concat_stats(matrix, resolved_seq_type)
+
+    if not dry_run and dropped:
+        dropped_path = output_dir / "dropped_alignments.csv"
+        with open(dropped_path, "w") as fh:
+            fh.write("filename,n_taxa,occupancy_ratio,total_taxa\n")
+            for entry in dropped:
+                fh.write(f"{entry['filename']},{entry['n_taxa']},{entry['occupancy_ratio']},{entry['total_taxa']}\n")
+
+    wall_time = time.time() - start_time
+    payload = {
+        "status": "success",
+        "command": f"phyloai pretree concat --msa-dir {msa_dir}",
+        "wall_time": round(wall_time, 3),
+        "tool_versions": {},
+        "params": {
+            "msa_dir": str(msa_dir),
+            "output_dir": str(output_dir),
+            "prefix": prefix,
+            "seq_type": resolved_seq_type,
+            "taxa_occupancy": taxa_occupancy,
+            "recoding": recoding,
+            "outgroup": outgroup,
+            "to_format": to_format,
+            "translate_codon": translate_codon,
+            "exclude_codon3": exclude_codon3,
+            "dry_run": dry_run,
+        },
+        "key_results": {
+            "n_taxa": len(all_taxa),
+            "n_msa_input": len(msa_paths),
+            "n_msa_used": len(kept_paths),
+            "n_msa_dropped": len(dropped),
+            "total_length": stats["alignment_length"],
+            "variants_produced": [v["path"] for v in variants],
+        },
+        "error": None,
+        "data": {
+            "character_summary": stats["character_summary"],
+            "site_patterns": stats["site_patterns"],
+            "dropped_alignments": dropped,
+            "per_taxon": stats["per_taxon"],
+            "per_gene_occupancy": [
+                {
+                    "gene": Path(path).name,
+                    "n_present": len(msa_taxa_map[str(path)]),
+                    "n_missing": len(all_taxa) - len(msa_taxa_map[str(path)]),
+                    "occupancy_ratio": round(len(msa_taxa_map[str(path)]) / len(all_taxa), 4),
+                }
+                for path in kept_paths
+            ],
+            "variants": variants,
+            "recoding_warnings": recoding_warnings,
+            "normalization_replacements": all_normalization_replacements,
+        },
+    }
+
+    if not dry_run:
+        result_path = output_dir / "result.json"
+        with open(result_path, "w") as fh:
+            json.dump(payload, fh, indent=2)
+
+        log_path = output_dir / "concat.log"
+        log_path.write_text(f"command=phyloai pretree concat\nwall_time={round(wall_time, 3)}\nstatus=success\nexit_code=0\nn_taxa={len(all_taxa)}\nn_msa_input={len(msa_paths)}\nn_msa_used={len(kept_paths)}\nn_msa_dropped={len(dropped)}\ntotal_length={stats['alignment_length']}\n")
+
+    return payload
