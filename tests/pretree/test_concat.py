@@ -342,33 +342,53 @@ def test_render_concat_panels_shows_all_overview_fields() -> None:
     from phyloai.pretree.concat import _render_concat_panels
     from rich.panel import Panel
 
-    stats = {
+    overview = {
         "prefix": "matrix",
-        "seq_type": "AA",
         "to_format": "fasta",
         "n_taxa": 10,
         "n_msa_input": 50,
         "n_msa_used": 45,
         "n_msa_dropped": 5,
-        "alignment_length": 100,
-        "total_length": 100,
         "taxon_occupancy_threshold": 0.5,
         "recoding": "Dayhoff-6",
         "outgroup": "Sp_A",
         "variants_produced": ["matrix.fa", "matrix.recoded.fa"],
-        "character_summary": {
-            "gap_ratio": 0.1, "ambiguous_ratio": 0.02,
-            "gap_ambiguous_ratio": 0.12, "standard_ratio": 0.88,
-        },
-        "site_patterns": {
-            "alignment_length": 100,
-            "distinct_patterns": {"count": 50, "ratio": 0.5},
-            "constant_sites": {"count": 30, "ratio": 0.3},
-            "parsimony_informative": {"count": 15, "ratio": 0.15},
-            "singleton_sites": {"count": 5, "ratio": 0.05},
-        },
     }
-    panels = _render_concat_panels(stats)
+    variant_stats = [
+        {
+            "variant": "original",
+            "seq_type": "AA",
+            "total_length": 100,
+            "character_summary": {
+                "gap_ratio": 0.1, "ambiguous_ratio": 0.02,
+                "gap_ambiguous_ratio": 0.12, "standard_ratio": 0.88,
+            },
+            "site_patterns": {
+                "alignment_length": 100,
+                "distinct_patterns": {"count": 50, "ratio": 0.5},
+                "constant_sites": {"count": 30, "ratio": 0.3},
+                "parsimony_informative": {"count": 15, "ratio": 0.15},
+                "singleton_sites": {"count": 5, "ratio": 0.05},
+            },
+        },
+        {
+            "variant": "recoded",
+            "seq_type": "AA",
+            "total_length": 100,
+            "character_summary": {
+                "gap_ratio": 0.1, "ambiguous_ratio": 0.02,
+                "gap_ambiguous_ratio": 0.12, "standard_ratio": 0.88,
+            },
+            "site_patterns": {
+                "alignment_length": 100,
+                "distinct_patterns": {"count": 40, "ratio": 0.4},
+                "constant_sites": {"count": 50, "ratio": 0.5},
+                "parsimony_informative": {"count": 8, "ratio": 0.08},
+                "singleton_sites": {"count": 2, "ratio": 0.02},
+            },
+        },
+    ]
+    panels = _render_concat_panels(overview, variant_stats)
     assert len(panels) == 3
     assert all(isinstance(p, Panel) for p in panels)
 
@@ -376,30 +396,37 @@ def test_render_concat_panels_shows_all_overview_fields() -> None:
 def test_render_concat_panels_hides_recoding_when_none() -> None:
     from phyloai.pretree.concat import _render_concat_panels
 
-    stats = {
+    overview = {
         "prefix": "matrix",
-        "seq_type": "NT",
         "to_format": "fasta",
         "n_taxa": 5,
         "n_msa_input": 10,
         "n_msa_used": 10,
         "n_msa_dropped": 0,
-        "alignment_length": 200,
-        "total_length": 200,
         "taxon_occupancy_threshold": 0.5,
         "recoding": None,
         "outgroup": None,
         "variants_produced": ["matrix.fa"],
-        "character_summary": {"gap_ratio": 0.0, "ambiguous_ratio": 0.0, "gap_ambiguous_ratio": 0.0, "standard_ratio": 1.0},
-        "site_patterns": {
-            "alignment_length": 200,
-            "distinct_patterns": {"count": 10, "ratio": 0.05},
-            "constant_sites": {"count": 180, "ratio": 0.9},
-            "parsimony_informative": {"count": 5, "ratio": 0.025},
-            "singleton_sites": {"count": 5, "ratio": 0.025},
-        },
     }
-    panels = _render_concat_panels(stats)
+    variant_stats = [
+        {
+            "variant": "original",
+            "seq_type": "NT",
+            "total_length": 200,
+            "character_summary": {
+                "gap_ratio": 0.0, "ambiguous_ratio": 0.0,
+                "gap_ambiguous_ratio": 0.0, "standard_ratio": 1.0,
+            },
+            "site_patterns": {
+                "alignment_length": 200,
+                "distinct_patterns": {"count": 10, "ratio": 0.05},
+                "constant_sites": {"count": 180, "ratio": 0.9},
+                "parsimony_informative": {"count": 5, "ratio": 0.025},
+                "singleton_sites": {"count": 5, "ratio": 0.025},
+            },
+        },
+    ]
+    panels = _render_concat_panels(overview, variant_stats)
     assert len(panels) == 3
 
 

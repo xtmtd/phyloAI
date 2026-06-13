@@ -302,46 +302,65 @@ def _compute_concat_stats(matrix: dict[str, str], seq_type: str) -> dict[str, An
     }
 
 
-def _render_concat_panels(stats: dict[str, Any]) -> list[Panel]:
-    overview = Table(show_header=False)
-    overview.add_column("Metric")
-    overview.add_column("Value")
-    overview.add_row("prefix", str(stats.get("prefix", "")))
-    overview.add_row("seq_type", str(stats.get("seq_type", "")))
-    overview.add_row("to_format", str(stats.get("to_format", "")))
-    overview.add_row("n_taxa", str(stats.get("n_taxa", "")))
-    overview.add_row("n_msa_input", str(stats.get("n_msa_input", "")))
-    overview.add_row("n_msa_used", str(stats.get("n_msa_used", "")))
-    overview.add_row("n_msa_dropped", str(stats.get("n_msa_dropped", "")))
-    overview.add_row("total_length", str(stats.get("total_length", stats.get("alignment_length", ""))))
-    overview.add_row("taxon_occupancy_threshold", str(stats.get("taxon_occupancy_threshold", "")))
-    if stats.get("recoding"):
-        overview.add_row("recoding", str(stats["recoding"]))
-    if stats.get("outgroup"):
-        overview.add_row("outgroup", str(stats["outgroup"]))
-    overview.add_row("variants_produced", str(stats.get("variants_produced", "")))
+def _render_concat_panels(overview: dict[str, Any], variant_stats: list[dict[str, Any]]) -> list[Panel]:
+    overview_table = Table(show_header=False)
+    overview_table.add_column("Metric")
+    overview_table.add_column("Value")
+    overview_table.add_row("prefix", str(overview.get("prefix", "")))
+    overview_table.add_row("to_format", str(overview.get("to_format", "")))
+    overview_table.add_row("n_taxa", str(overview.get("n_taxa", "")))
+    overview_table.add_row("n_msa_input", str(overview.get("n_msa_input", "")))
+    overview_table.add_row("n_msa_used", str(overview.get("n_msa_used", "")))
+    overview_table.add_row("n_msa_dropped", str(overview.get("n_msa_dropped", "")))
+    overview_table.add_row("taxon_occupancy_threshold", str(overview.get("taxon_occupancy_threshold", "")))
+    if overview.get("recoding"):
+        overview_table.add_row("recoding", str(overview["recoding"]))
+    if overview.get("outgroup"):
+        overview_table.add_row("outgroup", str(overview["outgroup"]))
+    overview_table.add_row("variants_produced", str(overview.get("variants_produced", "")))
 
-    character = Table(show_header=False)
-    character.add_column("Metric")
-    character.add_column("Value")
-    for key in stats.get("character_summary", {}):
-        character.add_row(key, str(stats["character_summary"][key]))
+    variant_names = [v["variant"] for v in variant_stats]
+
+    char_table = Table(title="Character Summary")
+    char_table.add_column("")
+    for name in variant_names:
+        char_table.add_column(name)
+    char_metrics = ["seq_type", "total_length", "gap_ratio", "ambiguous_ratio",
+                    "gap_ambiguous_ratio", "standard_ratio"]
+    for metric in char_metrics:
+        row = [metric]
+        for v in variant_stats:
+            if metric in ("seq_type", "total_length"):
+                row.append(str(v.get(metric, "")))
+            else:
+                cs = v.get("character_summary", {})
+                val = cs.get(metric, "")
+                row.append(f"{val:.4f}" if isinstance(val, float) else str(val))
+        char_table.add_row(*row)
 
     site_table = Table(title="Site Patterns")
-    site_table.add_column("Metric")
-    site_table.add_column("Count")
-    site_table.add_column("Ratio")
-    site_table.add_row("MSA length", str(stats["site_patterns"]["alignment_length"]), "1.0")
-    for key in ["distinct_patterns", "constant_sites", "parsimony_informative", "singleton_sites"]:
-        site_table.add_row(
-            key,
-            str(stats["site_patterns"][key]["count"]),
-            str(stats["site_patterns"][key]["ratio"]),
-        )
+    site_table.add_column("")
+    for name in variant_names:
+        site_table.add_column(name)
+    site_metrics = ["alignment_length", "distinct_patterns", "constant_sites",
+                    "parsimony_informative", "singleton_sites"]
+    for metric in site_metrics:
+        row = [metric]
+        for v in variant_stats:
+            sp = v.get("site_patterns", {})
+            if metric == "alignment_length":
+                row.append(str(sp.get(metric, "")))
+            else:
+                entry = sp.get(metric, {})
+                if isinstance(entry, dict):
+                    row.append(f"{entry.get('count', 0)} ({entry.get('ratio', 0):.2f})")
+                else:
+                    row.append(str(entry))
+        site_table.add_row(*row)
 
     return [
-        Panel(overview, title="Overview"),
-        Panel(character, title="Character Summary"),
+        Panel(overview_table, title="Overview"),
+        Panel(char_table, title="Character Summary"),
         Panel(site_table, title="Site Patterns"),
     ]
 
@@ -519,7 +538,44 @@ def run_concat(
                 "length": len(list(cds12_matrix.values())[0]) if cds12_matrix else 0,
             })
 
-    stats = _compute_concat_stats(matrix, resolved_seq_type)
+    # --- Compute per-variant stats ---
+    variant_stats: list[dict[str, Any]] = []
+    # always: original
+    orig_stats = _compute_concat_stats(matrix, resolved_seq_type)
+    variant_stats.append({
+        "variant": "original",
+        "seq_type": resolved_seq_type,
+        "total_length": orig_stats["alignment_length"],
+        "character_summary": orig_stats["character_summary"],
+        "site_patterns": orig_stats["site_patterns"],
+    })
+    if recoding:
+        rec_stats = _compute_concat_stats(recoded_matrix, resolved_seq_type)
+        variant_stats.append({
+            "variant": "recoded",
+            "seq_type": resolved_seq_type,
+            "total_length": rec_stats["alignment_length"],
+            "character_summary": rec_stats["character_summary"],
+            "site_patterns": rec_stats["site_patterns"],
+        })
+    if resolved_seq_type == "CODON" and translate_codon:
+        tr_stats = _compute_concat_stats(translated_matrix, "AA")
+        variant_stats.append({
+            "variant": "translated",
+            "seq_type": "AA",
+            "total_length": tr_stats["alignment_length"],
+            "character_summary": tr_stats["character_summary"],
+            "site_patterns": tr_stats["site_patterns"],
+        })
+    if resolved_seq_type == "CODON" and exclude_codon3:
+        c12_stats = _compute_concat_stats(cds12_matrix, "NT")
+        variant_stats.append({
+            "variant": "cds12",
+            "seq_type": "NT",
+            "total_length": c12_stats["alignment_length"],
+            "character_summary": c12_stats["character_summary"],
+            "site_patterns": c12_stats["site_patterns"],
+        })
 
     if not dry_run and dropped:
         dropped_path = output_dir / "dropped_alignments.csv"
@@ -552,15 +608,16 @@ def run_concat(
             "n_msa_input": len(msa_paths),
             "n_msa_used": len(kept_paths),
             "n_msa_dropped": len(dropped),
-            "total_length": stats["alignment_length"],
+            "total_length": orig_stats["alignment_length"],
             "variants_produced": [v["path"] for v in variants],
         },
         "error": None,
         "data": {
-            "character_summary": stats["character_summary"],
-            "site_patterns": stats["site_patterns"],
+            "character_summary": orig_stats["character_summary"],
+            "site_patterns": orig_stats["site_patterns"],
+            "variant_stats": variant_stats,
             "dropped_alignments": dropped,
-            "per_taxon": stats["per_taxon"],
+            "per_taxon": orig_stats["per_taxon"],
             "per_gene_occupancy": [
                 {
                     "gene": Path(path).name,
@@ -582,6 +639,20 @@ def run_concat(
             json.dump(payload, fh, indent=2)
 
         log_path = output_dir / "concat.log"
-        log_path.write_text(f"command=phyloai pretree concat\nwall_time={round(wall_time, 3)}\nstatus=success\nexit_code=0\nn_taxa={len(all_taxa)}\nn_msa_input={len(msa_paths)}\nn_msa_used={len(kept_paths)}\nn_msa_dropped={len(dropped)}\ntotal_length={stats['alignment_length']}\n")
+        log_lines = [
+            "command=phyloai pretree concat",
+            f"wall_time={round(wall_time, 3)}",
+            "status=success",
+            "exit_code=0",
+            f"n_taxa={len(all_taxa)}",
+            f"n_msa_input={len(msa_paths)}",
+            f"n_msa_used={len(kept_paths)}",
+            f"n_msa_dropped={len(dropped)}",
+            f"total_length={orig_stats['alignment_length']}",
+        ]
+        for vs in variant_stats:
+            log_lines.append(f"variant.{vs['variant']}.seq_type={vs['seq_type']}")
+            log_lines.append(f"variant.{vs['variant']}.total_length={vs['total_length']}")
+        log_path.write_text("\n".join(log_lines) + "\n")
 
     return payload

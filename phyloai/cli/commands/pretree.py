@@ -699,12 +699,20 @@ def trim_command(
     help="Min taxon ratio for MSA inclusion (0.0-1.0).",
 )
 @click.option(
-    "--recoding", type=str, default=None,
-    help="Recoding scheme: RY-nucleotide, Dayhoff-6/9/12/15/18, SandR-6, KGB-6.",
+    "--recoding", type=click.Choice([
+        "RY-nucleotide",
+        "Dayhoff-6", "Dayhoff-9", "Dayhoff-12", "Dayhoff-15", "Dayhoff-18",
+        "SandR-6", "KGB-6",
+    ]), default=None,
+    help=(
+        "Character recoding scheme. "
+        "RY-nucleotide: NT only (A/G->R, C/T/U->Y). "
+        "Dayhoff-6/9/12/15/18, SandR-6, KGB-6: AA only."
+    ),
 )
 @click.option(
     "--outgroup", type=str, default=None,
-    help="Taxon name to move to first position.",
+    help="Single taxon name to move to first position in each output matrix.",
 )
 @click.option(
     "--to", "to_format",
@@ -775,23 +783,20 @@ def concat_command(
         _fail(error_msg, 1)
 
     if not quiet and payload is not None:
-        display_stats = {
+        overview = {
             "prefix": prefix,
-            "seq_type": payload["params"]["seq_type"],
             "to_format": payload["params"]["to_format"],
             "n_taxa": payload["key_results"]["n_taxa"],
             "n_msa_input": payload["key_results"]["n_msa_input"],
             "n_msa_used": payload["key_results"]["n_msa_used"],
             "n_msa_dropped": payload["key_results"]["n_msa_dropped"],
-            "total_length": payload["key_results"]["total_length"],
             "taxon_occupancy_threshold": payload["params"]["taxa_occupancy"],
             "recoding": payload["params"].get("recoding"),
             "outgroup": payload["params"].get("outgroup"),
             "variants_produced": payload["key_results"]["variants_produced"],
-            "character_summary": payload["data"]["character_summary"],
-            "site_patterns": payload["data"]["site_patterns"],
         }
-        panels = _render_concat_panels(display_stats)
+        variant_stats = payload["data"]["variant_stats"]
+        panels = _render_concat_panels(overview, variant_stats)
         for panel in panels:
             console.print(panel)
 
