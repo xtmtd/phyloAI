@@ -197,7 +197,7 @@ files are written):
     "n_msa_used": 350,
     "n_msa_dropped": 150,
     "total_length": 250000,
-    "variants_produced": ["matrix.fa", "matrix.recoded.fa"]
+    "variants_produced": ["runs/pretree/concat/matrix.fa", "runs/pretree/concat/matrix.recoded.fa"]
   },
   "error": null,
   "data": {
@@ -225,8 +225,8 @@ files are written):
       {"gene": "gene001.fa", "n_present": 95, "n_missing": 5, "occupancy_ratio": 0.95}
     ],
     "variants": [
-      {"variant": "original", "path": "matrix.fa", "seq_type": "AA", "length": 250000},
-      {"variant": "recoded", "path": "matrix.recoded.fa", "seq_type": "other", "length": 250000}
+      {"variant": "original", "path": "runs/pretree/concat/matrix.fa", "seq_type": "AA", "length": 250000},
+      {"variant": "recoded", "path": "runs/pretree/concat/matrix.recoded.fa", "seq_type": "other", "length": 250000}
     ],
     "variant_stats": [
       {
@@ -249,6 +249,11 @@ files are written):
   }
 }
 ```
+
+`key_results.variants_produced` and each `data.variants[].path` entry are full
+output paths constructed from `params.output_dir`, not bare filenames.  This
+keeps downstream report collection and MCP wrappers independent of the caller's
+current working directory.
 
 ---
 
@@ -391,7 +396,7 @@ validates parameters then delegates to `run_concat()`.
 - [ ] Rich screen display shows Overview + Character Summary + Site Patterns
 - [ ] `result.json` includes dropped MSAs, per-taxon, per-gene occupancy
 - [ ] `concat.log` written with wall time, exit code, and summary counts
-- [ ] `--dry-run` validates inputs and computes an in-memory summary without writing any files
+- [ ] `--dry-run` validates inputs and computes an in-memory summary without writing, deleting, or replacing any files or directories
 - [ ] `--quiet` suppresses terminal output but still writes `result.json`
 - [ ] Non-empty output directory without `--overwrite` → exit code 1
 - [ ] `--overwrite` recreates the output directory

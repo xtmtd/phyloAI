@@ -32,3 +32,24 @@ def test_cli_pretree_concat_basic(tmp_path: Path) -> None:
     payload = json.loads(result_path.read_text())
     assert payload["status"] == "success"
     assert payload["key_results"]["n_taxa"] == 3
+
+
+def test_cli_pretree_concat_quiet_dry_run_suppresses_output(tmp_path: Path) -> None:
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "pretree", "concat",
+            "--msa-dir", str(msa_dir),
+            "--output-dir", str(tmp_path / "out"),
+            "--seq-type", "NT",
+            "--dry-run",
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output == ""

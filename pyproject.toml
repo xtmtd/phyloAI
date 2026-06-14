@@ -12,7 +12,6 @@ license = {text = "MIT"}
 dependencies = [
     "click>=8.1",
     "rich>=13.0",
-    "PyYAML>=6.0",
     "biopython>=1.81",
     "clipkit>=2.0",
 ]

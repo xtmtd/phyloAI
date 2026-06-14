@@ -46,7 +46,7 @@ phyloai pretree concat \
 | `--to` | `fasta` | Output format: `fasta`, `phylip-relaxed`, `phylip-paml`, `nexus` |
 | `--translate-codon` | off | Also produce CDS→AA translated matrix (CODON only) |
 | `--exclude-codon3` | off | Also produce codon1+2 matrix (CODON only) |
-| `--dry-run` | off | Validate inputs and report planned actions without writing files |
+| `--dry-run` | off | Validate inputs and report planned actions without writing, deleting, or replacing files |
 | `--quiet` / `-q` | off | Suppress terminal output except errors |
 | `--overwrite` | off | Delete and recreate non-empty output directory |
 
@@ -79,6 +79,9 @@ runs/pretree/concat/
 | Recoded | `--recoding` | `other` |
 | Translated | `--translate-codon` | `AA` |
 | Codon1+2 | `--exclude-codon3` | `NT` |
+
+`result.json` records generated and planned variant outputs as full paths in
+both `key_results.variants_produced` and `data.variants[].path`.
 
 ## Screen Display (Rich)
 
@@ -139,3 +142,5 @@ phyloai pretree concat --msa-dir ./aligned --taxa-occupancy 1.0 --dry-run
   conversion to avoid name truncation issues with Phylip-PAML output.
 - `result.json` includes `variant_stats` with per-variant character summary
   and site patterns.
+- `--dry-run --overwrite` still leaves any existing output directory untouched;
+  `--overwrite` only removes files during a real run.

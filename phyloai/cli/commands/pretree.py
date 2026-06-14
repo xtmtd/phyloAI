@@ -802,5 +802,5 @@ def concat_command(
 
     if payload is not None and not dry_run:
         click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
-    elif dry_run:
+    elif dry_run and not quiet:
         click.echo("[dry-run] No files written.", err=True)

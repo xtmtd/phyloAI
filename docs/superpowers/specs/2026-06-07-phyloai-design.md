@@ -127,7 +127,7 @@ phyloai pretree filter   --msa-dir ./trimmed --metrics-dir ./metrics \
                          [--tree-dir ./genetrees] \
                          --strategy outlier [--filter-by pis,abs,treeness] \
                          [--taper]
-phyloai pretree concat   --msa-dir ./filtered --occupancy 75,80,90,100
+phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 
 # Tree
 phyloai tree genetree    --msa-dir ./filtered --model LG --threads 4
@@ -358,7 +358,7 @@ Log file content per step: tool version, full command, stderr, wall time, exit c
 |------|---------------------|
 | `pretree metrics` | MSA metric distributions, PIS vs length scatter data |
 | `pretree filter` | retained/removed gene counts, removal reason breakdown |
-| `pretree concat` | taxon × gene occupancy matrix, per-occupancy-level matrix stats |
+| `pretree concat` | taxon × gene occupancy matrix, retained/dropped MSA counts, per-variant matrix stats |
 | `pretree align` / `trim` | alignment length distribution before/after |
 | `tree iqtree` / `genetree` | model selected, log-likelihood, tree file path |
 

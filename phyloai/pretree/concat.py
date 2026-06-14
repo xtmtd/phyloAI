@@ -179,7 +179,7 @@ def _exclude_codon3(seq: str) -> str:
 def _scan_msa_files(msa_dir: Path) -> list[Path]:
     found = []
     for ext in COMMON_ALIGNMENT_EXTENSIONS:
-        found.extend(msa_dir.glob(f"*{ext}"))
+        found.extend(path for path in msa_dir.glob(f"*{ext}") if path.is_file())
     return sorted(set(found))
 
 
@@ -458,7 +458,8 @@ def run_concat(
             raise ValueError(
                 f"Output directory '{output_dir}' is non-empty. Use --overwrite to replace."
             )
-        shutil.rmtree(output_dir)
+        if not dry_run:
+            shutil.rmtree(output_dir)
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -539,28 +540,28 @@ def run_concat(
     recoding_warnings: list[str] = []
 
     matrix = _reorder_outgroup(matrix, outgroup)
+    original_path = output_dir / f"{prefix}{ext}"
     if not dry_run:
-        original_path = output_dir / f"{prefix}{ext}"
         _write_matrix(matrix, original_path, to_format, resolved_seq_type)
-        variants.append({
-            "variant": "original", "path": str(original_path),
-            "seq_type": resolved_seq_type,
-            "length": len(list(matrix.values())[0]) if matrix else 0,
-        })
+    variants.append({
+        "variant": "original", "path": str(original_path),
+        "seq_type": resolved_seq_type,
+        "length": len(list(matrix.values())[0]) if matrix else 0,
+    })
 
     if recoding:
         recoded_seq_type = "other"
         recoded_matrix, rw = _apply_recoding(matrix, recoding)
         recoding_warnings = rw
         recoded_matrix = _reorder_outgroup(recoded_matrix, outgroup)
+        recoded_path = output_dir / f"{prefix}.recoded{ext}"
         if not dry_run:
-            recoded_path = output_dir / f"{prefix}.recoded{ext}"
             _write_matrix(recoded_matrix, recoded_path, to_format, recoded_seq_type)
-            variants.append({
-                "variant": "recoded", "path": str(recoded_path),
-                "seq_type": recoded_seq_type,
-                "length": len(list(recoded_matrix.values())[0]) if recoded_matrix else 0,
-            })
+        variants.append({
+            "variant": "recoded", "path": str(recoded_path),
+            "seq_type": recoded_seq_type,
+            "length": len(list(recoded_matrix.values())[0]) if recoded_matrix else 0,
+        })
 
     if resolved_seq_type == "CODON" and translate_codon:
         translated_data: dict[str, tuple[list[str], list[str], int]] = {}
@@ -575,14 +576,14 @@ def run_concat(
         translated_matrix = dict(zip(translated_taxa, tnorm.sequences))
         _accumulate_replacements(tnorm.replacements)
         translated_matrix = _reorder_outgroup(translated_matrix, outgroup)
+        translated_path = output_dir / f"{prefix}.translated{ext}"
         if not dry_run:
-            translated_path = output_dir / f"{prefix}.translated{ext}"
             _write_matrix(translated_matrix, translated_path, to_format, "AA")
-            variants.append({
-                "variant": "translated", "path": str(translated_path),
-                "seq_type": "AA",
-                "length": len(list(translated_matrix.values())[0]) if translated_matrix else 0,
-            })
+        variants.append({
+            "variant": "translated", "path": str(translated_path),
+            "seq_type": "AA",
+            "length": len(list(translated_matrix.values())[0]) if translated_matrix else 0,
+        })
 
     if resolved_seq_type == "CODON" and exclude_codon3:
         cds12_data: dict[str, tuple[list[str], list[str], int]] = {}
@@ -597,14 +598,14 @@ def run_concat(
         cds12_matrix = dict(zip(cds12_taxa, cnorm.sequences))
         _accumulate_replacements(cnorm.replacements)
         cds12_matrix = _reorder_outgroup(cds12_matrix, outgroup)
+        cds12_path = output_dir / f"{prefix}.cds12{ext}"
         if not dry_run:
-            cds12_path = output_dir / f"{prefix}.cds12{ext}"
             _write_matrix(cds12_matrix, cds12_path, to_format, "NT")
-            variants.append({
-                "variant": "cds12", "path": str(cds12_path),
-                "seq_type": "NT",
-                "length": len(list(cds12_matrix.values())[0]) if cds12_matrix else 0,
-            })
+        variants.append({
+            "variant": "cds12", "path": str(cds12_path),
+            "seq_type": "NT",
+            "length": len(list(cds12_matrix.values())[0]) if cds12_matrix else 0,
+        })
 
     # --- Compute per-variant stats ---
     variant_stats: list[dict[str, Any]] = []

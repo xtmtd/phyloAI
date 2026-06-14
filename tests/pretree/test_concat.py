@@ -128,6 +128,7 @@ def test_scan_msa_files_finds_supported_extensions(tmp_path: Path) -> None:
     (tmp_path / "gene3.phy").write_text("2 4\na ACGT\nb ACGT\n")
     (tmp_path / "notes.txt").write_text("not an alignment")
     (tmp_path / "subdir").mkdir()
+    (tmp_path / "not_a_file.fa").mkdir()
 
     found = _scan_msa_files(tmp_path)
     names = sorted(p.name for p in found)
@@ -552,6 +553,58 @@ def test_run_concat_dry_run_writes_no_files(tmp_path: Path) -> None:
     assert not (output_dir / "matrix.fa").exists()
     assert not (output_dir / "result.json").exists()
     assert not (output_dir / "concat.log").exists()
+
+
+def test_run_concat_dry_run_overwrite_does_not_delete_existing_output(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    sentinel = output_dir / "old.txt"
+    sentinel.write_text("keep")
+
+    payload = run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.0, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=True, overwrite=True,
+    )
+
+    assert payload["status"] == "success"
+    assert sentinel.read_text() == "keep"
+
+
+def test_run_concat_dry_run_reports_planned_variants(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nATGAAA\n>B\nATGAAA\n")
+
+    output_dir = tmp_path / "out"
+    payload = run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="CODON", taxa_occupancy=0.0, recoding="RY-nucleotide",
+        outgroup=None, to_format="fasta",
+        translate_codon=True, exclude_codon3=True,
+        dry_run=True, overwrite=False,
+    )
+
+    assert payload["key_results"]["variants_produced"] == [
+        str(output_dir / "matrix.fa"),
+        str(output_dir / "matrix.recoded.fa"),
+        str(output_dir / "matrix.translated.fa"),
+        str(output_dir / "matrix.cds12.fa"),
+    ]
+    assert [v["variant"] for v in payload["data"]["variants"]] == [
+        "original", "recoded", "translated", "cds12",
+    ]
+    assert not output_dir.exists()
 
 
 def test_run_concat_recoding_validation_rejects_aa_scheme_on_nt(tmp_path: Path) -> None:
