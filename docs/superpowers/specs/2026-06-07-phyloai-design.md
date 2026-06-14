@@ -177,7 +177,6 @@ All commands support the shared parameters defined in Section 9.2. Key universal
 |------|---------|
 | `--output-format json\|text` | `doctor` only; choose human-readable text or machine-readable JSON diagnostic output |
 | `--dry-run` | Show what would be executed without running |
-| `--config FILE` | Load parameters from YAML (HPC batch use); see Section 13 for template |
 | `--threads` / `-t` | Parallelism control |
 | `--run-dir` | Override default run directory |
 | `--quiet` / `-q` | Suppress all output except errors |
@@ -427,19 +426,18 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--tree-dir` | | Path | — | commands requiring a gene tree directory |
 | `--output-dir` | `-o` | Path | auto under `runs/` | all commands producing output files |
 | `--threads` | `-t` | int | 4 | all commands invoking multi-threaded tools |
-| `--seq-type` | | AA \| NT \| auto | auto where safe; command-specific otherwise | commands where molecule type affects behavior |
+| `--seq-type` | | AA \| NT \| CODON \| auto | auto where safe; command-specific otherwise | commands where molecule type affects behavior; `CODON` only valid for commands that support codon-aware processing (currently `pretree concat`) |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
 | `--input-format` | | str | auto-detect | all commands reading alignment files |
 | `--output-format` | | text \| json | text | `doctor` only |
 | `--tool-args` | | str | — | all commands invoking external tools; strategy parameters only |
-| `--config` | | Path | — | all commands (global, inherited from CLI root) |
 | `--run-dir` | | Path | `./runs/` | all commands except `stats` and `convert` (global, inherited from CLI root) |
 | `--dry-run` | | flag | False | all commands |
 | `--quiet` | `-q` | flag | False | all commands |
 | `--overwrite` | | flag | False | all commands producing output directories |
 | `--resume` | | flag | False | long-running pipeline commands only; resume from `checkpoint.json` |
 
-Parameters marked "global, inherited from CLI root" are defined once on the `phyloai` root group and passed via Click context; subcommands do not re-declare them.
+The `--run-dir` parameter is defined once on the `phyloai` root group and passed via Click context; subcommands do not re-declare it.
 
 ### 9.3 Exit Codes
 
@@ -626,15 +624,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | model_eval not exposed as standalone | Model evaluation logic is internal to syserror; exposing it separately creates redundant interface surface |
 | JSON result files for non-`doctor` commands | Ensures MCP wrapping has one stable machine-readable result path without maintaining parallel text/json command outputs; `doctor` is the sole command with `--output-format` because it is a human-oriented diagnostic |
 | JSON key_results in all pipeline modules | Enables report figures and summary without post-hoc data extraction; schema defined at design time |
-| YAML for config, JSON for output | YAML supports comments and is human-writable; JSON is strict and machine-parseable |
+| JSON for output | JSON is strict and machine-parseable; structured `result.json` from each command provides sufficient reproducibility without a separate config file |
 | `--input-format` on alignment-reading commands | Real datasets often use inconsistent suffixes; explicit user intent must override guessing |
 | Per-subcommand design + plan docs | Each pretree subcommand is complex enough to warrant its own spec; keeps main design doc stable while allowing detailed iteration |
 | Lightweight top-level README + command docs | Keeps `README.md` maintainable as the CLI grows; detailed command behavior belongs in `docs/commands/*.md` with a consistent section structure |
-
----
-
-## 13. YAML Config Files
-
-All `--config FILE` parameters should map 1-to-1 to CLI flags. Unknown keys should be ignored with a warning, and CLI flags should override config values.
-
-Example YAML templates should live under `examples/` in the repository rather than being embedded in the design document. Those example files should cover global options and representative command-level inputs, including `run_dir` and future `input_format` fields for alignment-reading commands.

@@ -15,3 +15,6 @@ htmlcov/
 ref/
 runs/
 .worktrees/
+uv.lock
+.DS_Store
+**/.DS_Store
