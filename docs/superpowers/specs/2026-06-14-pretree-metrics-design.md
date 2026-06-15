@@ -16,7 +16,7 @@ The module has three layers:
 2. **Plot** — distribution visualization per metric → one PDF per metric + basic statistics CSV
 3. **Correlate** — Spearman correlation heatmap from `metrics.csv`
 
-Steps 1–3 execute by default under `phyloai pretree metrics`. Steps 2 and 3 can also be re-run independently via `phyloai pretree metrics-plot` and `phyloai pretree metrics-correlate` against an existing `metrics.csv`.
+Steps 1–3 execute by default under `phyloai pretree metrics`. Steps 2 and 3 can also be re-run independently via `phyloai pretree metrics plot` and `phyloai pretree metrics correlate` against an existing `metrics.csv`.
 
 What it does **not** do:
 - UMAP clustering (moved to `pretree filter`)
@@ -29,7 +29,7 @@ What it does **not** do:
 
 ```
 phyloai/pretree/metrics.py           # core library: compute, plot, correlate, helpers
-phyloai/cli/commands/pretree.py      # CLI: register metrics, metrics-plot, metrics-correlate
+phyloai/cli/commands/pretree.py      # CLI: metrics Click group, plot + correlate subcommands
 ```
 
 **Reused components:**
@@ -42,8 +42,8 @@ phyloai/cli/commands/pretree.py      # CLI: register metrics, metrics-plot, metr
 **External dependencies:**
 - `BioPython` (AlignIO, Phylo, SeqIO) — already in project
 - `numpy` — already in project
-- `matplotlib` + `seaborn` — for plotting and correlation heatmap (new dependency)
-- `scipy` — Spearman correlation `scipy.stats.spearmanr`, dendrogram (new dependency)
+- `matplotlib` — for distribution plots and correlation heatmaps
+- `scipy` — Spearman/Pearson helpers and Ward leaf ordering for correlation plots
 
 **Not required:** `phykit` — all computations (RCFV, saturation, DVMC) are implemented directly in `pretree/metrics.py`.
 
@@ -73,26 +73,53 @@ At least one of --msa-dir or --tree-dir must be provided.
 analysis (same inputs → identical outputs), so re-running is simpler and produces
 the same result as resuming from a checkpoint.
 
-phyloai pretree metrics-plot
-    --csv <metrics.csv>            # metrics CSV file
-    --metric <col>                 # single metric to plot (required)
+phyloai pretree metrics plot
+    --csv <metrics.csv>            # metrics CSV file (required)
+    --metric <col>                 # single metric column to plot (required)
     [--bins N]                     # histogram bins, default 50
     [--xmin FLOAT]                 # x-axis minimum
     [--xmax FLOAT]                 # x-axis maximum
-    [--tukey-k FLOAT]              # Tukey's Fences k value, default disabled
-    [--output-dir <dir>]           # output directory, default runs/pretree/metrics/
+    [--tukey-k FLOAT]              # Tukey's Fences k value (e.g. 1.5 = standard, 3.0 = conservative)
+    [--title TEXT]                 # plot title (default: "Distribution of <metric>")
+    [--xlabel TEXT]                # x-axis label (default: metric display name)
+    [--ylabel TEXT]                # y-axis label, default "Density"
+    [--color HEX]                  # bar fill colour, default "#2E86AB"
+    [--fig-width FLOAT]            # figure width (inches), default 10.0
+    [--fig-height FLOAT]           # figure height (inches), default 8.0
+    [--dpi INT]                    # output resolution, default 150
+    [--font-size INT]              # base font size, default 12
+    [--output-dir <dir>]           # default <csv_parent>/plot_<metric>/
     [--overwrite] [--quiet]
 
+When --tukey-k is set, outlier loci are saved to
+`<output_dir>/<metric>.tukey_filtered.csv` with columns `loci,value`.
+
 phyloai pretree metrics correlate
-    --csv <metrics.csv>            # metrics CSV file
-    [--metrics <col1,col2,...>]    # metrics to include (default: all numeric)
-    [--triangle full|lower|upper]  # display type, default full
-    [--cluster-rectangles N]       # number of cluster rectangles, default auto (none)
-    [--output-dir <dir>]           # output directory, default runs/pretree/metrics/correlate/
+    --csv <metrics.csv>            # metrics CSV file (required)
+    [--metrics <col1,col2,...>|all]# explicit subset; default auto-selects core numeric metrics
+    [--include-freq]               # include freq* columns in automatic metric selection
+    [--include-sd]                 # include sd_* columns in automatic metric selection
+    [--method spearman|pearson]    # correlation method, default spearman
+    [--triangle full|lower|upper]  # matrix display mode, default full
+    [--annot / --no-annot]         # show numeric values in cells, default --no-annot
+    [--cluster-rectangles N]       # number of cluster rectangles; full triangle only
+    [--cmap NAME]                  # matplotlib colormap, default RdBu_r
+    [--fmt FORMAT]                 # annotation format, default .2f
+    [--fig-width FLOAT]            # figure width (inches), default 12.0
+    [--fig-height FLOAT]           # figure height (inches), default 10.0
+    [--dpi INT]                    # output resolution, default 150
+    [--font-size INT]              # base font size, default 10
+    [--label-angle FLOAT]          # x-axis label rotation angle, default 45
+    [--title TEXT]                 # plot title (default: none)
+    [--output-dir <dir>]           # default runs/pretree/metrics/correlate/
     [--overwrite] [--quiet]
 ```
 
-`metrics-plot` and `metrics-correlate` are registered as Click subcommands of `pretree`.
+Circle cells are drawn with `matplotlib.patches.Circle`, area proportional to
+|correlation|, radius capped at 0.45 (cell boundary). Data is reordered by Ward
+leaf order for readability, but no dendrogram is drawn. Clustering distance =
+`1 - |correlation|` (magnitude-based, not sign-based). Pearson method applies
+z-score normalization before computation.
 
 ---
 
@@ -263,9 +290,11 @@ Saturation (item 14 in tree metrics) is implemented directly in `phyloai/pretree
 1. Read the MSA and tree for the marker.
 2. For all taxon pairs (i, j), compute:
    - Patristic distance from the tree (`tree.distance(taxon_i, taxon_j)`)
-   - Uncorrected distance = `1 - (identity / aligned_length)`, optionally excluding gap positions
+   - Uncorrected distance = `1 - (identity / alignment_length)` using ALL sites by default (`exclude_gaps=False`, matching phykit's default — not excluding gaps)
 3. Fit a line through origin: `slope = Σ(x·y) / Σ(x²)` where `x = patristic, y = uncorrected`.
 4. Output value: `slope` (not `abs(1 - slope)`).
+
+When `exclude_gaps` is set (optional), positions where EITHER sequence has a gap character are excluded. Gap characters are detected via `core.sequence_normalization.gap_chars()` (includes `-`, `?`, `N` for NT; `-`, `?` for AA).
 
 Only computed when both MSA and tree exist for a given marker. For large taxa counts (>~64), this is O(n²) pairwise and the dominant cost.
 
@@ -314,7 +343,7 @@ Would process 150 markers (MSA only)
   Output: runs/pretree/metrics/
   Metrics: 22 MSA + 20 frequency
   Plots: 42 PDFs → runs/pretree/metrics/plots/
-  Correlation: Spearman heatmap → runs/pretree/metrics/correlation_heatmap.pdf
+  Correlation: Spearman heatmap → runs/pretree/metrics/correlate/correlation_heatmap.pdf
 ```
 
 ### 5.9 Numeric Precision
@@ -348,7 +377,7 @@ This warning is printed once per run (not per marker), before the progress bar s
 
 ---
 
-## 6. Step 2: Distribution Plots (`metrics-plot`)
+## 6. Step 2: Distribution Plots (`metrics plot`)
 
 ### 6.1 Default Behavior (in `phyloai pretree metrics`)
 
@@ -362,12 +391,12 @@ After computing `metrics.csv`, generate one PDF per numeric metric:
 
 A `metrics.basic_statistics.csv` is also written to `runs/pretree/metrics/`.
 
-### 6.2 Standalone Subcommand (`metrics-plot`)
+### 6.2 Standalone Subcommand (`metrics plot`)
 
 Used to re-generate a **single** metric's distribution plot with custom parameters, matching the interactive use case in the R script (pick a variable, tweak bins/x-range/Tukey filter, replot).
 
 ```
-phyloai pretree metrics-plot --csv metrics.csv --metric num_sites
+phyloai pretree metrics plot --csv metrics.csv --metric num_sites
     [--bins 60] [--xmin 0] [--xmax 50000]
     [--tukey-k 1.5]
     [--title "Custom Title"] [--xlabel "Sites"] [--ylabel "Density"]
@@ -421,26 +450,26 @@ Column naming follows the project convention of explicitness (e.g., `n_ex_NA` ma
 
 ---
 
-## 7. Step 3: Correlation Analysis (`metrics-correlate`)
+## 7. Step 3: Correlation Analysis (`metrics correlate`)
 
 ### 7.1 Default Behavior
 
 In `phyloai pretree metrics`, after computing `metrics.csv`, generate:
 
-- **Correlation heatmap PDF:** `correlation_heatmap.pdf` under `runs/pretree/metrics/`
-- **Correlation matrix CSV:** `correlation_matrix.csv`
+- **Correlation heatmap PDF:** `correlation_heatmap.pdf` under `runs/pretree/metrics/correlate/`
+- **Correlation matrix CSV:** `correlation_matrix.csv` under `runs/pretree/metrics/correlate/`
 
 ### 7.2 Standalone Subcommand
 
 ```
-phyloai pretree metrics-correlate --csv metrics.csv
+phyloai pretree metrics correlate --csv metrics.csv
     [--metrics num_sites,entropy,...]
     [--method spearman|pearson]
     [--triangle full|lower|upper]
     [--cluster-rectangles N]
     [--cmap RdBu_r] [--annot True|False] [--fmt ".2f"]
     [--fig-width 12] [--fig-height 10] [--dpi 150]
-    [--font-size 10] [--title "Correlation Heatmap"]
+    [--font-size 10] [--label-angle 45] [--title "Correlation Heatmap"]
     [--output-dir <dir>] [--overwrite]
 ```
 
@@ -449,10 +478,12 @@ phyloai pretree metrics-correlate --csv metrics.csv
 | Parameter              | Type   | Default                          | Description                                               |
 |------------------------|--------|----------------------------------|-----------------------------------------------------------|
 | `--csv`                | Path   | (required)                       | Input metrics CSV                                         |
-| `--metrics`            | str    | all numeric cols                 | Comma-separated list of columns to correlate              |
+| `--metrics`            | str    | core numeric cols                | Comma-separated list of columns to correlate; `all` means every numeric column |
+| `--include-freq`       | flag   | false                            | Include `freq*` columns in automatic metric selection     |
+| `--include-sd`         | flag   | false                            | Include `sd_*` columns in automatic metric selection      |
 | `--method`             | choice | `spearman`                       | Correlation method: `spearman` or `pearson`               |
 | `--triangle`           | choice | `full`                           | `full` / `lower` / `upper` triangle display               |
-| `--cluster-rectangles` | int    | None (no rectangles)             | Number of cluster rectangles to draw on heatmap           |
+| `--cluster-rectangles` | int    | None (no rectangles)             | Number of cluster rectangles to draw on full heatmaps only; ignored for `lower`/`upper` |
 | `--cmap`               | str    | `RdBu_r`                         | Matplotlib colormap for the heatmap                       |
 | `--annot`              | bool   | `True`                           | Show correlation values on cells                          |
 | `--fmt`                | str    | `".2f"`                          | Numeric format for annotations                            |
@@ -460,6 +491,7 @@ phyloai pretree metrics-correlate --csv metrics.csv
 | `--fig-height`         | float  | 10                               | Figure height in inches                                   |
 | `--dpi`                | int    | 150                              | Output resolution                                         |
 | `--font-size`          | int    | 10                               | Base font size                                            |
+| `--label-angle`        | float  | 45                               | X-axis metric label rotation angle                        |
 | `--title`              | str    | `Correlation Heatmap`            | Plot title                                                |
 | `--output-dir`         | Path   | `runs/pretree/metrics/correlate/`| Output directory                                          |
 | `--overwrite`          | flag   | False                            | Overwrite existing output                                 |
@@ -467,23 +499,19 @@ phyloai pretree metrics-correlate --csv metrics.csv
 
 ### 7.3 Methodology
 
-1. **Data preparation:** Select numeric columns, drop rows with any NA in selected columns (complete case analysis).
+1. **Data preparation:** By default, select core numeric biological metrics and exclude identifier columns (`loci`, `DataType`), frequency columns (`freq*`), and standard-deviation columns (`sd_*`). Users can include frequency columns with `--include-freq`, include standard-deviation columns with `--include-sd`, provide an explicit comma-separated `--metrics` list, or use `--metrics all` for every numeric column. Drop rows with any NA in selected columns (complete case analysis).
 2. **Correlation:** Spearman rank correlation (no normalization needed). Matrix of size M×M.
-3. **Clustering:** Hierarchical clustering on the correlation matrix using `hclust` with Ward's method (`ward.D2` equivalent). The distance metric is `1 - |correlation|` so that strong positive and strong negative correlations are grouped together.
-4. **Visualisation:** `seaborn.clustermap` with:
-   - Colormap: diverging (`RdBu_r` or similar)
-   - Range: `[-1, 1]`
-   - Annotation: correlation values on cells
-   - Row/col clustering determined by the `1 - |corr|` distance
-5. **Cluster rectangles:** Optional, drawn via `matplotlib` patch overlays at the specified dendrogram cut height.
+3. **Ordering:** Compute Ward leaf order from distance `1 - |correlation|` so that strong positive and strong negative correlations group together, but do not draw dendrograms.
+4. **Visualisation:** Draw a compact Matplotlib heatmap/corrplot with one colorbar, diverging colormap (`RdBu_r` or similar), fixed range `[-1, 1]`, optional annotations, and triangle masks that remove both cells and grid lines from the hidden half. Lower triangles use left/bottom labels and a right-side colorbar; upper triangles use top/right labels and a left-side colorbar. Full matrices use a right-side colorbar. Triangle modes hide rectangular spines and draw a stepped triangular border that runs outside the diagonal cells.
+5. **Cluster rectangles:** Optional, drawn via `matplotlib` patch overlays on full matrices only. They are ignored for `--triangle lower` and `--triangle upper`; the CLI prints a warning when the user requests both.
 
 ### 7.4 Key Differences from R Script
 
 | Aspect                 | R Script                                                   | Python Implementation                              |
 |------------------------|------------------------------------------------------------|----------------------------------------------------|
-| Variable selection     | Manual via checkbox UI                                     | Auto all numeric (or `--metrics` flag)             |
+| Variable selection     | Manual via checkbox UI                                     | Auto core metrics, opt-in `freq*`/`sd_*`, or explicit `--metrics` |
 | Clustering distance    | `1 - correlation` (sign-sensitive)                          | `1 - \|correlation\|` (magnitude-based)               |
-| Rectangles             | Optional, pre-set count                                    | Optional via `--cluster-rectangles`, else omitted   |
+| Rectangles             | Optional, pre-set count                                    | Optional via `--cluster-rectangles` in full mode only |
 | Normalization          | Not needed (Spearman)                                       | Same                                               |
 | Output format          | `corrplot` + CSV download                                   | PDF + CSV                                          |
 
@@ -503,11 +531,12 @@ runs/pretree/metrics/
 │   ├── num_taxa.pdf
 │   ├── num_sites.pdf
 │   ├── ...                             # one PDF per metric
-├── correlation_heatmap.pdf              # Spearman correlation heatmap
-└── correlation_matrix.csv               # full correlation matrix
+└── correlate/
+    ├── correlation_heatmap.pdf          # Spearman correlation heatmap
+    └── correlation_matrix.csv           # full correlation matrix
 ```
 
-When `metrics-plot` is used independently, the single PDF is written directly to `runs/pretree/metrics/<metric_name>.pdf` (not under `plots/`), alongside its own `result.json` and `metrics.basic_statistics.csv`. When `metrics-correlate` is used independently, its outputs go to `runs/pretree/metrics/correlate/`.
+When `metrics plot` is used independently, the single PDF is written directly to `<csv_parent>/plot_<metric>/` by default, alongside its own `result.json`. When `metrics correlate` is used independently, its outputs go to `runs/pretree/metrics/correlate/` by default.
 
 ### 8.2 result.json Schema
 
@@ -555,7 +584,7 @@ When `metrics-plot` is used independently, the single PDF is written directly to
 
 ### 8.3 Separate subcommand result.jsons
 
-`metrics-plot` and `metrics-correlate` each write their own `result.json`:
+`metrics plot` and `metrics correlate` each write their own `result.json`:
 
 **plot/result.json:**
 ```json
@@ -584,7 +613,7 @@ When `metrics-plot` is used independently, the single PDF is written directly to
 In `phyloai/cli/commands/pretree.py`:
 
 - `_PretreeGroup.list_commands` updated to include `"metrics"` after `"trim"` and before `"concat"`.
-- `metrics`, `metrics-plot`, `metrics-correlate` registered as Click subcommands with `@pretree.command(...)`.
+- `metrics` registered as a Click group with nested `plot` and `correlate` subcommands.
 
 ---
 
@@ -612,12 +641,13 @@ Detection: run `FastTree` without arguments. The first line of stdout contains t
 | `num_patterns` uses stats.py logic | Consistent with `phyloai pretree stats` output; normalised sequences from `pretree convert` make this the correct approach |
 | `--dry-run` supported, `--resume` not | `--dry-run` shows plan before saturating computation; no resume because metrics is a deterministic read-only analysis — re-running produces identical output, so checkpoint overhead is unwarranted |
 | `taxa_occupancy` needs two-pass | Total taxa pool not known until all files are scanned; header-only first pass is trivial I/O |
-| Separate `metrics-plot` and `metrics-correlate` | Enables iterative exploration without recomputing metrics; plot regenerates a single metric, correlate regenerates the heatmap |
-| `metrics-plot` outputs one metric only | Mirrors the R script's interactive use case: pick a variable, tweak bins/x-range/Tukey, replot |
-| Standalone subcommands skip dir conflict | `metrics-plot` and `metrics-correlate` append files to existing directories; they do **not** enforce the non-empty-directory exit policy — they are designed for iterative replotting against an existing metrics directory |
+| Separate `metrics plot` and `metrics correlate` | Enables iterative exploration without recomputing metrics; plot regenerates a single metric, correlate regenerates the heatmap |
+| `metrics plot` outputs one metric only | Mirrors the R script's interactive use case: pick a variable, tweak bins/x-range/Tukey, replot |
+| Standalone subcommands skip dir conflict | `metrics plot` and `metrics correlate` overwrite only their own outputs when requested; they are designed for iterative replotting against an existing metrics directory |
 | `metrics.csv` as canonical intermediate | Decouples computation from visualisation; filter module reads the same CSV |
 | No interactive dashboard | Too complex for CLI phase; static PDF output covers the essential use case |
 | Clustering by `\|\r\|` not `r` | Groups strong positive and strong negative correlations together, matching user's intent |
+| Core metrics by default | Keeps the default PDF readable; `freq*` and `sd_*` metrics remain available through `--include-freq`, `--include-sd`, explicit `--metrics`, or `--metrics all` |
 | DVMC pruning before computation | extract_features.py approach; outgroups affect root-to-tip distance distribution |
 | Saturation implemented directly | Avoids phykit dependency; phykit algorithm is straightforward to reimplement |
 | Parallel per-marker | Each marker is independent; ProcessPoolExecutor avoids GIL contention |

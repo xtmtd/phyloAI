@@ -22,6 +22,16 @@ from phyloai.pretree.stats import (
 )
 from phyloai.pretree.trim import render_trim_summary_table, run_trim, _scan_input as _trim_scan_input
 from phyloai.pretree.concat import run_concat, _render_concat_panels
+from phyloai.pretree.metrics import (
+    _compute_correlation,
+    _generate_all_plots,
+    _generate_basic_statistics,
+    _generate_correlation_heatmap,
+    _plot_single_metric,
+    _select_correlation_columns,
+    _write_correlation_csv,
+    run_metrics,
+)
 
 console = Console()
 
@@ -33,7 +43,7 @@ def _fail(message: str, exit_code: int) -> None:
 
 class _PretreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["convert", "stats", "align", "trim", "concat"]
+        return ["convert", "stats", "align", "trim", "metrics", "concat"]
 
 
 @click.group(cls=_PretreeGroup)
@@ -804,3 +814,413 @@ def concat_command(
         click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
     elif dry_run and not quiet:
         click.echo("[dry-run] No files written.", err=True)
+
+
+# ---------------------------------------------------------------------------
+# metrics group
+# ---------------------------------------------------------------------------
+
+
+@click.group(
+    "metrics",
+    invoke_without_command=True,
+    help=(
+        "Compute MSA and tree metrics, distribution plots, and correlation "
+        "analysis for molecular marker evaluation."
+    ),
+)
+@click.option("--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Directory of aligned FASTA files (.fa/.fasta/.fas/.fna/.faa/.aln).")
+@click.option("--tree-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None,
+              help="Directory of Newick tree files (.tre/.tree/.nwk/.newick/.treefile/.bestTree/.contree).")
+@click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True,
+              help="Molecule type: AA, NT, or auto-detect per marker.")
+@click.option("--outgroup-list", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None,
+              help="File with one outgroup taxon name per line for DVMC pruning.")
+@click.option("--ref-tree", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None,
+              help="Reference species tree for normalized Robinson-Foulds distance.")
+@click.option("--skip-freq-statistics", is_flag=True, default=False,
+              help="Skip per-character frequency columns (freqA, freqC, ...).")
+@click.option("--pseudo-tree-metrics", is_flag=True, default=False,
+              help="Compute FastTree-derived pseudo-tree metrics (_FT suffix).")
+@click.option("--fasttree-path", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Explicit path to FastTree executable.")
+@click.option("--skip-pairwise-identity", is_flag=True, default=False,
+              help="Skip average_pairwise_identity (O(n^2 x L); recommended for >200 taxa).")
+@click.option("--round", "decimal_places", type=click.IntRange(0, 12), default=6, show_default=True,
+              help="Decimal places for numeric values in metrics.csv (0=integer).")
+@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+              default=Path("runs/pretree/metrics"), show_default=True,
+              help="Output directory for metrics.csv, plots/, correlation_heatmap.pdf, result.json, metrics.log.")
+@click.option("--threads", "-t", type=int, default=4, show_default=True,
+              help="Number of worker processes.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Validate inputs and show plan without writing files.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate a non-empty output directory.")
+@click.option("--quiet", "-q", is_flag=True, default=False,
+              help="Suppress terminal output.")
+@click.pass_context
+def metrics_group(
+    ctx: click.Context,
+    msa_dir: Path | None,
+    tree_dir: Path | None,
+    seq_type: str,
+    outgroup_list: Path | None,
+    ref_tree: Path | None,
+    skip_freq_statistics: bool,
+    pseudo_tree_metrics: bool,
+    fasttree_path: Path | None,
+    skip_pairwise_identity: bool,
+    decimal_places: int,
+    output_dir: Path,
+    threads: int,
+    dry_run: bool,
+    overwrite: bool,
+    quiet: bool,
+) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if not msa_dir and not tree_dir:
+        _fail("At least one of --msa-dir or --tree-dir must be provided.", 1)
+    if pseudo_tree_metrics and not msa_dir:
+        _fail("--pseudo-tree-metrics requires --msa-dir.", 1)
+    if outgroup_list and not tree_dir:
+        _fail("--outgroup-list requires --tree-dir.", 1)
+    if ref_tree and not tree_dir:
+        _fail("--ref-tree requires --tree-dir.", 1)
+    if threads < 1:
+        _fail("--threads must be at least 1.", 1)
+
+    if output_dir.exists() and any(output_dir.iterdir()) and not overwrite and not dry_run:
+        _fail(
+            f"Output directory '{output_dir}' already exists and is non-empty. "
+            "Use --overwrite to replace it.",
+            1,
+        )
+
+    progress = None
+    if not quiet:
+        progress = Progress(console=console, transient=True)
+        progress.start()
+
+    # Step 1: compute metrics
+    payload = run_metrics(
+        msa_dir=msa_dir, tree_dir=tree_dir, seq_type=seq_type,
+        threads=threads, output_dir=output_dir, decimal_places=decimal_places,
+        skip_freq=skip_freq_statistics, pseudo_tree=pseudo_tree_metrics,
+        fasttree_path=str(fasttree_path) if fasttree_path else "FastTree",
+        skip_pairwise_identity=skip_pairwise_identity,
+        outgroup_list=outgroup_list, ref_tree=ref_tree,
+        overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+        progress=progress, console=console,
+    )
+
+    if payload["status"] == "error":
+        if progress: progress.stop()
+        _fail(payload.get("error", "Unknown error"), 1)
+
+    if dry_run:
+        if progress: progress.stop()
+        if not quiet:
+            click.echo("[dry-run] No files written; no plots or correlation generated.", err=True)
+        return
+
+    # Step 2: generate distribution plots
+    n_plots = 0
+    try:
+        import csv as _csv
+        rows = []
+        with open(output_dir / "metrics.csv", newline="") as fh:
+            for row in _csv.DictReader(fh):
+                rows.append(row)
+        numeric_cols = [k for k in rows[0].keys() if k not in ("loci", "DataType")] if rows else []
+        plots_dir = output_dir / "plots"
+        n_plots = _generate_all_plots(rows, numeric_cols, plots_dir)
+        _generate_basic_statistics(rows, numeric_cols, output_dir / "metrics.basic_statistics.csv")
+    except Exception as exc:
+        if not quiet:
+            click.echo(f"\n[WARN] Plot generation failed: {exc}", err=True)
+
+    # Step 3: correlation heatmap
+    try:
+        corr_cols = _select_correlation_columns(rows, list(rows[0].keys()) if rows else [])
+        corr_matrix, col_names = _compute_correlation(rows, corr_cols, method="spearman")
+        if corr_matrix.size > 0:
+            corr_dir = output_dir / "correlate"
+            corr_dir.mkdir(parents=True, exist_ok=True)
+            _generate_correlation_heatmap(
+                corr_matrix, col_names, corr_dir / "correlation_heatmap.pdf",
+                annot=False,
+            )
+            _write_correlation_csv(corr_matrix, col_names, corr_dir / "correlation_matrix.csv")
+            payload["data"]["correlation"] = {"n_variables": len(col_names)}
+    except Exception as exc:
+        if not quiet:
+            click.echo(f"\n[WARN] Correlation generation failed: {exc}", err=True)
+
+    payload["data"]["plots"] = {"n_pdfs": n_plots}
+
+    if progress:
+        progress.stop()
+
+    if not quiet:
+        key = payload["key_results"]
+        click.echo(f"Metrics CSV  → {output_dir / 'metrics.csv'}", err=True)
+        click.echo(f"Plots        → {output_dir / 'plots'} ({n_plots} PDFs)", err=True)
+        click.echo(f"Basic stats  → {output_dir / 'metrics.basic_statistics.csv'}", err=True)
+        click.echo(f"Correlation  → {output_dir / 'correlate' / 'correlation_heatmap.pdf'}", err=True)
+        click.echo(f"Results      → {output_dir / 'result.json'}", err=True)
+        click.echo(
+            f"n_markers={key['n_markers']}, n_success={key['n_success']}, "
+            f"n_errors={key['n_errors']}",
+            err=True,
+        )
+
+
+@metrics_group.command(
+    "plot",
+    help=(
+        "Re-generate a single metric's distribution density histogram from "
+        "an existing metrics.csv.\n\n"
+        "Reads the specified --metric column, filters non-numeric values, "
+        "optionally applies Tukey's Fences outlier removal (saving filtered "
+        "loci names), and writes a density-normalised histogram PDF with "
+        "KDE overlay.\n\n"
+        "Useful for iterative plot styling without re-running the full "
+        "metrics computation."
+    ),
+)
+@click.option("--csv", "csv_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True,
+              help="Path to an existing metrics.csv (required).")
+@click.option("--metric", type=str, required=True,
+              help="Exact column name to plot, e.g. entropy, rcfv, saturation (required).")
+@click.option("--bins", type=int, default=50, show_default=True,
+              help="Number of histogram bins (1-500).")
+@click.option("--xmin", type=float, default=None, show_default=False,
+              help="Force X-axis lower limit (auto-detected if omitted).")
+@click.option("--xmax", type=float, default=None, show_default=False,
+              help="Force X-axis upper limit (auto-detected if omitted).")
+@click.option("--tukey-k", type=float, default=None, show_default=False,
+              help="Tukey's Fences multiplier for outlier removal (e.g. 1.5 = standard, 3.0 = conservative). "
+                   "Outlier loci names are saved to <output_dir>/<metric>.tukey_filtered.csv.")
+@click.option("--title", type=str, default=None, show_default=False,
+              help="Plot title (default: 'Distribution of <metric>').")
+@click.option("--xlabel", type=str, default=None, show_default=False,
+              help="X-axis label (default: metric display name).")
+@click.option("--ylabel", type=str, default="Density", show_default=True,
+              help="Y-axis label.")
+@click.option("--color", type=str, default="#2E86AB", show_default=True,
+              help="Bar fill colour (hex or named colour).")
+@click.option("--fig-width", type=float, default=10.0, show_default=True,
+              help="Figure width in inches.")
+@click.option("--fig-height", type=float, default=8.0, show_default=True,
+              help="Figure height in inches.")
+@click.option("--dpi", type=int, default=150, show_default=True,
+              help="Output resolution (72-600).")
+@click.option("--font-size", type=int, default=12, show_default=True,
+              help="Base font size in points.")
+@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+              default=None, show_default=False,
+              help="Directory for the PDF. Default: <csv_parent>/plot_<metric>/")
+@click.option("--overwrite", is_flag=True, default=False)
+@click.option("--quiet", "-q", is_flag=True, default=False)
+def metrics_plot_command(
+    csv_path: Path, metric: str, bins: int, xmin: float | None, xmax: float | None,
+    tukey_k: float | None, title: str | None, xlabel: str | None, ylabel: str,
+    color: str, fig_width: float, fig_height: float, dpi: int, font_size: int,
+    output_dir: Path | None, overwrite: bool, quiet: bool,
+) -> None:
+    import numpy as _np
+    import csv as _csv_mod
+
+    if output_dir is None:
+        output_dir = csv_path.parent / f"plot_{metric}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not overwrite and (output_dir / f"{metric}.pdf").exists():
+        _fail(
+            f"Output '{output_dir / f'{metric}.pdf'}' already exists. Use --overwrite to replace it.",
+            1,
+        )
+    if overwrite and any(output_dir.iterdir()):
+        import shutil
+        shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    values = []
+    loci_labels = []
+    with open(csv_path, newline="") as fh:
+        for row in _csv_mod.DictReader(fh):
+            v = row.get(metric)
+            lbl = row.get("loci", "")
+            if v not in (None, "", "NA"):
+                try:
+                    values.append(float(v))
+                    loci_labels.append(lbl)
+                except (ValueError, TypeError):
+                    continue
+    data = _np.array(values, dtype=float)
+    clean = data[_np.isfinite(data)]
+    if len(clean) == 0:
+        _fail(f"No valid numeric values found for metric '{metric}'.", 1)
+
+    out_path = output_dir / f"{metric}.pdf"
+    n_filtered, fltr_pairs = _plot_single_metric(
+        clean, metric, out_path, bins=bins, xmin=xmin, xmax=xmax,
+        tukey_k=tukey_k, raw_labels=loci_labels, title=title,
+        xlabel=xlabel, ylabel=ylabel,
+        color=color, fig_width=fig_width, fig_height=fig_height, dpi=dpi,
+        font_size=font_size,
+    )
+
+    # Save filtered loci as CSV when tukey-k is used
+    if tukey_k is not None and fltr_pairs:
+        fltr_path = output_dir / f"{metric}.tukey_filtered.csv"
+        with open(fltr_path, "w", newline="") as fh:
+            writer = _csv_mod.writer(fh)
+            writer.writerow(["loci", "value"])
+            for loci_name, val in fltr_pairs:
+                writer.writerow([loci_name, round(val, 6)])
+        if not quiet:
+            click.echo(f"Filtered loci list  → {fltr_path} ({n_filtered} filtered)", err=True)
+
+    payload = {
+        "status": "success",
+        "command": "phyloai pretree metrics plot",
+        "wall_time": 0.0, "tool_versions": {},
+        "params": {"csv": str(csv_path), "metric": metric, "bins": bins,
+                   "tukey_k": tukey_k, "n_filtered": n_filtered,
+                   "fig_width": fig_width, "fig_height": fig_height, "dpi": dpi},
+        "key_results": {}, "error": None, "data": {},
+    }
+    with open(output_dir / "result.json", "w") as fh:
+        json.dump(payload, fh, indent=2)
+    if not quiet:
+        click.echo(f"Plot saved to {out_path}", err=True)
+
+
+@metrics_group.command(
+    "correlate",
+    help=(
+        "Re-generate Spearman/Pearson correlation heatmap from an existing "
+        "metrics.csv.\n\n"
+        "By default core numeric columns are correlated; freq* and sd_* "
+        "columns are omitted for readability. Use --include-freq, --include-sd, "
+        "--metrics, or --metrics all to broaden the selection. "
+        "Variables are ordered by Ward clustering on magnitude-based "
+        "distance (1 - |correlation|), but no dendrogram is drawn. "
+        "Writes correlation_heatmap.pdf, "
+        "correlation_matrix.csv, and result.json.\n\n"
+        "Cells use an R-style circle corrplot layout."
+    ),
+)
+@click.option("--csv", "csv_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True,
+              help="Path to an existing metrics.csv (required).")
+@click.option("--metrics", type=str, default=None,
+              help="Comma-separated metric columns to correlate. Use 'all' for every numeric column; default uses core metrics only.")
+@click.option("--include-freq", is_flag=True, default=False,
+              help="Include freq* columns in automatic metric selection.")
+@click.option("--include-sd", is_flag=True, default=False,
+              help="Include sd_* columns in automatic metric selection.")
+@click.option("--method", type=click.Choice(["spearman", "pearson"]), default="spearman", show_default=True,
+              help="Spearman (rank-based, non-parametric) or Pearson (linear, z-score normalized).")
+@click.option("--triangle", type=click.Choice(["full", "lower", "upper"]), default="full", show_default=True,
+              help="Matrix display: full, lower with left/bottom labels, or upper with top/right labels.")
+@click.option("--annot/--no-annot", default=False, show_default=True,
+              help="Show numeric correlation values inside cells.")
+@click.option("--cluster-rectangles", type=int, default=None,
+              help="Draw N cluster rectangles on full matrices only; warns and ignores for --triangle lower/upper.")
+@click.option("--cmap", type=str, default="RdBu_r", show_default=True,
+              help="Matplotlib colormap (e.g. RdBu_r, coolwarm, viridis).")
+@click.option("--fmt", type=str, default=".2f", show_default=True,
+              help="Numeric format for cell annotations (only when --annot).")
+@click.option("--fig-width", type=float, default=12.0, show_default=True,
+              help="Figure width in inches.")
+@click.option("--fig-height", type=float, default=10.0, show_default=True,
+              help="Figure height in inches.")
+@click.option("--dpi", type=int, default=150, show_default=True,
+              help="Output resolution (72-600).")
+@click.option("--font-size", type=int, default=10, show_default=True,
+              help="Base font size for axis labels.")
+@click.option("--label-angle", type=float, default=45.0, show_default=True,
+              help="Rotation angle for x-axis metric labels in degrees.")
+@click.option("--title", type=str, default=None,
+              help="Plot title (default: no title).")
+@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+              default=Path("runs/pretree/metrics/correlate"), show_default=True,
+              help="Directory for heatmap PDF, correlation matrix CSV, and result.json.")
+@click.option("--overwrite", is_flag=True, default=False)
+@click.option("--quiet", "-q", is_flag=True, default=False)
+def metrics_correlate_command(
+    csv_path: Path, metrics: str | None, include_freq: bool, include_sd: bool, method: str, triangle: str,
+    annot: bool, cluster_rectangles: int | None, cmap: str, fmt: str,
+    fig_width: float, fig_height: float, dpi: int, font_size: int, label_angle: float,
+    title: str | None, output_dir: Path, overwrite: bool, quiet: bool,
+) -> None:
+    import csv as _csv_mod
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    heatmap_path = output_dir / "correlation_heatmap.pdf"
+    if not overwrite and heatmap_path.exists():
+        _fail(
+            f"Output '{heatmap_path}' already exists. Use --overwrite to replace it.",
+            1,
+        )
+    if overwrite and any(output_dir.iterdir()):
+        import shutil
+        shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    with open(csv_path, newline="") as fh:
+        for row in _csv_mod.DictReader(fh):
+            rows.append(row)
+    columns = _select_correlation_columns(
+        rows,
+        list(rows[0].keys()) if rows else [],
+        requested=metrics,
+        include_freq=include_freq,
+        include_sd=include_sd,
+    )
+    if not columns:
+        _fail("No metric columns found for correlation.", 1)
+
+    corr_matrix, col_names = _compute_correlation(rows, columns, method=method)
+    if corr_matrix.size == 0:
+        _fail("Not enough valid data for correlation analysis.", 1)
+
+    _generate_correlation_heatmap(
+        corr_matrix, col_names, heatmap_path,
+        triangle=triangle, cluster_rectangles=cluster_rectangles,
+        cmap=cmap, annot=annot, fmt=fmt,
+        fig_width=fig_width, fig_height=fig_height, dpi=dpi,
+        font_size=font_size, title=title,
+        label_angle=label_angle,
+        warn=(lambda message: click.echo(f"[WARN] {message}", err=True)) if not quiet else None,
+    )
+    _write_correlation_csv(corr_matrix, col_names, output_dir / "correlation_matrix.csv")
+
+    payload = {
+        "status": "success",
+        "command": "phyloai pretree metrics correlate",
+        "wall_time": 0.0, "tool_versions": {},
+        "params": {"csv": str(csv_path), "metrics": metrics,
+                   "include_freq": include_freq, "include_sd": include_sd, "method": method,
+                   "triangle": triangle,
+                   "annot": annot, "cmap": cmap, "fmt": fmt,
+                   "fig_width": fig_width, "fig_height": fig_height, "dpi": dpi,
+                   "label_angle": label_angle},
+        "key_results": {}, "error": None, "data": {},
+    }
+    with open(output_dir / "result.json", "w") as fh:
+        json.dump(payload, fh, indent=2)
+    if not quiet:
+        click.echo(f"Heatmap saved to {heatmap_path}", err=True)
+        click.echo(f"Correlation matrix saved to {output_dir / 'correlation_matrix.csv'}", err=True)
+
+
+# Register the group on the pretree instance
+pretree.add_command(metrics_group)

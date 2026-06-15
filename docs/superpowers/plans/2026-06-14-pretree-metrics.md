@@ -6,7 +6,7 @@
 
 **Architecture:** Core library in `phyloai/pretree/metrics.py` (compute, plot, correlate, helpers); CLI registration appended to `phyloai/cli/commands/pretree.py`; FastTree added to `core/env.py`. Follows `pretree trim` and `pretree stats` patterns throughout.
 
-**Tech Stack:** Python 3.10+, BioPython, Click 8+, Rich, ProcessPoolExecutor, numpy, scipy, matplotlib, seaborn
+**Tech Stack:** Python 3.10+, BioPython, Click 8+, Rich, ProcessPoolExecutor, numpy, scipy, matplotlib
 
 ---
 
@@ -15,7 +15,7 @@
 | Action | File | Responsibility |
 |--------|------|----------------|
 | Create | `phyloai/pretree/metrics.py` | All metrics logic: MSA metrics, tree metrics, saturation, plot generation, correlation analysis |
-| Modify | `phyloai/cli/commands/pretree.py` | Register `metrics`, `metrics-plot`, `metrics-correlate` subcommands |
+| Modify | `phyloai/cli/commands/pretree.py` | Register `metrics` Click group with `plot` and `correlate` subcommands |
 | Modify | `phyloai/core/env.py` | Add `fasttree` to `TOOL_REGISTRY` |
 | Create | `tests/pretree/test_metrics.py` | Unit + integration tests for metrics module |
 
@@ -579,7 +579,7 @@ python -m pytest tests/pretree/test_metrics.py -k "test_plot" -v
   - Compute correlation matrix using `scipy.stats.spearmanr` pairwise
   - Return M×M `np.ndarray` + ordered column names
 
-- [ ] **Step 7.2: Clustered heatmap generation**
+- [ ] **Step 7.2: Ordered heatmap generation**
 
   ```python
   def _generate_correlation_heatmap(
@@ -599,15 +599,14 @@ python -m pytest tests/pretree/test_metrics.py -k "test_plot" -v
   ) -> None:
   ```
 
-  - Use `seaborn.clustermap` with:
-    - `method="ward"` (Ward's method, equivalent to R's `ward.D2`)
-    - `metric="precomputed"` — distance matrix = `1 - |correlation|`
-    - `cmap`, `vmin=-1`, `vmax=1`, `center=0`
-    - `annot`, `fmt` for cell annotations
-    - `row_cluster=True`, `col_cluster=True`
-  - **Key: magnitude-based clustering** — compute `linkage(dist_matrix, method="ward")` where `dist_matrix = 1 - |corr_matrix|`, then pass `row_linkage`/`col_linkage` to clustermap
-  - Apply `--triangle` mask: for "lower" or "upper", mask the opposite triangle after clustering
-  - Apply `--cluster-rectangles` if set: draw rectangle patches at dendrogram cut height
+  - Compute Ward leaf order from distance matrix = `1 - |correlation|` for readability, but do not draw dendrogram axes.
+  - Draw the heatmap/corrplot with plain Matplotlib axes so the output has no top/left dendrogram whitespace.
+  - Use a single colorbar: left side for `--triangle upper`, right side for `full` and `lower`, with enough padding to avoid overlap with metric labels.
+  - Apply `--triangle` mask: for "lower" or "upper", omit the opposite triangle cells and grid segments after ordering.
+  - For `--triangle upper`, place x labels on top and y labels on the right; for `lower`, keep labels on left/bottom.
+  - Expose `--label-angle` to control x-axis metric label rotation; default 45 degrees.
+  - Hide rectangular spines in triangle modes and draw a stepped triangular border outside the diagonal cells.
+  - Apply `--cluster-rectangles` only when `--triangle full`; ignore it for lower/upper triangle modes and warn when ignored.
   - Save as PDF
 
   ```python
@@ -622,8 +621,7 @@ python -m pytest tests/pretree/test_metrics.py -k "test_plot" -v
   linkage_matrix = linkage(condensed, method="ward")
   ```
 
-  - Use `seaborn.clustermap` with `data=corr_matrix`, passing `row_linkage`/`col_linkage`
-  - The `clustermap` `data` parameter accepts a 2D numpy array with `xticklabels=col_names`
+  - Use Matplotlib axes directly for corrplot-style circle cells; no seaborn dependency.
 
 - [ ] **Step 7.3: Correlation matrix CSV output**
 
@@ -641,7 +639,7 @@ python -m pytest tests/pretree/test_metrics.py -k "test_plot" -v
   - **Edge case: constant column** (all values identical) → Spearman returns NaN for that pair → exclude from clustering, mark as NaN in matrix, print warning
   - **Edge case: all-NA column** → excluded before correlation computation, logged
   - **Edge case: only 1 valid column** → exit with error "Need at least 2 numeric columns with non-NA values"
-  - **Edge case: only 2 variables** → generate matrix + heatmap, skip clustering (dendrogram meaningless for 2 items)
+  - **Edge case: only 2 variables** → generate matrix + heatmap without clustered reordering
   - **Edge case: all pairwise NaN** (no complete cases) → exit with error "No complete cases for correlation analysis"
 
 ### Verification for Task 7
@@ -694,91 +692,57 @@ python -m pytest tests/pretree/test_metrics.py -k "test_correlate" -v
   - `--threads` ≥ 1
   - **Output dir conflict:** applies the standard policy (non-empty → exit 1 unless `--overwrite`)
 
-- [ ] **Step 8.3: Register `metrics-plot` command**
+- [ ] **Step 8.3: Register `plot` and `correlate` as Click group subcommands**
 
-  ```python
-  @pretree.command(
-      "metrics-plot",
-      help="Re-generate a single metric's distribution plot from metrics.csv.",
-  )
-  ...
-  ```
+  `metrics` is a Click group (`@click.group("metrics", invoke_without_command=True)`)
+  registered on `pretree` via `pretree.add_command(metrics_group)`. The group's
+  main callback (invoked when no subcommand is given) runs the full 3-step pipeline:
+  compute → plot → correlation.
 
-  - **Output dir conflict:** does NOT enforce the non-empty directory policy. `metrics-plot` is designed for iterative replotting — it appends/overwrites its own output files but never deletes existing content. If `--overwrite` is set, only the specific output PDF + its `result.json` are overwritten.
+  Subcommands are decorated with `@metrics_group.command("plot")` and
+  `@metrics_group.command("correlate")` — they are NOT flat `pretree` commands.
 
-- [ ] **Step 8.4: Register `metrics-correlate` command**
+  **`metrics plot` options:**
+  - `--csv` (required) — existing metrics.csv path
+  - `--metric` (required) — column name to plot
+  - `--bins` (default 50), `--xmin`, `--xmax`, `--tukey-k` (optional, saves CSV)
+  - `--title`, `--xlabel`, `--ylabel`, `--color`, `--fig-width/height`, `--dpi`, `--font-size`
+  - `--output-dir` — defaults to `<csv_parent>/plot_<metric>/`
+  - When `--tukey-k` is set, filtered-out loci are saved as `<output_dir>/<metric>.tukey_filtered.csv` with columns `loci,value`.
 
-  ```python
-  @pretree.command(
-      "metrics-correlate",
-      help="Re-generate correlation heatmap from metrics.csv.",
-  )
-  ...
-  ```
+  **`metrics correlate` options:**
+  - `--csv` (required) — existing metrics.csv path
+  - `--metrics` (optional) — comma-separated subset; `all` means every numeric column; omitted means automatic core-metric selection
+  - `--include-freq` — include `freq*` columns in automatic selection
+  - `--include-sd` — include `sd_*` columns in automatic selection
+  - `--method` — `spearman` (default, rank-based) or `pearson` (z-score normalized)
+  - `--triangle` — `full` (default), `lower`, `upper`
+  - `--annot/--no-annot` — show correlation values in cells; default `--no-annot`
+  - `--cluster-rectangles` — draw N rectangles on full matrices only; ignored with warning for lower/upper triangle modes
+  - `--cmap`, `--fmt`, `--fig-width/height`, `--dpi`, `--font-size`, `--label-angle`, `--title`
+  - `--output-dir` — defaults to `runs/pretree/metrics/correlate/`
 
-  - **Output dir conflict:** same policy as `metrics-plot` — does not enforce the non-empty directory exit. Appends/overwrites only its own output files.
+  Circle cells use `matplotlib.patches.Circle` with radius proportional to √|correlation|,
+  capped at 0.45 (cell boundary). Data is reordered by Ward leaf order
+  (`scipy.cluster.hierarchy.leaves_list`) before drawing, but no dendrogram is rendered.
+  Title is placed via the heatmap axis title to avoid excess whitespace above the matrix.
 
-  ```python
-  @pretree.command(
-      "metrics-plot",
-      help="Re-generate a single metric's distribution plot from metrics.csv.",
-  )
-  @click.option("--csv", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
-  @click.option("--metric", type=str, required=True, help="Single metric column to plot.")
-  @click.option("--bins", type=int, default=50, show_default=True)
-  @click.option("--xmin", type=float, default=None)
-  @click.option("--xmax", type=float, default=None)
-  @click.option("--tukey-k", type=float, default=None, help="Tukey's Fences k (e.g. 1.5).")
-  @click.option("--title", type=str)
-  @click.option("--xlabel", type=str)
-  @click.option("--ylabel", type=str, default="Density")
-  @click.option("--color", type=str, default="#2E86AB")
-  @click.option("--fig-width", type=float, default=10.0)
-  @click.option("--fig-height", type=float, default=8.0)
-  @click.option("--dpi", type=int, default=150)
-  @click.option("--font-size", type=int, default=12)
-  @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/metrics"), show_default=True)
-  @click.option("--overwrite", is_flag=True, default=False)
-  @click.option("--quiet", "-q", is_flag=True, default=False)
-  def metrics_plot_command(...):
-  ```
+  Automatic column selection must exclude `loci`, `DataType`, all `freq*`, and all
+  `sd_*` columns by default so the default PDF is readable. Explicit `--metrics`
+  always wins, including frequency and standard-deviation columns when named.
+  `--metrics all` must include all numeric columns.
 
-- [ ] **Step 8.4: Register `metrics-correlate` command**
+- [ ] **Step 8.4: Import and wire-up**
 
-  ```python
-  @pretree.command(
-      "metrics-correlate",
-      help="Re-generate correlation heatmap from metrics.csv.",
-  )
-  @click.option("--csv", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
-  @click.option("--metrics", type=str, help="Comma-separated columns to correlate.")
-  @click.option("--method", type=click.Choice(["spearman", "pearson"]), default="spearman", show_default=True)
-  @click.option("--triangle", type=click.Choice(["full", "lower", "upper"]), default="full", show_default=True)
-  @click.option("--cluster-rectangles", type=int, default=None)
-  @click.option("--cmap", type=str, default="RdBu_r")
-  @click.option("--annot/--no-annot", default=True)
-  @click.option("--fmt", type=str, default=".2f")
-  @click.option("--fig-width", type=float, default=12.0)
-  @click.option("--fig-height", type=float, default=10.0)
-  @click.option("--dpi", type=int, default=150)
-  @click.option("--font-size", type=int, default=10)
-  @click.option("--title", type=str, default="Correlation Heatmap")
-  @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/metrics/correlate"), show_default=True)
-  @click.option("--overwrite", is_flag=True, default=False)
-  @click.option("--quiet", "-q", is_flag=True, default=False)
-  def metrics_correlate_command(...):
-  ```
-
-- [ ] **Step 8.5: Import and wire-up in `pretree/__init__.py`**
-
-  No changes needed — each subcommand is a local function. Just ensure `from phyloai.pretree.metrics import run_metrics, ...` at top of `pretree.py`.
+  Import `metrics_group` into `phyloai/cli/commands/pretree.py` and register via
+  `pretree.add_command(metrics_group)`.
 
 ### Verification for Task 8
 
 ```bash
 python -m phyloai pretree metrics --help
-python -m phyloai pretree metrics-plot --help
-python -m phyloai pretree metrics-correlate --help
+python -m phyloai pretree metrics plot --help
+python -m phyloai pretree metrics correlate --help
 ```
 
 ---
@@ -839,10 +803,10 @@ Per total design Section 4.5, new or materially changed commands must update bot
 
   Follow the required section structure from the total design:
   - **Purpose:** what `pretree metrics` does and does not do
-  - **Usage:** minimal usage examples for `metrics`, `metrics-plot`, `metrics-correlate` + full parameter tables
+  - **Usage:** minimal usage examples for `metrics`, `metrics plot`, `metrics correlate` + full parameter tables
   - **Inputs:** supported formats, directory scanning rules, tree-file suffix stripping logic
   - **Outputs:** `metrics.csv` schema (all column names with explanations), `plots/` directory, `correlation_heatmap.pdf`, `result.json` schema summary
-  - **Examples:** AA-only, NT-with-trees, `--pseudo-tree-metrics`, re-plotting with `--tukey-k`
+  - **Examples:** AA-only, NT-with-trees, `--pseudo-tree-metrics`, re-plotting with `--tukey-k` (filtered loci in `<metric>.tukey_filtered.csv`), correlation with triangle display options
   - **Warnings and Errors:** taxon mismatches, unpaired files, FastTree not found, large-dataset pairwise identity warning
   - **Notes:** relationship to `pretree filter`, metric name glossary (what each metric means)
 

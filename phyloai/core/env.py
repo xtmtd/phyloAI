@@ -62,6 +62,9 @@ TOOL_REGISTRY: dict[str, dict] = {
                     "path_aliases": ["BMGE.jar"],
                     "bundled": True,
                     "install": "bundled with PhyloAI"},
+    "FastTree":   {"required": False, "version_flag": "",
+                    "path_aliases": ["fasttree"],
+                    "install": "Download from http://www.microbesonline.org/fasttree/"},
 }
 
 
@@ -80,9 +83,12 @@ class ToolEnv:
         return match.group(1)
 
     def _get_version(self, path: Path, version_args: str | list[list[str]]) -> Optional[str]:
-        if not version_args:
+        if version_args is None:
             return None
-        candidates = [[version_args]] if isinstance(version_args, str) else version_args
+        if isinstance(version_args, str):
+            candidates = [[]] if version_args == "" else [[version_args]]
+        else:
+            candidates = version_args
         try:
             for args in candidates:
                 command = [str(path), *args]
