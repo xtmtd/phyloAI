@@ -51,16 +51,16 @@ phyloai/
 │   ├── align.py        # MAFFT (external), MAGUS (pip), batch AA + NT;
 │   │                   # --backtrans: AA-alignment → NT codon alignment via trimAl
 │   ├── trim.py         # trimAl (bundled), BMGE (bundled), ClipKIT (pip)
-│   ├── metrics.py      # MSA + tree attribute extraction (16 MSA + 14 tree metrics),
-│   │                   # layered: core metrics always computed; advanced (UMAP,
-│   │                   # correlation matrix) via --advanced flag;
+│   ├── metrics.py      # MSA + tree attribute extraction, metric distributions,
+│   │                   # and correlation summaries for marker evaluation;
 │   │                   # reference: github.com/xtmtd/MSA-and-tree-metrics-exploration
 │   ├── filter.py       # gene/marker-level filtering; reads metrics output as input;
-│   │                   #   MSA-based:  PIS, length, GC content, nRCFV,
+│   │                   #   Error-site: TAPER (fast, non-destructive masking option)
+│   │                   #   MSA/alignment-based: PIS, length, GC content, nRCFV,
 │   │                   #               symtest, API, likelihood mapping
 │   │                   #   Tree-based: TreeShrink, ABS, treeness, DVMC,
 │   │                   #               evo_rate, saturation, inconsistent genes
-│   │                   #   Error-site: TAPER (fast, non-destructive masking option)
+│   │                   #   UMAP cluster/outlier filtering based on selected metrics
 │   └── concat.py       # matrix generation at multiple occupancy levels,
 │                       # recoding (Dayhoff6 etc.), format conversion for downstream
 │
@@ -122,11 +122,11 @@ phyloai pretree stats    --seq-dir ./runs/pretree/convert
 phyloai pretree align    --seq-dir ./raw --method magus [--tool-args "--maxsubsetsize 50"]
 phyloai pretree trim     --msa-dir ./aligned --tool bmge [--bmge-matrix BLOSUM90] \
                          [--tool-args "-g 0.5"]
-phyloai pretree metrics  --msa-dir ./trimmed [--tree-dir ./genetrees] [--advanced]
+phyloai pretree metrics  --msa-dir ./trimmed [--tree-dir ./genetrees]
 phyloai pretree filter   --msa-dir ./trimmed --metrics-dir ./metrics \
-                         [--tree-dir ./genetrees] \
-                         --strategy outlier [--filter-by pis,abs,treeness] \
-                         [--taper]
+                          [--tree-dir ./genetrees] \
+                          --strategy outlier [--filter-by pis,abs,treeness] \
+                          [--taper] [--umap-cluster]
 phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 
 # Tree
@@ -615,7 +615,8 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | stats/convert as pretree subcommands | Semantically these are pre-analysis utilities, consistent with concat being a data preparation step; keeps top-level CLI clean |
 | filter.py unifies MSA + tree + TAPER filtering | Single entry point reduces cognitive load; TAPER as lightweight option within filter avoids an orphan command |
 | metrics is prerequisite for filter | Decouples metric computation from filtering decisions; users can inspect metrics before committing to a filter strategy |
-| metrics layered (core + --advanced) | Core metrics are fast and always needed; UMAP/correlation are expensive and optional |
+| Filtering split by evidence source | `pretree filter` handles four filtering modes: TAPER-based error-site masking, MSA/alignment metric filters, gene-tree metric filters, and UMAP cluster/outlier filtering based on selected metrics |
+| Metrics limited to measurement + visualization | `pretree metrics` computes metrics, distributions, and correlation summaries; marker removal decisions and UMAP cluster filtering belong in `pretree filter` |
 | --tool-args strategy-only model | Keeps batch input/output and result schemas deterministic while still exposing tool-specific strategy knobs |
 | Format handling per-module, not global | Different tools require different formats; per-module handling via core/formats.py is more correct than forcing a global FASTA mandate |
 | backtrans in align, not a separate command | It is a direct post-processing of the alignment step and uses trimAl which is already a dependency |
