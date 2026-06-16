@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-12 (checkpoint/resume policy added for long-running commands; pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified)  
+**Last updated:** 2026-06-16 (global file-matching policy and csv/tsv table I/O rules unified; checkpoint/resume policy added for long-running commands; pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified)  
 **Status:** Approved for implementation
 
 ---
@@ -429,7 +429,9 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--seq-type` | | AA \| NT \| CODON \| auto | auto where safe; command-specific otherwise | commands where molecule type affects behavior; `CODON` only valid for commands that support codon-aware processing (currently `pretree concat`) |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
 | `--input-format` | | str | auto-detect | all commands reading alignment files |
+| `--input-format` | | `csv\|tsv\|auto` | `auto` | commands reading tabular CSV/TSV inputs |
 | `--output-format` | | text \| json | text | `doctor` only |
+| `--table-format` | | `csv\|tsv` | `csv` | commands writing auxiliary tabular outputs |
 | `--tool-args` | | str | — | all commands invoking external tools; strategy parameters only |
 | `--run-dir` | | Path | `./runs/` | all commands except `stats` and `convert` (global, inherited from CLI root) |
 | `--dry-run` | | flag | False | all commands |
@@ -539,11 +541,47 @@ The detailed checkpoint schema and command adoption rules are defined in `docs/s
 - Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
 - When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
 
-### 9.7 Tabular Output Format
+### 9.7 Shared File Matching Policy
 
-Commands that produce auxiliary tabular output (per-gene tables, per-taxon tables, metric tables) default to **CSV** format. TSV is available via command-specific table format flags such as `--per-gene-format tsv`, or by explicit output-file conventions when a command defines them. Structured command results always use `result.json`.
+Commands that pair flat MSA and tree directories must match files by **logical locus name**, not by raw filename stem plus a fixed suffix whitelist.
 
-### 9.8 `--tool-args` Strategy-Only Semantics
+For MSA-like inputs, the logical locus name is the full filename before the final `.`. Examples:
+
+- `gene.fa` -> `gene`
+- `gene.FASTA` -> `gene`
+- `gene.v1.ALI` -> `gene.v1`
+
+For tree-like inputs, matching is suffix-agnostic:
+
+1. First try removing the final `.` suffix segment.
+2. Then try removing the final two `.` suffix segments.
+3. If exactly one of those candidates matches an available MSA logical locus, accept it.
+4. If neither candidate matches, treat the tree as unpaired.
+5. If both candidates match different loci, raise an explicit ambiguity error and require the user to rename files or remove the conflict.
+
+Examples:
+
+- `gene.treefile` -> candidate `gene`
+- `gene.fa.treefile` -> candidates `gene.fa`, `gene`
+- `gene.v1.fa.treefile` -> candidates `gene.v1.fa`, `gene.v1`
+
+This policy deliberately does not depend on a hard-coded list of recognized MSA or tree filename suffixes for locus pairing. File contents and parser-level validation decide whether an input is a valid alignment or tree; filename suffixes are only used as dot-separated naming boundaries for matching.
+
+Command-specific specs may provide illustrative examples, but they must not redefine different pairing semantics.
+
+### 9.8 Tabular Input and Output Policy
+
+Commands that read CSV/TSV tables must expose `--input-format csv|tsv|auto`, default `auto`. Commands that write auxiliary tabular outputs must expose `--table-format csv|tsv`, default `csv`. Structured command results always use `result.json`.
+
+Rules:
+
+- `auto` is allowed for table input only, never for table output.
+- Auto-detection should prefer delimiter inspection from file content and may use filename extensions only as a secondary hint.
+- If the delimiter cannot be determined confidently, the command must exit with a clear error rather than guessing silently.
+- Commands producing multiple auxiliary tables in one run must use one consistent `--table-format` setting for all of them.
+- Command-specific flags such as `--per-gene-format` should be avoided in new designs unless there is a concrete command-specific need that cannot be covered by `--table-format`.
+
+### 9.9 `--tool-args` Strategy-Only Semantics
 
 1. PhyloAI builds managed input, output, work directory, data type, threads, logs, and codon/projection arguments first.
 2. `--tool-args` is tokenized with standard shell splitting (respects quoted strings).
@@ -552,7 +590,7 @@ Commands that produce auxiliary tabular output (per-gene tables, per-taxon table
 5. Format of `--tool-args` must match the target tool's own CLI conventions; PhyloAI validates managed-flag conflicts but does not reimplement each tool's full parser.
 6. Only `--tool-args` is supported for user-supplied external-tool strategy parameters.
 
-### 9.9 Generated Sequence and Alignment Validation
+### 9.10 Generated Sequence and Alignment Validation
 
 - Commands that generate sequence or alignment files in bulk (`pretree convert`, `pretree align`, `pretree trim`, and related future steps) must validate generated files before counting them as successful outputs.
 - Validation is implemented through shared `core` helpers, not one-off command-local checks. FASTA validation must detect missing/empty files, unparsable FASTA, zero FASTA records, and empty sequences. MSA validation must additionally detect unequal sequence lengths.
@@ -627,5 +665,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | JSON key_results in all pipeline modules | Enables report figures and summary without post-hoc data extraction; schema defined at design time |
 | JSON for output | JSON is strict and machine-parseable; structured `result.json` from each command provides sufficient reproducibility without a separate config file |
 | `--input-format` on alignment-reading commands | Real datasets often use inconsistent suffixes; explicit user intent must override guessing |
+| Logical locus matching ignores suffix vocabularies | Real datasets use inconsistent, uppercase, and ad hoc filename suffixes; matching should rely on dot-delimited naming boundaries and explicit ambiguity errors, not guessed suffix catalogs |
+| Table I/O uses `--input-format csv\|tsv\|auto` and `--table-format csv\|tsv` | CSV/TSV behavior should be uniform across the full workflow so users do not relearn different table flags per command |
 | Per-subcommand design + plan docs | Each pretree subcommand is complex enough to warrant its own spec; keeps main design doc stable while allowing detailed iteration |
 | Lightweight top-level README + command docs | Keeps `README.md` maintainable as the CLI grows; detailed command behavior belongs in `docs/commands/*.md` with a consistent section structure |

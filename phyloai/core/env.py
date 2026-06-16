@@ -86,7 +86,9 @@ class ToolEnv:
         if version_args is None:
             return None
         if isinstance(version_args, str):
-            candidates = [[]] if version_args == "" else [[version_args]]
+            if version_args == "":
+                return None
+            candidates = [[version_args]]
         else:
             candidates = version_args
         try:

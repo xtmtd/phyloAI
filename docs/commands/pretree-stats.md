@@ -20,11 +20,12 @@ Exactly one of `--seq` or `--seq-dir` is required.
 |-----------|---------|-------------|
 | `--seq-dir DIRECTORY` | none | Directory mode. Scan supported sequence/alignment files in one folder and compute a dataset-level summary. |
 | `--seq FILE` | none | Single-file mode. Inspect one sequence or alignment file in detail. |
+| `--unaligned` | `False` | Directory mode only. Treat input as unaligned sequences. Per-gene CSV excludes `alignment_length` and site-pattern columns, includes `seq_length_*` columns. |
 | `--per-gene` | `False` | Directory mode only. Show per-gene results in terminal output and save per-gene table to output directory. |
-| `--per-gene-format csv|tsv` | `csv` | Directory mode only. Format for the per-gene table written with `--per-gene`. |
+| `--table-format csv\|tsv` | `csv` | Directory mode only. Format for the per-gene table written with `--per-gene`. |
 | `--output-dir DIRECTORY` | `runs/pretree/stats` | Directory where `result.json` and per-gene files are written. |
-| `--input-format fasta|phylip-relaxed|nexus` | auto | Override automatic format detection. |
-| `--seq-type AA|NT` | auto | Override automatic molecule-type detection. |
+| `--input-format fasta\|phylip-relaxed\|nexus` | auto | Override automatic format detection. |
+| `--seq-type AA\|NT` | auto | Override automatic molecule-type detection. |
 | `--threads INTEGER`, `-t INTEGER` | `4` | Directory mode only. Number of worker processes. Must be at least `1`. |
 | `--quiet`, `-q` | `False` | Suppress terminal output except for errors. |
 | `--overwrite` | `False` | Delete and recreate the output directory if it already exists and is non-empty. |
@@ -53,7 +54,7 @@ runs/pretree/stats/
 └── per-gene.csv          # per-gene table (when --per-gene is used)
 ```
 
-The per-gene file uses the format specified by `--per-gene-format` (default: csv).
+The per-gene file uses the format specified by `--table-format` (default: csv).
 
 ## Examples
 
@@ -84,13 +85,28 @@ phyloai pretree stats \
   --output-dir runs/pretree/stats
 ```
 
+Summarize unaligned sequences with appropriate per-gene columns:
+
+```bash
+phyloai pretree stats \
+  --seq-dir ref/phylogenomics_examples/2-loci_filter/fna \
+  --per-gene \
+  --unaligned \
+  --output-dir runs/pretree/stats
+```
+
+When `--unaligned` is set, the per-gene CSV includes `seq_length_*` columns
+and excludes `alignment_length` and site-pattern columns.  The default
+(without `--unaligned`) produces the opposite column set, suitable for
+aligned MSAs.
+
 Save per-gene table as TSV:
 
 ```bash
 phyloai pretree stats \
   --seq-dir ./data \
   --per-gene \
-  --per-gene-format tsv \
+  --table-format tsv \
   --output-dir runs/pretree/stats
 ```
 
@@ -114,6 +130,11 @@ If the output directory exists and is non-empty, the command exits with an error
 If sequence type detection is ambiguous, the command defaults to `AA` and emits a warning.
 
 If `*` appears in any sequence, the command emits a warning because it may indicate stop codons or upstream processing problems.
+
+**Mixed-state warning:** If the per-file auto-detection disagrees with the declared alignment mode (default aligned or `--unaligned`), the command emits a warning. For example, running without `--unaligned` on a directory where most files have unequal sequence lengths produces:
+> `--unaligned is NOT set, but 1056 of 1066 files were detected as unaligned ... Use --unaligned to write unaligned-specific columns to the per-gene table.`
+
+Conversely, running with `--unaligned` on aligned data warns to drop the flag.
 
 ## Notes
 

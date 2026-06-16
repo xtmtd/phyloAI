@@ -1,8 +1,8 @@
 # pretree stats — Design Specification
 
 **Date:** 2026-06-09  
-**Last updated:** 2026-06-10 (output-format default corrected to json; log policy clarified; --output renamed to --output-dir for consistency)  
-**Status:** Approved for implementation — pending implementation update  
+**Last updated:** 2026-06-16 (--unaligned flag, aligned/un aligned column sets, mixed-state warning)  
+**Status:** Implemented  
 **Parent spec:** `2026-06-07-phyloai-design.md`
 
 ---
@@ -26,7 +26,11 @@ Scans all sequence files in a directory. Files may be aligned or unaligned — a
 phyloai pretree stats --seq-dir ./aligned [--per-gene] [--output-dir ./runs/pretree/stats] [--threads 4]
 ```
 
-`--per-gene` controls whether per-gene results are displayed in terminal output when no saved per-gene table is requested. When results are written to `--output-dir`, the per-gene table is saved there as `per-gene.csv` by default or `per-gene.tsv` with `--per-gene-format tsv`.
+`--per-gene` controls whether per-gene results are displayed in terminal output when no saved per-gene table is requested. When results are written to `--output-dir`, the per-gene table is saved there as `per-gene.csv` by default or `per-gene.tsv` with `--table-format tsv`.
+
+**`--unaligned` flag:** The per-gene CSV column set depends on the alignment mode. By default (`is_aligned = True`), the table includes `alignment_length` and site-pattern columns (`distinct_patterns`, `constant_sites`, `parsimony_informative`, `singleton_sites`) but excludes `seq_length_*` columns. When `--unaligned` is set, the table includes `seq_length_*` columns but excludes `alignment_length` and site-pattern columns. This avoids empty or irrelevant columns when the user knows the input type.
+
+**Mixed-state warning:** If the declared mode (default aligned or `--unaligned`) disagrees with the per-file auto-detection results, the command emits a warning suggesting the user add or remove `--unaligned`. This catches directories that accidentally mix aligned and unaligned files.
 
 ### 2.2 Single-file mode (`--seq`)
 
@@ -91,7 +95,9 @@ Three classes, applied uniformly across both modes:
 
 ### 5.1 Directory mode — per-file metrics (basis for summary and per-gene table)
 
-| Metric            | Aligned | Unaligned | Description                                               |
+The per-gene CSV column set is determined by the `is_aligned` mode (see §2.1). When `--unaligned` is NOT set (default, `is_aligned=True`), the table includes alignment-specific columns and excludes per-sequence length columns. When `--unaligned` IS set (`is_aligned=False`), the reverse applies. Columns with no data in any row are omitted from the output.
+
+| Metric            | Aligned | Unaligned | CSV (default) | CSV (--unaligned) | Description                                               |
 |-------------------|---------|-----------|-----------------------------------------------------------|
 | `gene`            | yes     | yes       | filename without extension                                |
 | `n_taxa`          | yes     | yes       | number of sequences                                       |
@@ -169,16 +175,15 @@ Site pattern computation excludes gap/missing/ambiguous characters when determin
 |-------------------|-------|----------|-------------|----------------------------------------------------------|
 | `--seq-dir`       |       | Path     | —           | directory mode; mutually exclusive with `--seq`          |
 | `--seq`           |       | Path     | —           | single-file mode; mutually exclusive with `--seq-dir`    |
+| `--unaligned`     |       | flag     | False       | directory mode only: treat input as unaligned (excludes `alignment_length` and site-pattern columns from per-gene CSV) |
 | `--per-gene`      |       | flag     | False       | directory mode only: include per-gene results in terminal output when no `--output` is used; with `--output`, write an adjacent per-gene table |
-| `--per-gene-format` |     | csv\|tsv | csv         | directory mode only: format for adjacent per-gene table written with `--per-gene --output` |
+| `--table-format`    |     | csv\|tsv | csv         | directory mode only: format for adjacent per-gene table written with `--per-gene --output` |
 | `--output-dir`    | `-o`  | Path     | `runs/pretree/stats` | directory for `result.json` and auxiliary files |
 | `--input-format`  |       | fasta\|phylip-relaxed\|nexus | auto-detect | override format detection; accepted values: `fasta`, `phylip-relaxed`, `nexus` |
 | `--seq-type`      |       | AA\|NT   | auto-detect | override sequence type detection                         |
 | `--threads`       | `-t`  | int      | 4           | directory mode only: files processed in parallel (ProcessPoolExecutor) |
 | `--quiet`         | `-q`  | flag     | False       | suppress all output except errors                        |
-
-No external tool strategy argument flag is needed (no external tool invoked).  
-No `--overwrite` (read-only command, no output directory created).
+| `--overwrite`     |       | flag     | False       | delete and recreate a non-empty output directory before writing |
 
 ---
 
@@ -193,6 +198,7 @@ Rich tables, panels, and progress bars are rendered to the terminal unless `--qu
 - Rich table: summary statistics
 - Rich table: per-gene table (if `--per-gene` and no `--output` path is given)
 - `[WARN]` lines for any stop codons detected
+- `[WARN]` line when the declared alignment mode contradicts per-file detection (mixed-state warning; see §2.1)
 - Terminal output must print the resolved `result.json` path after the summary so users can immediately locate the saved file
 - If `--per-gene` is used, the saved-file message must explicitly say that `per-gene.csv` or `per-gene.tsv` was written under `--output-dir`
 
@@ -206,8 +212,8 @@ Rich tables, panels, and progress bars are rendered to the terminal unless `--qu
 | File | Content |
 |------|---------|
 | `result.json` | full structured output (summary plus per-gene or full single-file stats) |
-| `per-gene.csv` | per-gene table when `--per-gene --per-gene-format csv` is used |
-| `per-gene.tsv` | per-gene table when `--per-gene --per-gene-format tsv` is used |
+| `per-gene.csv` | per-gene table when `--per-gene --table-format csv` is used |
+| `per-gene.tsv` | per-gene table when `--per-gene --table-format tsv` is used |
 
 ### 7.3 JSON output schema (`result.json`)
 

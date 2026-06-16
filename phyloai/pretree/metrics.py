@@ -20,6 +20,7 @@ from Bio.Phylo.BaseTree import Tree
 from rich.progress import Progress
 
 from phyloai.core.env import TOOL_REGISTRY, ToolEnv
+from phyloai.core.file_matching import logical_msa_locus_name, pair_msa_and_tree_maps
 from phyloai.core.sequence_normalization import (
     AA_STANDARD,
     NT_STANDARD,
@@ -31,11 +32,6 @@ from phyloai.core.sequence_normalization import (
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
-MSA_EXTENSIONS = {".fa", ".fasta", ".fas", ".fna", ".faa", ".aln"}
-TREE_EXTENSIONS = {".tre", ".tree", ".nwk", ".newick", ".treefile", ".bestTree", ".contree"}
-_TREE_SPECIFIC_SUFFIXES = (".treefile", ".contree", ".bestTree", ".iqtree", ".tree", ".tre", ".nwk", ".newick")
-_GENERAL_SUFFIXES = (".fa", ".fasta", ".fas", ".fna", ".faa", ".aln")
 
 _METRICS_CSV_ORDER = [
     "loci", "DataType",
@@ -77,6 +73,47 @@ def _to_mean(values: list[float]) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Table format helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_delimiter(table_format: str) -> str:
+    if table_format == "tsv":
+        return "\t"
+    return ","
+
+
+def _table_suffix(table_format: str) -> str:
+    return ".tsv" if table_format == "tsv" else ".csv"
+
+
+def _detect_input_delimiter(path: Path, input_format: str) -> str:
+    if input_format == "csv":
+        return ","
+    if input_format == "tsv":
+        return "\t"
+    content = path.read_text(encoding="utf-8-sig")
+    lines = content.splitlines()
+    if not lines:
+        raise ValueError(f"File '{path}' is empty; cannot detect delimiter.")
+    tab_count = lines[0].count("\t")
+    comma_count = lines[0].count(",")
+    if tab_count > comma_count:
+        return "\t"
+    if comma_count > tab_count:
+        return ","
+    suffix = path.suffix.lower()
+    if suffix == ".tsv":
+        return "\t"
+    if suffix == ".csv":
+        return ","
+    raise ValueError(
+        f"Cannot determine delimiter for '{path}'. "
+        "Use --input-format csv or --input-format tsv to specify explicitly."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Task 1: Helpers
 # ---------------------------------------------------------------------------
 
@@ -99,67 +136,52 @@ def _scan_msa_headers(msa_dir: Path) -> tuple[dict[str, set[str]], set[str]]:
     per_marker: dict[str, set[str]] = {}
     total_pool: set[str] = set()
     for path in sorted(msa_dir.iterdir()):
-        if path.suffix.lower() not in MSA_EXTENSIONS:
+        if not path.is_file():
             continue
         try:
             records = _read_msa_records(path)
-            taxa = {record.id for record in records}
-            per_marker[path.stem] = taxa
-            total_pool.update(taxa)
         except Exception:
             continue
+        locus = logical_msa_locus_name(path)
+        taxa = {record.id for record in records}
+        per_marker[locus] = taxa
+        total_pool.update(taxa)
     return per_marker, total_pool
 
 
-def _strip_tree_suffixes(name: str) -> str:
-    changed = True
-    while changed:
-        changed = False
-        for suf in _TREE_SPECIFIC_SUFFIXES:
-            if name.endswith(suf) and len(name) > len(suf):
-                name = name[: -len(suf)]
-                changed = True
-                break
-        else:
-            for suf in _GENERAL_SUFFIXES:
-                if name.endswith(suf) and len(name) > len(suf):
-                    name = name[: -len(suf)]
-                    changed = True
-                    break
-    return name
+def _collect_tree_paths(tree_dir: Path | None) -> list[Path]:
+    if tree_dir is None:
+        return []
+    tree_paths: list[Path] = []
+    for path in sorted(tree_dir.iterdir()):
+        if not path.is_file():
+            continue
+        try:
+            Phylo.read(str(path), "newick")
+        except Exception:
+            continue
+        tree_paths.append(path)
+    return tree_paths
 
 
 def _pair_files(
     msa_dir: Path | None,
     tree_dir: Path | None,
 ) -> tuple[dict[str, tuple[Path | None, Path | None]], list[str]]:
-    warnings: list[str] = []
-    msa_stems: dict[str, Path] = {}
+    msa_map: dict[str, Path] = {}
     if msa_dir is not None:
         for path in sorted(msa_dir.iterdir()):
-            if path.suffix.lower() in MSA_EXTENSIONS:
-                msa_stems[path.stem] = path
+            if path.is_file():
+                msa_map[logical_msa_locus_name(path)] = path
 
-    tree_map: dict[str, Path] = {}
-    if tree_dir is not None:
-        for path in sorted(tree_dir.iterdir()):
-            if path.suffix.lower() in TREE_EXTENSIONS or path.name.endswith(_TREE_SPECIFIC_SUFFIXES):
-                stem = _strip_tree_suffixes(path.name)
-                tree_map[stem] = path
+    tree_paths = _collect_tree_paths(tree_dir)
+    result = pair_msa_and_tree_maps(msa_map, tree_paths)
 
-    all_stems = sorted(set(msa_stems.keys()) | set(tree_map.keys()))
-    paired: dict[str, tuple[Path | None, Path | None]] = {}
-    for stem in all_stems:
-        paired[stem] = (msa_stems.get(stem), tree_map.get(stem))
+    for locus, (_, tree_path) in sorted(result.paired.items()):
+        if locus in msa_map and tree_path is None:
+            result.warnings.append(f"[WARN] MSA file '{locus}' has no matching tree file.")
 
-    msa_only = sorted(set(msa_stems) - set(tree_map))
-    tree_only = sorted(set(tree_map) - set(msa_stems))
-    for stem in msa_only:
-        warnings.append(f"[WARN] MSA file '{stem}' has no matching tree file.")
-    for stem in tree_only:
-        warnings.append(f"[WARN] Tree file '{stem}' has no matching MSA file.")
-
-    return paired, warnings
+    return result.paired, result.warnings
 
 
 def _check_taxon_consistency(msa_path: Path, tree_path: Path) -> dict | None:
@@ -767,13 +789,14 @@ def _drop_empty_columns(rows: list[dict]) -> list[dict]:
     return [{k: v for k, v in r.items() if k not in to_drop} for r in rows]
 
 
-def _write_metrics_csv(rows: list[dict], output_path: Path) -> None:
+def _write_metrics_csv(rows: list[dict], output_path: Path, table_format: str = "csv") -> None:
     if not rows:
         return
     rows = _drop_empty_columns(rows)
     fieldnames = list(rows[0].keys())
+    delimiter = _get_delimiter(table_format)
     with open(output_path, "w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter=delimiter)
         writer.writeheader()
         writer.writerows(rows)
 
@@ -808,6 +831,7 @@ def run_metrics(
     quiet: bool = False,
     progress: Progress | None = None,
     console: Any = None,
+    table_format: str = "csv",
 ) -> dict:
     t0 = time.monotonic()
     per_marker_stderr: list[str] = []
@@ -836,7 +860,19 @@ def run_metrics(
             "data": {},
         }
 
-    paired, pair_warnings = _pair_files(msa_dir, tree_dir)
+    try:
+        paired, pair_warnings = _pair_files(msa_dir, tree_dir)
+    except ValueError as exc:
+        return {
+            "status": "error",
+            "command": "phyloai pretree metrics",
+            "wall_time": time.monotonic() - t0,
+            "tool_versions": {},
+            "params": {},
+            "key_results": {},
+            "error": str(exc),
+            "data": {},
+        }
     per_marker_stderr.extend(pair_warnings)
 
     if not paired:
@@ -944,7 +980,8 @@ def run_metrics(
         progress.update(task, completed=len(worker_args), visible=False)
 
     rows = _build_csv_rows(results, decimal_places, skip_freq, pseudo_tree)
-    _write_metrics_csv(rows, output_dir / "metrics.csv")
+    metrics_path = output_dir / f"metrics{_table_suffix(table_format)}"
+    _write_metrics_csv(rows, metrics_path, table_format=table_format)
 
     n_success = sum(1 for r in results if "_error" not in r)
     n_errors = sum(1 for r in results if "_error" in r)
@@ -970,6 +1007,7 @@ def run_metrics(
             "outgroup_list": str(outgroup_list) if outgroup_list else None,
             "ref_tree": str(ref_tree) if ref_tree else None,
             "overwrite": overwrite,
+            "table_format": table_format,
         },
         "wall_time": wall_time,
         "exit_code": 0,
@@ -1165,6 +1203,7 @@ def _generate_basic_statistics(
     rows: list[dict],
     numeric_cols: list[str],
     output_path: Path,
+    table_format: str = "csv",
 ) -> None:
     stats_rows = []
     for col in numeric_cols:
@@ -1200,8 +1239,9 @@ def _generate_basic_statistics(
             })
 
     fieldnames = ["metric", "mean", "median", "min", "max", "q25", "q75", "std", "n_ex_NA", "n_total"]
+    delimiter = _get_delimiter(table_format)
     with open(output_path, "w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter=delimiter)
         writer.writeheader()
         writer.writerows(stats_rows)
 
@@ -1490,11 +1530,13 @@ def _write_correlation_csv(
     corr_matrix: np.ndarray,
     col_names: list[str],
     output_path: Path,
+    table_format: str = "csv",
 ) -> None:
     if corr_matrix.size == 0:
         return
+    delimiter = _get_delimiter(table_format)
     with open(output_path, "w", newline="") as fh:
-        writer = csv.writer(fh)
+        writer = csv.writer(fh, delimiter=delimiter)
         writer.writerow([""] + col_names)
         for i, name in enumerate(col_names):
             writer.writerow([name] + [float(corr_matrix[i, j]) for j in range(corr_matrix.shape[1])])

@@ -252,16 +252,22 @@ Optional: --msa-dir          Optional: --tree-dir
 
 ### 5.2 File Pairing
 
-1. Scan `--msa-dir` for FASTA/alignment files
-2. If `--tree-dir` provided, scan for tree files (`.tre`, `.tree`, `.nwk`, `.newick`, `.treefile`, `.bestTree`, `.contree`)
-3. **Stem normalization:** Tree files may have compound suffixes (e.g., `gene.fa.treefile`). Before matching, strip known IQ-TREE/tree suffixes to recover the original MSA stem:
-   - Known tree suffixes: `.treefile`, `.contree`, `.bestTree`, `.iqtree`, `.tree`, `.tre`, `.nwk`, `.newick`
-   - Example: `gene1.fa.treefile` → strip `.treefile` → `gene1.fa`; then strip `.fa` → `gene1`
-   - Example: `gene2.tre` → strip `.tre` → `gene2`
-   - Match against MSA stems (which have `.fa`/`.fasta`/`.fas`/`.fna`/`.faa` stripped)
-4. Match by normalized stem (case-sensitive)
-5. Mismatched stems → warning in `result.json.data.unpaired`, but processing continues with available data
-6. If `--msa-dir` + `--tree-dir` but zero pairs → error, exit code 1
+This command follows the global file-matching policy in `docs/superpowers/specs/2026-06-07-phyloai-design.md`.
+
+1. Scan `--msa-dir` for alignment inputs.
+2. If `--tree-dir` provided, scan for tree inputs.
+3. Derive MSA logical loci by taking the filename before the final `.`.
+4. For each tree file, try one-suffix and two-suffix reduction candidates.
+5. If exactly one candidate matches an available MSA locus, pair it.
+6. If neither candidate matches, record the file under `result.json.data.unpaired` and continue.
+7. If both candidates match different loci, raise an explicit ambiguity error and stop.
+8. If `--msa-dir` + `--tree-dir` but zero pairs remain after matching, exit code 1.
+
+Illustrative examples:
+
+- `gene1.fa.treefile` -> candidates `gene1.fa`, `gene1`
+- `gene2.tre` -> candidate `gene2`
+- `gene3.FASTA.bestTree` -> candidates `gene3.FASTA`, `gene3`
 
 ### 5.3 MSA–Tree Taxon Consistency Check
 

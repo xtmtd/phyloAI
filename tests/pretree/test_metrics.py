@@ -12,6 +12,11 @@ import numpy as np
 import pytest
 from Bio import Phylo
 
+from phyloai.core.file_matching import (
+    logical_msa_locus_name,
+    logical_tree_locus_candidates,
+    pair_msa_and_tree_maps,
+)
 from phyloai.pretree.metrics import (
     _check_taxon_consistency,
     _compute_correlation,
@@ -26,7 +31,6 @@ from phyloai.pretree.metrics import (
     _plot_single_metric,
     _select_correlation_columns,
     _scan_msa_headers,
-    _strip_tree_suffixes,
     _write_correlation_csv,
     run_metrics,
 )
@@ -68,21 +72,76 @@ def _write_newick(path: Path, tree_str: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-class TestStripTreeSuffixes:
-    def test_iqtree_compound(self):
-        assert _strip_tree_suffixes("EOG090X002Z.fas.treefile") == "EOG090X002Z"
+class TestLogicalFileMatching:
+    def test_logical_msa_locus_name_strips_final_suffix(self):
+        assert logical_msa_locus_name(Path("gene.fa")) == "gene"
 
-    def test_contree(self):
-        assert _strip_tree_suffixes("gene2.contree") == "gene2"
+    def test_logical_msa_locus_name_preserves_inner_dots(self):
+        assert logical_msa_locus_name(Path("gene.v1.ALI")) == "gene.v1"
 
-    def test_simple_tre(self):
-        assert _strip_tree_suffixes("simple.tre") == "simple"
+    def test_logical_tree_locus_candidates_reduces_one_and_two_suffixes(self):
+        assert logical_tree_locus_candidates(Path("gene.fa.treefile")) == ("gene.fa", "gene")
 
-    def test_no_suffix_change(self):
-        assert _strip_tree_suffixes("genome") == "genome"
+    def test_logical_tree_locus_candidates_omits_missing_two_suffix_reduction(self):
+        assert logical_tree_locus_candidates(Path("gene.tre")) == ("gene", None)
 
-    def test_treefile_suffix(self):
-        assert _strip_tree_suffixes("gene1.fa.treefile") == "gene1"
+    def test_logical_tree_locus_candidates_keeps_no_suffix_name(self):
+        assert logical_tree_locus_candidates(Path("genome")) == ("genome", None)
+
+    def test_ambiguous_tree_name_raises(self):
+        msa_map = {
+            "gene": Path("gene.fa"),
+            "gene.fa": Path("gene.fa.fa"),
+        }
+
+        with pytest.raises(ValueError, match="ambiguous"):
+            pair_msa_and_tree_maps(msa_map, [Path("gene.fa.treefile")])
+
+    def test_exactly_one_tree_candidate_matches_msa(self, tmp_path):
+        msa_path = tmp_path / "gene.fa"
+        tree_path = tmp_path / "gene.fa.treefile"
+        msa_map = {"gene": msa_path}
+
+        result = pair_msa_and_tree_maps(msa_map, [tree_path])
+
+        assert result.paired["gene"] == (msa_path, tree_path)
+        assert result.warnings == []
+
+    def test_duplicate_matched_tree_paths_raise(self, tmp_path):
+        msa_map = {"gene": tmp_path / "gene.fa"}
+        tree_paths = [tmp_path / "gene.tre", tmp_path / "gene.treefile"]
+
+        with pytest.raises(ValueError, match="duplicate"):
+            pair_msa_and_tree_maps(msa_map, tree_paths)
+
+    def test_no_suffix_orphan_tree_is_paired_with_warning(self, tmp_path):
+        tree_path = tmp_path / "orphan"
+
+        result = pair_msa_and_tree_maps({}, [tree_path])
+
+        assert result.paired["orphan"] == (None, tree_path)
+        assert result.warnings
+
+    def test_duplicate_orphan_tree_paths_raise(self, tmp_path):
+        tree_paths = [tmp_path / "orphan.tre", tmp_path / "orphan.treefile"]
+
+        with pytest.raises(ValueError, match="duplicate"):
+            pair_msa_and_tree_maps({}, tree_paths)
+
+    def test_msa_only_locus_does_not_warn_at_helper_level(self, tmp_path):
+        msa_map = {"gene": tmp_path / "gene.fa"}
+
+        result = pair_msa_and_tree_maps(msa_map, [])
+
+        assert result.paired["gene"] == (tmp_path / "gene.fa", None)
+        assert result.warnings == []
+
+    def test_duplicate_validation_uses_sorted_tree_paths(self, tmp_path):
+        msa_map = {"gene": tmp_path / "gene.fa"}
+        tree_paths = [tmp_path / "gene.treefile", tmp_path / "gene.tre"]
+
+        with pytest.raises(ValueError, match="gene.treefile"):
+            pair_msa_and_tree_maps(msa_map, tree_paths)
 
 
 class TestScanMsaHeaders:
@@ -93,6 +152,14 @@ class TestScanMsaHeaders:
         assert len(per_marker) == 3
         assert len(total_pool) == 3
         assert per_marker["gene0"] == {"taxon0", "taxon1", "taxon2"}
+
+    def test_uses_logical_msa_locus_for_uppercase_suffix(self, tmp_path):
+        _write_fasta(tmp_path / "gene.v1.ALI", _AA_SEQS, ["A", "B", "C"])
+
+        per_marker, total_pool = _scan_msa_headers(tmp_path)
+
+        assert per_marker["gene.v1"] == {"A", "B", "C"}
+        assert total_pool == {"A", "B", "C"}
 
 
 class TestPairFiles:
@@ -119,7 +186,63 @@ class TestPairFiles:
         _write_newick(tree_dir / "orphan.tre", "(A,B);")
         paired, warnings = _pair_files(None, tree_dir)
         assert "orphan" in paired
+        assert paired["orphan"][0] is None
+        assert paired["orphan"][1] == tree_dir / "orphan.tre"
         assert len(warnings) > 0
+
+    def test_matches_uppercase_and_nonstandard_msa_suffixes(self, tmp_path):
+        msa_dir = tmp_path / "msa"
+        tree_dir = tmp_path / "trees"
+        msa_dir.mkdir()
+        tree_dir.mkdir()
+
+        _write_fasta(msa_dir / "gene.v1.ALI", _AA_SEQS, ["A", "B", "C"])
+        _write_newick(tree_dir / "gene.v1.ALI.treefile", "(A,B,C);")
+
+        paired, warnings = _pair_files(msa_dir, tree_dir)
+
+        assert warnings == []
+        assert paired["gene.v1"] == (msa_dir / "gene.v1.ALI", tree_dir / "gene.v1.ALI.treefile")
+
+    def test_raises_on_ambiguous_tree_candidate(self, tmp_path):
+        msa_dir = tmp_path / "msa"
+        tree_dir = tmp_path / "trees"
+        msa_dir.mkdir()
+        tree_dir.mkdir()
+
+        _write_fasta(msa_dir / "gene.fa", _AA_SEQS, ["A", "B", "C"])
+        _write_fasta(msa_dir / "gene.fa.fasta", _AA_SEQS, ["A", "B", "C"])
+        _write_newick(tree_dir / "gene.fa.treefile", "(A,B,C);")
+
+        with pytest.raises(ValueError, match="ambiguous"):
+            _pair_files(msa_dir, tree_dir)
+
+    def test_tree_only_skips_unparseable_sidecar_files(self, tmp_path):
+        tree_dir = tmp_path / "trees"
+        tree_dir.mkdir()
+        _write_newick(tree_dir / "gene.tre", "(A,B);")
+        (tree_dir / "README.txt").write_text("this is not (newick")
+
+        paired, warnings = _pair_files(None, tree_dir)
+
+        assert list(paired) == ["gene"]
+        assert paired["gene"] == (None, tree_dir / "gene.tre")
+        assert not any("README" in warning for warning in warnings)
+
+    def test_paired_mode_skips_unparseable_tree_sidecars(self, tmp_path):
+        msa_dir = tmp_path / "msa"
+        tree_dir = tmp_path / "trees"
+        msa_dir.mkdir()
+        tree_dir.mkdir()
+        _write_fasta(msa_dir / "gene.fa", _AA_SEQS, ["A", "B", "C"])
+        _write_newick(tree_dir / "gene.tre", "(A,B,C);")
+        (tree_dir / "README.txt").write_text("this is not (newick")
+
+        paired, warnings = _pair_files(msa_dir, tree_dir)
+
+        assert list(paired) == ["gene"]
+        assert paired["gene"] == (msa_dir / "gene.fa", tree_dir / "gene.tre")
+        assert warnings == []
 
 
 class TestCheckTaxonConsistency:
@@ -848,6 +971,51 @@ class TestIntegrationCLI:
             row = next(reader)
             assert row["DataType"] == ""
 
+    def test_ambiguous_pairing_returns_error_payload(self, tmp_path):
+        msa_dir = tmp_path / "msa"
+        tree_dir = tmp_path / "trees"
+        out = tmp_path / "output"
+        msa_dir.mkdir()
+        tree_dir.mkdir()
+        _write_fasta(msa_dir / "gene.fa", _AA_SEQS, ["A", "B", "C"])
+        _write_fasta(msa_dir / "gene.fa.fasta", _AA_SEQS, ["A", "B", "C"])
+        _write_newick(tree_dir / "gene.fa.treefile", "(A,B,C);")
+
+        result = run_metrics(
+            msa_dir=msa_dir,
+            tree_dir=tree_dir,
+            output_dir=out,
+            skip_freq=True,
+            skip_pairwise_identity=True,
+            quiet=True,
+        )
+
+        assert result["status"] == "error"
+        assert "ambiguous" in result["error"]
+        assert not (out / "metrics.csv").exists()
+
+    def test_tree_only_mode_skips_unparseable_sidecars(self, tmp_path):
+        tree_dir = tmp_path / "trees"
+        out = tmp_path / "output_tree"
+        tree_dir.mkdir()
+        _write_newick(tree_dir / "gene.tre", "(A,B,C);")
+        (tree_dir / "README.txt").write_text("this is not (newick")
+
+        result = run_metrics(
+            tree_dir=tree_dir,
+            output_dir=out,
+            skip_freq=True,
+            skip_pairwise_identity=True,
+            quiet=True,
+        )
+
+        assert result["status"] == "success"
+        assert result["key_results"]["n_markers"] == 1
+        assert result["key_results"]["n_errors"] == 0
+        with open(out / "metrics.csv") as f:
+            rows = list(csv.DictReader(f))
+        assert [row["loci"] for row in rows] == ["gene"]
+
     def test_skip_freq_statistics(self, e2e_data):
         tmp_path, msa_dir, _ = e2e_data
         out = tmp_path / "output_nofreq"
@@ -903,3 +1071,296 @@ class TestIntegrationCLI:
             quiet=True,
         )
         assert not out.exists()
+
+
+# ---------------------------------------------------------------------------
+# Table format helper tests
+# ---------------------------------------------------------------------------
+
+
+class TestTableFormatHelpers:
+    def test_get_delimiter_csv(self):
+        from phyloai.pretree.metrics import _get_delimiter
+        assert _get_delimiter("csv") == ","
+        assert _get_delimiter("tsv") == "\t"
+
+    def test_table_suffix(self):
+        from phyloai.pretree.metrics import _table_suffix
+        assert _table_suffix("csv") == ".csv"
+        assert _table_suffix("tsv") == ".tsv"
+
+    def test_detect_csv_delimiter_comma(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "test.csv"
+        path.write_text("a,b,c\n1,2,3\n")
+        assert _detect_input_delimiter(path, "auto") == ","
+
+    def test_detect_csv_delimiter_tab(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "test.tsv"
+        path.write_text("a\tb\tc\n1\t2\t3\n")
+        assert _detect_input_delimiter(path, "auto") == "\t"
+
+    def test_detect_csv_delimiter_explicit_override(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "test.tsv"
+        path.write_text("a,b,c\n1,2,3\n")
+        assert _detect_input_delimiter(path, "csv") == ","
+        assert _detect_input_delimiter(path, "tsv") == "\t"
+
+    def test_detect_csv_delimiter_empty_file(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "empty.csv"
+        path.write_text("")
+        with pytest.raises(ValueError, match="empty"):
+            _detect_input_delimiter(path, "auto")
+
+    def test_detect_csv_delimiter_falls_back_to_suffix(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "test.tsv"
+        path.write_text("data_without_delimiters\n")
+        assert _detect_input_delimiter(path, "auto") == "\t"
+
+    def test_detect_csv_delimiter_no_suffix_no_delimiter_errors(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "noext"
+        path.write_text("single_line_without_delimiters\n")
+        with pytest.raises(ValueError, match="Cannot determine delimiter"):
+            _detect_input_delimiter(path, "auto")
+
+    def test_detect_csv_delimiter_suffix_hint_csv(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "test.csv"
+        path.write_text("single_column\n123\n456\n")
+        assert _detect_input_delimiter(path, "auto") == ","
+
+    def test_detect_csv_delimiter_suffix_hint_tsv(self, tmp_path):
+        from phyloai.pretree.metrics import _detect_input_delimiter
+        path = tmp_path / "test.tsv"
+        path.write_text("single_column\n123\n456\n")
+        assert _detect_input_delimiter(path, "auto") == "\t"
+
+
+# ---------------------------------------------------------------------------
+# TSV table format integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestTableFormatTSV:
+    def test_run_metrics_writes_tsv(self, e2e_data):
+        tmp_path, msa_dir, tree_dir = e2e_data
+        out = tmp_path / "output_tsv"
+        result = run_metrics(
+            msa_dir=msa_dir,
+            tree_dir=tree_dir,
+            output_dir=out,
+            table_format="tsv",
+            skip_freq=True,
+            skip_pairwise_identity=True,
+            quiet=True,
+        )
+        assert result["status"] == "success"
+        assert (out / "metrics.tsv").exists()
+        assert not (out / "metrics.csv").exists()
+        assert (out / "result.json").exists()
+        assert (out / "metrics.log").exists()
+        content = (out / "metrics.tsv").read_text()
+        assert "\t" in content
+
+    def test_cli_metrics_table_format_tsv(self, e2e_data):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        tmp_path, msa_dir, tree_dir = e2e_data
+        out = tmp_path / "output_tsv"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "pretree", "metrics",
+                "--msa-dir", str(msa_dir),
+                "--tree-dir", str(tree_dir),
+                "--output-dir", str(out),
+                "--table-format", "tsv",
+                "--skip-freq-statistics",
+                "--skip-pairwise-identity",
+                "--quiet",
+            ],
+        )
+        assert result.exit_code == 0
+        assert (out / "metrics.tsv").exists()
+        assert not (out / "metrics.csv").exists()
+        content = (out / "metrics.tsv").read_text()
+        assert "\t" in content
+        assert "loci" in content
+
+    def test_basic_statistics_tsv(self, e2e_data):
+        tmp_path, msa_dir, tree_dir = e2e_data
+        out = tmp_path / "output_tsv"
+        result = run_metrics(
+            msa_dir=msa_dir,
+            tree_dir=tree_dir,
+            output_dir=out,
+            table_format="tsv",
+            skip_freq=True,
+            skip_pairwise_identity=True,
+            quiet=True,
+        )
+        rows = []
+        with open(out / "metrics.tsv", newline="") as fh:
+            import csv as _csv
+            for row in _csv.DictReader(fh, delimiter="\t"):
+                rows.append(row)
+        numeric_cols = [k for k in rows[0].keys() if k not in ("loci", "DataType")]
+        from phyloai.pretree.metrics import _generate_basic_statistics
+
+        stats_path = out / "metrics.basic_statistics_tsv.tsv"
+        _generate_basic_statistics(rows, numeric_cols, stats_path, table_format="tsv")
+        assert stats_path.exists()
+        content = stats_path.read_text()
+        assert "\t" in content
+        assert "metric" in content
+
+    def test_correlation_csv_tsv(self, tmp_path):
+        from phyloai.pretree.metrics import _write_correlation_csv
+
+        corr = np.array([[1.0, 0.5], [0.5, 1.0]])
+        names = ["entropy", "rcfv"]
+        path = tmp_path / "corr.tsv"
+        _write_correlation_csv(corr, names, path, table_format="tsv")
+        assert path.exists()
+        content = path.read_text()
+        assert "\t" in content
+
+    def test_metrics_plot_input_format_auto_csv(self, tmp_path):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text("loci,entropy,rcfv\n1,0.5,0.3\n2,0.7,0.2\n")
+        out_dir = tmp_path / "plot_out"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "pretree", "metrics", "plot",
+                "--csv", str(csv_path),
+                "--input-format", "auto",
+                "--metric", "entropy",
+                "--output-dir", str(out_dir),
+                "--quiet",
+            ],
+        )
+        assert result.exit_code == 0
+        assert (out_dir / "entropy.pdf").exists()
+
+    def test_metrics_plot_input_format_explicit_tsv(self, tmp_path):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        tsv_path = tmp_path / "test.tsv"
+        tsv_path.write_text("loci\tentropy\trcfv\n1\t0.5\t0.3\n")
+        out_dir = tmp_path / "plot_out"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "pretree", "metrics", "plot",
+                "--csv", str(tsv_path),
+                "--input-format", "tsv",
+                "--metric", "entropy",
+                "--output-dir", str(out_dir),
+                "--quiet",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_metrics_correlate_input_format_auto_csv(self, tmp_path):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        csv_path = tmp_path / "test.csv"
+        csv_path.write_text("loci,entropy,rcfv\n1,0.5,0.3\n2,0.7,0.2\n3,0.6,0.4\n")
+        out_dir = tmp_path / "corr_out"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "pretree", "metrics", "correlate",
+                "--csv", str(csv_path),
+                "--input-format", "auto",
+                "--output-dir", str(out_dir),
+                "--quiet",
+            ],
+        )
+        assert result.exit_code == 0
+        assert (out_dir / "correlation_heatmap.pdf").exists()
+
+    def test_metrics_correlate_input_format_explicit_tsv(self, tmp_path):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        tsv_path = tmp_path / "test.tsv"
+        tsv_path.write_text("loci\tentropy\trcfv\n1\t0.5\t0.3\n2\t0.7\t0.2\n3\t0.6\t0.4\n")
+        out_dir = tmp_path / "corr_out"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "pretree", "metrics", "correlate",
+                "--csv", str(tsv_path),
+                "--input-format", "tsv",
+                "--output-dir", str(out_dir),
+                "--quiet",
+            ],
+        )
+        assert result.exit_code == 0
+        assert (out_dir / "correlation_heatmap.pdf").exists()
+
+    def test_metrics_help_mentions_table_format(self):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pretree", "metrics", "--help"])
+        assert result.exit_code == 0
+        assert "--table-format" in result.output
+
+    def test_metrics_plot_help_mentions_input_format(self):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pretree", "metrics", "plot", "--help"])
+        assert result.exit_code == 0
+        assert "--input-format" in result.output
+        assert "auto-detect" in result.output.lower()
+
+    def test_metrics_correlate_help_mentions_input_format(self):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pretree", "metrics", "correlate", "--help"])
+        assert result.exit_code == 0
+        assert "--input-format" in result.output
+        assert "auto-detect" in result.output.lower()
+
+    def test_metrics_detect_ambiguous_delimiter_errors_in_plot(self, tmp_path):
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        noext = tmp_path / "noext"
+        noext.write_text("single_line_with_no_commas_or_tabs\n")
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "pretree", "metrics", "plot",
+                "--csv", str(noext),
+                "--input-format", "auto",
+                "--metric", "entropy",
+                "--quiet",
+            ],
+        )
+        assert result.exit_code == 1

@@ -136,11 +136,14 @@ phyloai pretree metrics correlate \
 
 ## Inputs
 
-MSA files are scanned from `--msa-dir` using extensions `.fa`, `.fasta`, `.fas`, `.fna`, `.faa`, and `.aln`.
+MSA and tree files are paired by logical locus name using the shared global matching policy.
 
-Tree files are scanned from `--tree-dir` using extensions `.tre`, `.tree`, `.nwk`, `.newick`, `.treefile`, `.bestTree`, and `.contree`.
+- MSA logical locus: everything before the final `.` in the filename.
+- Tree logical locus: try removing the final suffix segment, then the final two suffix segments.
+- If exactly one tree candidate matches an MSA locus, that pair is used.
+- If both tree candidates match different loci, PhyloAI exits with an ambiguity error instead of guessing.
 
-Tree filenames may have compound suffixes. PhyloAI strips tree suffixes and general sequence suffixes iteratively before matching stems. Example: `EOG090X002Z.fas.treefile` becomes `EOG090X002Z`.
+Examples: `EOG090X002Z.fas` -> `EOG090X002Z`; `EOG090X002Z.fas.treefile` tries `EOG090X002Z.fas` and `EOG090X002Z`.
 
 ## Outputs
 

@@ -47,14 +47,46 @@ def _is_blank(value: Any) -> bool:
     return value in {"", None}
 
 
-def per_gene_columns_for_rows(rows: list[dict[str, Any]]) -> list[str]:
+# Columns that only apply to one alignment regime.
+_ALIGNED_ONLY = frozenset({"alignment_length"})
+_UNALIGNED_ONLY = frozenset({
+    "seq_length_min", "seq_length_max",
+    "seq_length_mean", "seq_length_median", "seq_length_stdev",
+})
+_SITE_PATTERN_KEYS = (
+    "distinct_patterns", "constant_sites",
+    "parsimony_informative", "singleton_sites",
+)
+
+
+def per_gene_columns_for_rows(
+    rows: list[dict[str, Any]],
+    is_aligned: bool = True,
+) -> list[str]:
+    """Return the ``PER_GENE_COLUMNS`` subset relevant for *is_aligned*.
+
+    When *is_aligned* is ``True`` (default) the output includes
+    ``alignment_length`` and site-pattern columns (when present) but
+    excludes per-sequence length statistics.  When ``False`` the output
+    includes the per-sequence length columns but excludes alignment-
+    specific fields.
+    """
     if not rows:
-        return PER_GENE_COLUMNS
-    return [
-        column
-        for column in PER_GENE_COLUMNS
-        if any(not _is_blank(row.get(column, "")) for row in rows)
+        return list(PER_GENE_COLUMNS)
+
+    excluded = _UNALIGNED_ONLY if is_aligned else _ALIGNED_ONLY
+    columns = [
+        c
+        for c in PER_GENE_COLUMNS
+        if c not in excluded and any(not _is_blank(r.get(c, "")) for r in rows)
     ]
+
+    if is_aligned:
+        for sp_key in _SITE_PATTERN_KEYS:
+            if any(r.get(sp_key) not in ("", None) for r in rows):
+                columns.append(sp_key)
+
+    return columns
 
 
 def _median(values: list[float]) -> float:

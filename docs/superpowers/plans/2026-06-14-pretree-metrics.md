@@ -49,17 +49,16 @@ Implement shared utilities for MSA loading, file pairing, and taxon name checks.
       msa_dir: Path | None,
       tree_dir: Path | None,
   ) -> tuple[dict[str, tuple[Path | None, Path | None]], list[str]]:
-      """Match MSA and tree files by stem. Returns dict[stem -> (msa_path, tree_path)]."""
+      """Match MSA and tree files by logical locus name via the shared helper."""
   ```
 
   - Scan `--msa-dir` for `.fa`, `.fasta`, `.fas`, `.fna`, `.faa`, `.aln`
   - Scan `--tree-dir` for `.tre`, `.tree`, `.nwk`, `.newick`, `.treefile`, `.bestTree`, `.contree`
-  - **Stem normalization:** Tree files may have compound suffixes (e.g., `gene.fa.treefile`). Strip known suffixes iteratively:
-    - Tree-specific: `.treefile`, `.contree`, `.bestTree`, `.iqtree`, `.tree`, `.tre`, `.nwk`, `.newick`
-    - Then general: `.fa`, `.fasta`, `.fas`, `.fna`, `.faa`, `.aln`
-    - Example: `gene1.fa.treefile` → strip `.treefile` → `gene1.fa` → strip `.fa` → `gene1`
-  - Match MSA stems (with their extensions stripped) against normalized tree stems (case-sensitive)
-  - Unpaired stems → collected as warnings
+  - MSA logical loci derive from the filename text before the final dot (for example, `gene.v1.ALI` → `gene.v1`)
+  - Tree files try two logical-locus candidates from the shared helper: remove one suffix, and when possible also remove two suffixes (for example, `gene.fa.treefile` → `gene.fa` and `gene`)
+  - If both tree candidates match different MSA logical loci, raise an ambiguity error instead of guessing
+  - Match by logical locus name (case-sensitive) using the shared helper
+  - Unmatched MSA or tree files are collected as warnings
   - At least one of `--msa-dir` or `--tree-dir` required
 
 - [ ] **Step 1.3: MSA–tree taxon consistency check**

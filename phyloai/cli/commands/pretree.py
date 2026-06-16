@@ -24,11 +24,14 @@ from phyloai.pretree.trim import render_trim_summary_table, run_trim, _scan_inpu
 from phyloai.pretree.concat import run_concat, _render_concat_panels
 from phyloai.pretree.metrics import (
     _compute_correlation,
+    _detect_input_delimiter,
     _generate_all_plots,
     _generate_basic_statistics,
     _generate_correlation_heatmap,
+    _get_delimiter,
     _plot_single_metric,
     _select_correlation_columns,
+    _table_suffix,
     _write_correlation_csv,
     run_metrics,
 )
@@ -136,8 +139,8 @@ def convert_command(
         "Inspect one sequence file or summarize a directory of sequence files. "
         "Use this command for quick pre-analysis QC on aligned or unaligned data. "
         "Exactly one of --seq or --seq-dir is required. Directory-only options: "
-        "--per-gene, --threads. Shared options: --output-dir, --input-format, "
-        "--seq-type, --quiet."
+        "--per-gene, --table-format, --threads. Shared options: --output-dir, "
+        "--input-format, --seq-type, --quiet."
     ),
 )
 @click.option(
@@ -153,13 +156,20 @@ def convert_command(
     help="Single-file mode. Inspect one sequence or alignment file in detail.",
 )
 @click.option(
+    "--unaligned",
+    "unaligned",
+    is_flag=True,
+    default=False,
+    help="Treat input as unaligned sequences (excludes alignment_length and site-pattern columns from per-gene CSV).",
+)
+@click.option(
     "--per-gene",
     is_flag=True,
     default=False,
     help="Directory mode only. Include per-gene results in terminal output, or write them to per-gene.csv in the output directory.",
 )
 @click.option(
-    "--per-gene-format",
+    "--table-format",
     type=click.Choice(["csv", "tsv"]),
     default="csv",
     show_default=True,
@@ -210,13 +220,14 @@ def stats_command(
     seq_dir: Path | None,
     seq: Path | None,
     per_gene: bool,
-    per_gene_format: str,
+    table_format: str,
     output_dir: Path,
     input_format: str | None,
     seq_type: str | None,
     threads: int,
     quiet: bool,
     overwrite: bool,
+    unaligned: bool,
 ) -> None:
     """Compute statistics for sequence or alignment files."""
     if bool(seq_dir) == bool(seq):
@@ -247,12 +258,13 @@ def stats_command(
             seq_dir,
             seq,
             per_gene,
-            per_gene_format,
+            table_format,
             output_dir,
             input_format,
             seq_type,
             threads,
             quiet,
+            is_aligned=not unaligned,
         )
     except ValueError as exc:
         _fail(str(exc), 1)
@@ -262,12 +274,13 @@ def _run_stats_command(
     seq_dir: Path | None,
     seq: Path | None,
     per_gene: bool,
-    per_gene_format: str,
+    table_format: str,
     output_dir: Path,
     input_format: str | None,
     seq_type: str | None,
     threads: int,
     quiet: bool,
+    is_aligned: bool = True,
 ) -> None:
     """Run the stats command after CLI validation."""
     result_path = output_dir / "result.json"
@@ -309,6 +322,27 @@ def _run_stats_command(
             )
     else:
         results, warnings = stats_directory(seq_dir, seq_type=seq_type, input_format=input_format, threads=threads)
+
+    # Warn when the declared alignment mode disagrees with per-file detection.
+    if seq_dir is not None:
+        ok_results = [r for r in results if "error" not in r]
+        n_detected_aligned = sum(1 for r in ok_results if r.get("is_aligned"))
+        n_detected_unaligned = len(ok_results) - n_detected_aligned
+        if is_aligned and n_detected_unaligned > 0:
+            warnings.append(
+                f"--unaligned is NOT set, but {n_detected_unaligned} of "
+                f"{len(ok_results)} files were detected as unaligned "
+                "(unequal sequence lengths).  Use --unaligned to write "
+                "unaligned-specific columns to the per-gene table."
+            )
+        elif not is_aligned and n_detected_aligned > 0:
+            warnings.append(
+                f"--unaligned is set, but {n_detected_aligned} of "
+                f"{len(ok_results)} files were detected as aligned "
+                "(equal sequence lengths).  Drop --unaligned to include "
+                "alignment-specific columns in the per-gene table."
+            )
+
     summary = aggregate_summary(results)
     summary["warnings"] = warnings
     data: dict = {"summary": summary}
@@ -340,24 +374,46 @@ def _run_stats_command(
         json.dump(payload, fh, indent=2)
     click.echo(f"Summary saved to {result_path}", err=True)
     if per_gene:
-        per_gene_path = output_dir / f"per-gene.{per_gene_format}"
-        _write_per_gene_csv(results, per_gene_path, per_gene_format)
+        per_gene_path = output_dir / f"per-gene.{table_format}"
+        _write_per_gene_csv(results, per_gene_path, table_format, is_aligned=is_aligned)
         click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
     for warning in warnings:
         click.echo(warning, err=True)
 
 
-def _write_per_gene_csv(results: list[dict], path: Path, fmt: str) -> None:
-    """Write per-gene results to CSV or TSV."""
+def _write_per_gene_csv(
+    results: list[dict],
+    path: Path,
+    fmt: str,
+    is_aligned: bool = True,
+) -> None:
+    """Write per-gene results to CSV or TSV.
+
+    Uses the curated ``PER_GENE_COLUMNS`` set (from ``pretree.stats``) so
+    that only well-known, scalar metrics appear in the output.  When
+    *is_aligned* is ``True`` (default) the output includes alignment-
+    specific columns (``alignment_length``, site patterns) and omits
+    per-sequence length statistics; when ``False`` the reverse applies.
+    This avoids the ``ValueError`` that ``csv.DictWriter`` raises when
+    mixed aligned / unaligned rows contain differing key sets.
+    """
     import csv
+
+    from phyloai.pretree.stats import per_gene_columns_for_rows
+
     if not results:
         return
-    columns = list(results[0].keys())
+
+    columns = per_gene_columns_for_rows(results, is_aligned=is_aligned)
+
     delimiter = "\t" if fmt == "tsv" else ","
     with open(path, "w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns, delimiter=delimiter)
         writer.writeheader()
-        writer.writerows(results)
+        normalized = [
+            {col: row.get(col, "") for col in columns} for row in results
+        ]
+        writer.writerows(normalized)
 
 
 @pretree.command(
@@ -848,10 +904,12 @@ def concat_command(
 @click.option("--skip-pairwise-identity", is_flag=True, default=False,
               help="Skip average_pairwise_identity (O(n^2 x L); recommended for >200 taxa).")
 @click.option("--round", "decimal_places", type=click.IntRange(0, 12), default=6, show_default=True,
-              help="Decimal places for numeric values in metrics.csv (0=integer).")
+              help="Decimal places for numeric values in the metrics table (0=integer).")
+@click.option("--table-format", type=click.Choice(["csv", "tsv"]), default="csv", show_default=True,
+              help="Table format for auxiliary tabular outputs (metrics table, basic statistics, correlation matrix).")
 @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
               default=Path("runs/pretree/metrics"), show_default=True,
-              help="Output directory for metrics.csv, plots/, correlation_heatmap.pdf, result.json, metrics.log.")
+              help="Output directory for the metrics table, plots/, correlation_heatmap.pdf, result.json, metrics.log.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of worker processes.")
 @click.option("--dry-run", is_flag=True, default=False,
@@ -873,6 +931,7 @@ def metrics_group(
     fasttree_path: Path | None,
     skip_pairwise_identity: bool,
     decimal_places: int,
+    table_format: str,
     output_dir: Path,
     threads: int,
     dry_run: bool,
@@ -915,6 +974,7 @@ def metrics_group(
         outgroup_list=outgroup_list, ref_tree=ref_tree,
         overwrite=overwrite, dry_run=dry_run, quiet=quiet,
         progress=progress, console=console,
+        table_format=table_format,
     )
 
     if payload["status"] == "error":
@@ -931,14 +991,16 @@ def metrics_group(
     n_plots = 0
     try:
         import csv as _csv
+        metrics_file = output_dir / f"metrics{_table_suffix(table_format)}"
         rows = []
-        with open(output_dir / "metrics.csv", newline="") as fh:
-            for row in _csv.DictReader(fh):
+        delimiter = _get_delimiter(table_format)
+        with open(metrics_file, newline="") as fh:
+            for row in _csv.DictReader(fh, delimiter=delimiter):
                 rows.append(row)
         numeric_cols = [k for k in rows[0].keys() if k not in ("loci", "DataType")] if rows else []
         plots_dir = output_dir / "plots"
         n_plots = _generate_all_plots(rows, numeric_cols, plots_dir)
-        _generate_basic_statistics(rows, numeric_cols, output_dir / "metrics.basic_statistics.csv")
+        _generate_basic_statistics(rows, numeric_cols, output_dir / f"metrics.basic_statistics{_table_suffix(table_format)}", table_format=table_format)
     except Exception as exc:
         if not quiet:
             click.echo(f"\n[WARN] Plot generation failed: {exc}", err=True)
@@ -954,7 +1016,7 @@ def metrics_group(
                 corr_matrix, col_names, corr_dir / "correlation_heatmap.pdf",
                 annot=False,
             )
-            _write_correlation_csv(corr_matrix, col_names, corr_dir / "correlation_matrix.csv")
+            _write_correlation_csv(corr_matrix, col_names, corr_dir / f"correlation_matrix{_table_suffix(table_format)}", table_format=table_format)
             payload["data"]["correlation"] = {"n_variables": len(col_names)}
     except Exception as exc:
         if not quiet:
@@ -967,9 +1029,10 @@ def metrics_group(
 
     if not quiet:
         key = payload["key_results"]
-        click.echo(f"Metrics CSV  → {output_dir / 'metrics.csv'}", err=True)
+        suffix = _table_suffix(table_format)
+        click.echo(f"Metrics table  → {output_dir / f'metrics{suffix}'}", err=True)
         click.echo(f"Plots        → {output_dir / 'plots'} ({n_plots} PDFs)", err=True)
-        click.echo(f"Basic stats  → {output_dir / 'metrics.basic_statistics.csv'}", err=True)
+        click.echo(f"Basic stats  → {output_dir / f'metrics.basic_statistics{suffix}'}", err=True)
         click.echo(f"Correlation  → {output_dir / 'correlate' / 'correlation_heatmap.pdf'}", err=True)
         click.echo(f"Results      → {output_dir / 'result.json'}", err=True)
         click.echo(
@@ -994,6 +1057,8 @@ def metrics_group(
 )
 @click.option("--csv", "csv_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True,
               help="Path to an existing metrics.csv (required).")
+@click.option("--input-format", "input_format", type=click.Choice(["csv", "tsv", "auto"]), default="auto", show_default=True,
+              help="Input format of the metrics table (csv, tsv, or auto-detect).")
 @click.option("--metric", type=str, required=True,
               help="Exact column name to plot, e.g. entropy, rcfv, saturation (required).")
 @click.option("--bins", type=int, default=50, show_default=True,
@@ -1027,7 +1092,7 @@ def metrics_group(
 @click.option("--overwrite", is_flag=True, default=False)
 @click.option("--quiet", "-q", is_flag=True, default=False)
 def metrics_plot_command(
-    csv_path: Path, metric: str, bins: int, xmin: float | None, xmax: float | None,
+    csv_path: Path, input_format: str, metric: str, bins: int, xmin: float | None, xmax: float | None,
     tukey_k: float | None, title: str | None, xlabel: str | None, ylabel: str,
     color: str, fig_width: float, fig_height: float, dpi: int, font_size: int,
     output_dir: Path | None, overwrite: bool, quiet: bool,
@@ -1051,8 +1116,9 @@ def metrics_plot_command(
 
     values = []
     loci_labels = []
+    delimiter = _detect_input_delimiter(csv_path, input_format)
     with open(csv_path, newline="") as fh:
-        for row in _csv_mod.DictReader(fh):
+        for row in _csv_mod.DictReader(fh, delimiter=delimiter):
             v = row.get(metric)
             lbl = row.get("loci", "")
             if v not in (None, "", "NA"):
@@ -1090,7 +1156,7 @@ def metrics_plot_command(
         "status": "success",
         "command": "phyloai pretree metrics plot",
         "wall_time": 0.0, "tool_versions": {},
-        "params": {"csv": str(csv_path), "metric": metric, "bins": bins,
+        "params": {"csv": str(csv_path), "input_format": input_format, "metric": metric, "bins": bins,
                    "tukey_k": tukey_k, "n_filtered": n_filtered,
                    "fig_width": fig_width, "fig_height": fig_height, "dpi": dpi},
         "key_results": {}, "error": None, "data": {},
@@ -1118,6 +1184,8 @@ def metrics_plot_command(
 )
 @click.option("--csv", "csv_path", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True,
               help="Path to an existing metrics.csv (required).")
+@click.option("--input-format", "input_format", type=click.Choice(["csv", "tsv", "auto"]), default="auto", show_default=True,
+              help="Input format of the metrics table (csv, tsv, or auto-detect).")
 @click.option("--metrics", type=str, default=None,
               help="Comma-separated metric columns to correlate. Use 'all' for every numeric column; default uses core metrics only.")
 @click.option("--include-freq", is_flag=True, default=False,
@@ -1154,7 +1222,7 @@ def metrics_plot_command(
 @click.option("--overwrite", is_flag=True, default=False)
 @click.option("--quiet", "-q", is_flag=True, default=False)
 def metrics_correlate_command(
-    csv_path: Path, metrics: str | None, include_freq: bool, include_sd: bool, method: str, triangle: str,
+    csv_path: Path, input_format: str, metrics: str | None, include_freq: bool, include_sd: bool, method: str, triangle: str,
     annot: bool, cluster_rectangles: int | None, cmap: str, fmt: str,
     fig_width: float, fig_height: float, dpi: int, font_size: int, label_angle: float,
     title: str | None, output_dir: Path, overwrite: bool, quiet: bool,
@@ -1175,8 +1243,9 @@ def metrics_correlate_command(
         output_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
+    delimiter = _detect_input_delimiter(csv_path, input_format)
     with open(csv_path, newline="") as fh:
-        for row in _csv_mod.DictReader(fh):
+        for row in _csv_mod.DictReader(fh, delimiter=delimiter):
             rows.append(row)
     columns = _select_correlation_columns(
         rows,
@@ -1207,7 +1276,7 @@ def metrics_correlate_command(
         "status": "success",
         "command": "phyloai pretree metrics correlate",
         "wall_time": 0.0, "tool_versions": {},
-        "params": {"csv": str(csv_path), "metrics": metrics,
+        "params": {"csv": str(csv_path), "input_format": input_format, "metrics": metrics,
                    "include_freq": include_freq, "include_sd": include_sd, "method": method,
                    "triangle": triangle,
                    "annot": annot, "cmap": cmap, "fmt": fmt,

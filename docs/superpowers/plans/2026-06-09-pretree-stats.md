@@ -247,14 +247,14 @@
 
 ---
 
-## Task 9: Output serialisation — result.json plus per-gene table writing
+## Task 9: Output serialisation — result.json plus table writing
 
 **File:** `phyloai/pretree/stats.py`
 
 **Steps:**
 - [ ] Implement `write_output(data: dict, path: Path, mode: str, force_json: bool = False)` so the main command result is always written as structured JSON matching design spec Section 7.3
-- [ ] Implement `per_gene_output_path(output_dir, output_format="csv")` to place `per-gene.csv` or `per-gene.tsv` inside `--output-dir`
-- [ ] Implement `write_per_gene_output(data, path)` to write the optional per-gene CSV/TSV table
+- [ ] Implement `per_gene_output_path(output_dir, output_format="csv")` to place `per-gene.csv` or `per-gene.tsv` inside `--output-dir` based on `--table-format`
+- [ ] Implement `write_per_gene_output(data, path)` to write the optional per-gene CSV/TSV table selected by `--table-format`
 - [ ] Write tests:
   - [ ] `test_write_json_output`
   - [ ] `test_write_per_gene_csv_output`
@@ -271,7 +271,7 @@
   - `--seq-dir` (Path, mutually exclusive with `--seq`)
   - `--seq` (Path, mutually exclusive with `--seq-dir`)
   - `--per-gene` (flag)
-  - `--per-gene-format` (choice: csv/tsv, default csv)
+  - `--table-format` (choice: csv/tsv, default csv)
   - `--output-dir` / `-o` (Path)
   - `--input-format` (choice: `fasta`, `phylip-relaxed`, `nexus`; optional)
   - `--seq-type` (choice: AA/NT, optional)
@@ -282,7 +282,7 @@
   - Dispatch to `stats_single_file` or `stats_directory` + `aggregate_summary`
   - Render terminal output via Rich unless `--quiet` is set
   - Always write structured results to `result.json` inside `--output-dir`
-  - When `--per-gene` is provided, write per-gene results under `--output-dir` with CSV default and TSV override via `--per-gene-format`
+  - When `--per-gene` is provided, write per-gene results under `--output-dir` with CSV default and TSV override via `--table-format`
   - Print saved output paths in terminal output with content-aware wording (`Results saved to ...`, `Per-gene table saved to ...`, etc.)
   - Show a Rich progress bar during directory processing, suppressed under `--quiet`
   - Help text must explicitly state that exactly one of `--seq` or `--seq-dir` is required
@@ -292,7 +292,7 @@
   - [ ] `test_cli_stats_seq_dir` — small directory subset
   - [ ] `test_cli_stats_writes_result_json`
   - [ ] `test_directory_per_gene_defaults_to_csv`
-  - [ ] `test_directory_per_gene_format_can_write_tsv`
+  - [ ] `test_directory_table_format_can_write_tsv`
   - [ ] `test_unaligned_per_gene_output_includes_sequence_length_summary`
   - [ ] `test_single_file_result_json_includes_per_taxon_table`
   - [ ] `test_cli_stats_mutual_exclusivity_error`

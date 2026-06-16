@@ -296,7 +296,7 @@ def test_directory_output_writes_summary_and_per_gene(tmp_path: Path) -> None:
     assert "alignment_length" in per_gene_header
 
 
-def test_directory_per_gene_format_can_write_tsv(tmp_path: Path) -> None:
+def test_directory_table_format_can_write_tsv(tmp_path: Path) -> None:
     runner = CliRunner()
     output_dir = tmp_path / "stats_out"
 
@@ -308,7 +308,7 @@ def test_directory_per_gene_format_can_write_tsv(tmp_path: Path) -> None:
             "--seq-dir",
             str(TEST_DATA / "test"),
             "--per-gene",
-            "--per-gene-format",
+            "--table-format",
             "tsv",
             "--output-dir",
             str(output_dir),
@@ -335,6 +335,8 @@ def test_cli_help_explains_options() -> None:
     assert "misleading" in result.output
     assert "[fasta|phylip-relaxed|nexus]" in result.output
     assert "Directory where result.json" in result.output
+    assert "--table-format" in result.output
+    assert "--per-gene-format" not in result.output
 
 
 def test_cli_rejects_phylip_input_format_choice() -> None:
