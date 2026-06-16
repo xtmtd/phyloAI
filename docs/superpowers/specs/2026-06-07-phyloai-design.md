@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-16 (global file-matching policy and csv/tsv table I/O rules unified; checkpoint/resume policy added for long-running commands; pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified)  
+**Last updated:** 2026-06-16 (global file-matching policy and csv/tsv table I/O rules unified; checkpoint/resume policy added for long-running commands; pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified; filter CLI and rationale updated for subcommand model per pretree-filter-design)  
 **Status:** Approved for implementation
 
 ---
@@ -123,10 +123,23 @@ phyloai pretree align    --seq-dir ./raw --method magus [--tool-args "--maxsubse
 phyloai pretree trim     --msa-dir ./aligned --tool bmge [--bmge-matrix BLOSUM90] \
                          [--tool-args "-g 0.5"]
 phyloai pretree metrics  --msa-dir ./trimmed [--tree-dir ./genetrees]
-phyloai pretree filter   --msa-dir ./trimmed --metrics-dir ./metrics \
-                          [--tree-dir ./genetrees] \
-                          --strategy outlier [--filter-by pis,abs,treeness] \
-                          [--taper] [--umap-cluster]
+# filter — four subcommands under a Click group
+phyloai pretree filter taper \
+    --msa-dir ./trimmed [--nt-dir ./trimmed_fna] [--seq-type AA|NT|auto] \
+    [--cutoff 3] [--threads 4] [--resume] [--dry-run] [--overwrite]
+phyloai pretree filter treeshrink \
+    --tree-dir ./genetrees [--msa-dir ./trimmed] [--threshold 0.05] \
+    [--dry-run] [--overwrite] [--keep-work-dir]
+phyloai pretree filter metrics \
+    --table ./metrics/metrics.csv \
+    --keep "dvmc>=0,dvmc<=0.3,average_BS>=0.8" \
+    [--msa-dir ./trimmed] [--tree-dir ./genetrees] [--copy] \
+    [--dry-run] [--overwrite]
+phyloai pretree filter cluster \
+    --table ./metrics/metrics.csv \
+    [--reduction pca|umap] [--drop-outlier-clusters none|auto] \
+    [--msa-dir ./trimmed] [--tree-dir ./genetrees] [--copy] \
+    [--dry-run] [--overwrite]
 phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 
 # Tree
@@ -160,14 +173,14 @@ phyloai run --msa-dir ./raw --output ./runs --mode coalescent
 
 ### 4.2 One-click Pipeline (`phyloai run`)
 
-Two modes, both include: `align → trim → filter (TAPER only) → concat → [tree inference]`
+Two modes, both include: `align → trim → filter taper → concat → [tree inference]`
 
 | Mode | Steps | Notes |
 |------|-------|-------|
-| `--mode supermatrix` | align → trim → filter (TAPER) → concat → iqtree (unpartitioned) | Fast, single-step ML tree |
-| `--mode coalescent` | align → trim → filter (TAPER) → concat → genetree → astral-hybrid | MSC-based species tree |
+| `--mode supermatrix` | align → trim → filter taper → concat → iqtree (unpartitioned) | Fast, single-step ML tree |
+| `--mode coalescent` | align → trim → filter taper → concat → genetree → astral-hybrid | MSC-based species tree |
 
-The filter step in `phyloai run` uses TAPER only (fast error site masking). Full marker filtering — including MSA-based and tree-based criteria — is an explicit manual step via `phyloai pretree filter`.
+The filter step in `phyloai run` uses `phyloai pretree filter taper` (TAPER error-site masking only). Full marker filtering — including TreeShrink taxon pruning, metric-rule filtering, and cluster-based outlier removal — is an explicit manual step via the other `phyloai pretree filter` subcommands.
 
 ### 4.3 Universal CLI Flags
 
@@ -303,9 +316,22 @@ runs/
 │   │   ├── metrics.log
 │   │   └── result.json
 │   ├── filter/
-│   │   ├── seqs/
-│   │   ├── filter.log
-│   │   └── result.json
+│   │   ├── taper/
+│   │   │   ├── seqs/          (or seqs/faa/ + seqs/fna/ for AA+CDS)
+│   │   │   ├── filter.log
+│   │   │   └── result.json
+│   │   ├── treeshrink/
+│   │   │   ├── trees/
+│   │   │   ├── seqs/          (only when --msa-dir provided)
+│   │   │   ├── filter.log
+│   │   │   └── result.json
+│   │   ├── metrics/
+│   │   │   ├── filter.log
+│   │   │   └── result.json
+│   │   └── cluster/
+│   │       ├── cluster_2d.pdf ... (diagnostic plots)
+│   │       ├── filter.log
+│   │       └── result.json
 │   └── concat/
 │       ├── concat.log
 │       └── result.json
@@ -428,7 +454,7 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--threads` | `-t` | int | 4 | all commands invoking multi-threaded tools |
 | `--seq-type` | | AA \| NT \| CODON \| auto | auto where safe; command-specific otherwise | commands where molecule type affects behavior; `CODON` only valid for commands that support codon-aware processing (currently `pretree concat`) |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
-| `--input-format` | | str | auto-detect | all commands reading alignment files |
+| `--input-format` | | str | auto-detect | commands reading alignment files |
 | `--input-format` | | `csv\|tsv\|auto` | `auto` | commands reading tabular CSV/TSV inputs |
 | `--output-format` | | text \| json | text | `doctor` only |
 | `--table-format` | | `csv\|tsv` | `csv` | commands writing auxiliary tabular outputs |
@@ -440,6 +466,8 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--resume` | | flag | False | long-running pipeline commands only; resume from `checkpoint.json` |
 
 The `--run-dir` parameter is defined once on the `phyloai` root group and passed via Click context; subcommands do not re-declare it.
+
+`--input-format` intentionally keeps the same flag name across both alignment-reading and table-reading commands, but the value domain is command-specific. No command should expose both meanings simultaneously. Alignment-reading commands use `--input-format` for sequence/alignment format overrides; table-reading commands use `--input-format csv|tsv|auto` for delimiter control.
 
 ### 9.3 Exit Codes
 
@@ -651,10 +679,10 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 |----------|-----------|
 | No GUI | CLI + AI interaction covers all use cases; GUI adds maintenance cost without proportional benefit in this era |
 | stats/convert as pretree subcommands | Semantically these are pre-analysis utilities, consistent with concat being a data preparation step; keeps top-level CLI clean |
-| filter.py unifies MSA + tree + TAPER filtering | Single entry point reduces cognitive load; TAPER as lightweight option within filter avoids an orphan command |
+| filter uses subcommands for distinct workflows | TAPER, TreeShrink, metric-rule, and cluster filtering each have different required inputs and tool dependencies; subcommands avoid one command with many invalid option combinations |
 | metrics is prerequisite for filter | Decouples metric computation from filtering decisions; users can inspect metrics before committing to a filter strategy |
-| Filtering split by evidence source | `pretree filter` handles four filtering modes: TAPER-based error-site masking, MSA/alignment metric filters, gene-tree metric filters, and UMAP cluster/outlier filtering based on selected metrics |
-| Metrics limited to measurement + visualization | `pretree metrics` computes metrics, distributions, and correlation summaries; marker removal decisions and UMAP cluster filtering belong in `pretree filter` |
+| Filtering split by evidence source | Four subcommands: `filter taper` (error-site masking), `filter treeshrink` (outlier taxon pruning), `filter metrics` (rule-based locus removal), `filter cluster` (PCA/UMAP dimensionality reduction + hierarchical clustering + optional outlier cluster removal) |
+| Metrics limited to measurement + visualization | `pretree metrics` computes metrics, distributions, and correlation summaries; marker removal decisions and cluster-based filtering belong in `pretree filter` |
 | --tool-args strategy-only model | Keeps batch input/output and result schemas deterministic while still exposing tool-specific strategy knobs |
 | Format handling per-module, not global | Different tools require different formats; per-module handling via core/formats.py is more correct than forcing a global FASTA mandate |
 | backtrans in align, not a separate command | It is a direct post-processing of the alignment step and uses trimAl which is already a dependency |

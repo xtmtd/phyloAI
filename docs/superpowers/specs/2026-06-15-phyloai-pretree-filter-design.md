@@ -73,13 +73,34 @@ All subcommands support:
 
 | Parameter | Type | Default | Notes |
 |---|---|---|---|
-| `--output-dir`, `-o` | path | `runs/pretree/filter` | Output directory |
+| `--output-dir`, `-o` | path | auto under `runs/pretree/filter/<subcommand>` | Output directory |
 | `--table-format` | `csv`\|`tsv` | `csv` | Format for auxiliary tables; file suffix follows the format |
 | `--dry-run` | flag | off | Validate inputs and show planned work without writing output files |
 | `--quiet`, `-q` | flag | off | Suppress terminal output except errors |
 | `--overwrite` | flag | off | Replace a non-empty output directory |
 
+Per-subcommand default output directories:
+- `filter taper`: `runs/pretree/filter/taper`
+- `filter treeshrink`: `runs/pretree/filter/treeshrink`
+- `filter metrics`: `runs/pretree/filter/metrics`
+- `filter cluster`: `runs/pretree/filter/cluster`
+
 All successful non-dry-run invocations write `result.json` and `filter.log`. `--dry-run` writes no files.
+
+### 3.2 Dry-Run Contract
+
+All `filter` subcommands support `--dry-run`. Dry-run behavior is:
+- validate parameters and required inputs
+- resolve tool paths where applicable
+- show the resolved output directory
+- show planned actions and output artifacts
+- write no files, including no `result.json`
+
+Expected dry-run content by subcommand:
+- `taper`: detected mode, number of paired loci, output layout, tool command template, resume eligibility
+- `treeshrink`: number of trees, whether MSA input is present, work-directory layout, final `run_treeshrink.py` command, expected `trees/` and optional `seqs/`
+- `metrics`: parsed keep rules, input table format, number of loci in the table, whether `--copy` would copy MSA/tree files
+- `cluster`: selected numeric features, reduction method, cluster-count search range or fixed `--n-clusters`, whether outlier clusters would be dropped, whether `--copy` would apply
 
 ---
 
@@ -110,6 +131,8 @@ Add `phyloai/core/file_matching.py` with helpers such as:
 
 `pretree metrics` should use the same helper so `metrics` and `filter` behave identically for files such as `gene.fa.treefile`, uppercase suffixes, and other non-standard naming patterns.
 
+This filter spec intentionally delegates exact pairing semantics to the main design `§9.7`. Command-level docs may still recommend familiar filename patterns such as `gene.fa`, `gene.faa`, `gene.treefile`, and `gene.fa.treefile`, but those examples do not override the shared candidate-based matching rule.
+
 ---
 
 ## 5. TAPER Site Masking
@@ -125,6 +148,7 @@ phyloai pretree filter taper \
   [--taper-path <correction_multi.jl>] \
   [--julia-path <julia>] \
   [--tool-args "..."] \
+  [--output-dir runs/pretree/filter/taper] \
   [--threads 4] [--resume] [--dry-run] [--overwrite]
 ```
 
@@ -138,6 +162,8 @@ Operating modes:
 - **AA+CDS**: AA MSA input plus `--nt-dir` containing codon-aligned NT MSAs; output masked AA to `seqs/faa/` and projected masked CDS to `seqs/fna/`.
 
 `--nt-dir` must contain codon-aligned NT MSAs paired by logical locus name. Raw unaligned CDS is not accepted.
+
+`--seq-type` is functionally required here because TAPER command construction differs between AA and NT input.
 
 ### 5.3 Commands
 
@@ -210,10 +236,12 @@ Terminal and `result.json` include retained MSA statistics for the generated mas
 phyloai pretree filter treeshrink \
   --tree-dir <gene_tree_dir> \
   [--msa-dir <msa_dir>] \
+  [--seq-type AA|NT|auto] \
   [--threshold 0.05] \
   [--treeshrink-mode auto|per-gene|all-genes|per-species] \
   [--treeshrink-path <run_treeshrink.py>] \
   [--tool-args "..."] \
+  [--output-dir runs/pretree/filter/treeshrink] \
   [--dry-run] [--overwrite] [--keep-work-dir]
 ```
 
@@ -221,9 +249,11 @@ phyloai pretree filter treeshrink \
 
 `--tree-dir` is required. `--msa-dir` is optional.
 
+`--seq-type` is optional here and only affects retained-MSA statistics and any sequence-side validation when `--msa-dir` is present. It has no effect in tree-only mode.
+
 TreeShrink can use information from multiple gene trees jointly, so PhyloAI runs TreeShrink once across the dataset rather than per gene. The first version does not provide `--threads` or `--resume` for TreeShrink.
 
-PhyloAI creates a per-gene working layout in a safe temporary directory by default. `--keep-work-dir` writes and retains the work directory under `output_dir/work/` for debugging.
+PhyloAI creates a per-gene working layout in a safe temporary directory by default. `--keep-work-dir` is a TreeShrink-only parameter; when set, it writes and retains the work directory under `output_dir/work/` for debugging.
 
 Per-gene work layout:
 
@@ -280,7 +310,9 @@ phyloai pretree filter metrics \
   --keep "dvmc>=0,dvmc<=0.3,average_BS>=0.8" \
   [--input-format auto|csv|tsv] \
   [--loci-column loci] \
+  [--seq-type AA|NT|auto] \
   [--msa-dir <msa_dir>] [--tree-dir <tree_dir>] [--copy] \
+  [--output-dir runs/pretree/filter/metrics] \
   [--dry-run] [--overwrite]
 ```
 
@@ -309,15 +341,22 @@ Rules:
 
 ### 7.3 Table Input and Output
 
-`--table` accepts CSV or TSV. `--input-format auto` is the default:
-- `.tsv` or `.tab` means TSV
-- all other suffixes mean CSV
+`--table` accepts CSV or TSV. `--input-format auto` is the default.
+
+Auto-detection rules follow the main design `§9.8`:
+- inspect file content first to determine delimiter
+- use filename extension only as a secondary hint
+- if the delimiter cannot be determined confidently, exit with a clear error rather than guessing silently
 
 `--table-format csv|tsv` controls output table delimiters and suffixes.
+
+`--seq-type` is optional here and only affects retained-MSA statistics or sequence-side validation when `--msa-dir` is provided. It has no effect in table-only mode.
 
 ### 7.4 Copy and Summaries
 
 Metrics filtering always writes decision tables unless `--dry-run` is set. It copies files only when `--copy` is set.
+
+`metrics` does not support `--resume` or `--threads` in the first version. This is a deterministic table-filtering step with low implementation complexity relative to checkpointing overhead, and file copying does not justify an additional parallel-control surface in v1.
 
 Copy behavior:
 - if `--copy` and `--msa-dir` are provided, retained MSAs are copied to `seqs/`
@@ -350,6 +389,7 @@ phyloai pretree filter cluster \
   [--input-format auto|csv|tsv] \
   [--metrics all|col1,col2,...] \
   [--exclude-regex REGEX] [--exclude-regex REGEX] \
+  [--seq-type AA|NT|auto] \
   [--reduction pca|umap] \
   [--n-clusters N] [--max-clusters N] \
   [--cluster-linkage ward|average|complete|single] \
@@ -361,6 +401,7 @@ phyloai pretree filter cluster \
   [--plot-metrics-per-page auto|N] \
   [--plot-label-angle FLOAT] \
   [--msa-dir <msa_dir>] [--tree-dir <tree_dir>] [--copy] \
+  [--output-dir runs/pretree/filter/cluster] \
   [--dry-run] [--overwrite]
 ```
 
@@ -387,9 +428,13 @@ A combined regex is also valid:
 
 Save `features_used.csv|tsv` with included columns and excluded columns plus exclusion reasons.
 
+`--seq-type` is optional here and only affects retained-MSA statistics or sequence-side validation when `--msa-dir` is provided. It has no effect in table-only mode.
+
 ### 8.3 Reduction
 
 Default reduction is PCA because it is stable, reproducible, and only requires `scikit-learn`. Documentation should recommend trying UMAP for nonlinear structure exploration.
+
+`cluster` does not support `--resume` or `--threads` in the first version. PCA/UMAP and hierarchical clustering are run as one in-memory analysis, and the first implementation intentionally avoids adding resumable state or a separate concurrency surface.
 
 All features are z-score scaled before reduction. Reduction produces three coordinates:
 - PCA: `PC1`, `PC2`, `PC3`
@@ -477,6 +522,36 @@ If `--copy` is set, retained MSAs and/or trees are copied from provided input di
 
 ### 8.8 Cluster Outputs
 
+Default output layout:
+
+```
+runs/pretree/filter/cluster/
+├── result.json
+├── filter.log
+├── features_used.csv|tsv
+├── reduction.csv|tsv
+├── cluster_selection.csv|tsv
+├── clusters.csv|tsv
+├── cluster_summary.csv|tsv
+├── cluster_metric_means.csv|tsv
+├── cluster_metric_heatmap.pdf
+├── cluster_2d.pdf
+├── cluster_3d.pdf
+├── cluster_metric_boxplots_001.pdf
+├── cluster_loci/
+│   ├── cluster_1.csv|tsv
+│   ├── cluster_2.csv|tsv
+│   └── ...
+├── outlier_comparison.csv|tsv                 # only when auto drop is active
+├── outlier_wilcoxon.csv|tsv                   # only when auto drop is active
+├── outlier_comparison_boxplots_001.pdf        # only when auto drop is active
+├── retained_loci.csv|tsv                      # only when auto drop is active
+├── dropped_loci.csv|tsv                       # only when auto drop is active
+├── filter_decisions.csv|tsv                   # only when auto drop is active
+├── seqs/                                      # only when auto drop is active and --copy + --msa-dir
+└── trees/                                     # only when auto drop is active and --copy + --tree-dir
+```
+
 Core tables:
 - `features_used.csv|tsv`
 - `reduction.csv|tsv`
@@ -561,13 +636,18 @@ All non-dry-run executions write:
 
 ```json
 {
-  "params": {},
-  "data": {},
-  "key_results": {},
+  "status": "success | error",
+  "command": "phyloai pretree filter ...",
+  "wall_time": 0.0,
   "tool_versions": {},
-  "wall_time_seconds": 0.0
+  "params": {},
+  "key_results": {},
+  "error": null,
+  "data": {}
 }
 ```
+
+This schema must match the main design `§9.4` exactly.
 
 Mode-specific key results:
 - `taper`: input loci, successful loci, failed loci, masked AA site count, projected CDS codon count, output paths
