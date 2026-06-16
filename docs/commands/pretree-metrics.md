@@ -82,7 +82,8 @@ phyloai pretree metrics correlate \
 | `--fasttree-path` | `FastTree` | Explicit FastTree executable path. |
 | `--skip-pairwise-identity` | off | Skip `average_pairwise_identity`; recommended for markers with many taxa. |
 | `--round` | `6` | Decimal places for numeric CSV values; range 0-12. |
-| `--output-dir`, `-o` | `runs/pretree/metrics` | Output directory for `metrics.csv`, plots, correlation outputs, `result.json`, and `metrics.log`. |
+| `--table-format` | `csv` | Table format for auxiliary tabular outputs: `csv` or `tsv`. All auxiliary tables (`metrics`, `basic_statistics`, `correlation_matrix`) use the same format. |
+| `--output-dir`, `-o` | `runs/pretree/metrics` | Output directory for the metrics table, plots, correlation outputs, `result.json`, and `metrics.log`. |
 | `--threads`, `-t` | `4` | Worker process count; must be at least 1. |
 | `--dry-run` | off | Validate inputs and show planned work without writing files. |
 | `--overwrite` | off | Delete and recreate a non-empty output directory. |
@@ -92,7 +93,8 @@ phyloai pretree metrics correlate \
 
 | Parameter | Default | Description |
 |---|---|---|
-| `--csv` | required | Existing `metrics.csv`. |
+| `--csv` | required | Existing `metrics.csv` (or `.tsv`). |
+| `--input-format` | `auto` | Table format of the input file: `csv`, `tsv`, or `auto` (detects by content — tab/comma counts — falling back to file extension). |
 | `--metric` | required | Exact metric column name to plot. |
 | `--bins` | `50` | Histogram bin count; valid range is 1-500. |
 | `--xmin` | auto | Force x-axis lower limit. |
@@ -114,7 +116,8 @@ phyloai pretree metrics correlate \
 
 | Parameter | Default | Description |
 |---|---|---|
-| `--csv` | required | Existing `metrics.csv`. |
+| `--csv` | required | Existing `metrics.csv` (or `.tsv`). |
+| `--input-format` | `auto` | Table format of the input file: `csv`, `tsv`, or `auto` (detects by content — tab/comma counts — falling back to file extension). |
 | `--metrics` | core numeric | Comma-separated metric columns. Use `all` for every numeric column. Omitted means automatic readable core-metric selection. |
 | `--include-freq` | off | Include `freq*` columns in automatic metric selection. |
 | `--include-sd` | off | Include `sd_*` columns in automatic metric selection. |
@@ -149,13 +152,15 @@ Examples: `EOG090X002Z.fas` -> `EOG090X002Z`; `EOG090X002Z.fas.treefile` tries `
 
 ### Main `metrics` output directory
 
+All auxiliary tables follow `--table-format` (default `csv`, producing `.csv` files). If `--table-format tsv` is given, `.tsv` files are written instead.
+
 | File or directory | Description |
 |---|---|
-| `metrics.csv` | One row per marker with identifiers, MSA metrics, tree metrics, optional frequency columns, and optional pseudo-tree metrics. |
+| `metrics.csv` (or `.tsv`) | One row per marker with identifiers, MSA metrics, tree metrics, optional frequency columns, and optional pseudo-tree metrics. |
 | `plots/` | One density histogram PDF per numeric metric. |
-| `metrics.basic_statistics.csv` | Mean, median, min, max, q25, q75, standard deviation, non-NA count, and total count per metric. |
+| `metrics.basic_statistics.csv` (or `.tsv`) | Mean, median, min, max, q25, q75, standard deviation, non-NA count, and total count per metric. |
 | `correlate/correlation_heatmap.pdf` | Default compact correlation heatmap from core numeric metrics. |
-| `correlate/correlation_matrix.csv` | Correlation matrix with metric names as row and column labels. |
+| `correlate/correlation_matrix.csv` (or `.tsv`) | Correlation matrix with metric names as row and column labels. |
 | `result.json` | Structured status, parameters, key counts, warnings, and data paths. |
 | `metrics.log` | Per-run parameters, warning collection, wall time, and exit code. |
 

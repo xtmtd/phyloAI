@@ -675,6 +675,7 @@ python -m pytest tests/pretree/test_metrics.py -k "test_correlate" -v
   @click.option("--pseudo-tree-metrics", is_flag=True, default=False)
   @click.option("--skip-pairwise-identity", is_flag=True, default=False, help="Skip average_pairwise_identity (slow for >200 taxa).")
   @click.option("--round", "decimal_places", type=click.IntRange(0, 12), default=6, show_default=True, help="Decimal places for metric values in CSV.")
+  @click.option("--table-format", type=click.Choice(["csv", "tsv"]), default="csv", show_default=True, help="Table format for auxiliary tabular outputs.")
   @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/metrics"), show_default=True)
   @click.option("--threads", "-t", type=int, default=4, show_default=True)
   @click.option("--dry-run", is_flag=True, default=False, help="Validate inputs and show plan without computing.")
@@ -703,6 +704,7 @@ python -m pytest tests/pretree/test_metrics.py -k "test_correlate" -v
 
   **`metrics plot` options:**
   - `--csv` (required) — existing metrics.csv path
+  - `--input-format csv|tsv|auto` (default auto) — input table format with content-based auto-detection
   - `--metric` (required) — column name to plot
   - `--bins` (default 50), `--xmin`, `--xmax`, `--tukey-k` (optional, saves CSV)
   - `--title`, `--xlabel`, `--ylabel`, `--color`, `--fig-width/height`, `--dpi`, `--font-size`
@@ -711,6 +713,7 @@ python -m pytest tests/pretree/test_metrics.py -k "test_correlate" -v
 
   **`metrics correlate` options:**
   - `--csv` (required) — existing metrics.csv path
+  - `--input-format csv|tsv|auto` (default auto) — input table format with content-based auto-detection
   - `--metrics` (optional) — comma-separated subset; `all` means every numeric column; omitted means automatic core-metric selection
   - `--include-freq` — include `freq*` columns in automatic selection
   - `--include-sd` — include `sd_*` columns in automatic selection

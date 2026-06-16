@@ -62,6 +62,7 @@ phyloai pretree metrics
     [--pseudo-tree-metrics]        # compute FastTree-derived pseudo-tree metrics
     [--skip-pairwise-identity]     # skip average_pairwise_identity to save time on large datasets
     [--round N]                    # decimal places in metrics.csv, default 6, range 0-12
+    [--table-format csv|tsv]       # table format for auxiliary outputs, default csv
     [--output-dir <dir>]           # output directory, default runs/pretree/metrics/
     [--threads N]                  # parallel workers, default 4
     [--dry-run]                    # validate inputs and show plan without computing
@@ -74,7 +75,8 @@ analysis (same inputs → identical outputs), so re-running is simpler and produ
 the same result as resuming from a checkpoint.
 
 phyloai pretree metrics plot
-    --csv <metrics.csv>            # metrics CSV file (required)
+    --csv <metrics.csv>            # metrics table file (required)
+    [--input-format csv|tsv|auto]  # input table format, default auto
     --metric <col>                 # single metric column to plot (required)
     [--bins N]                     # histogram bins, default 50
     [--xmin FLOAT]                 # x-axis minimum
@@ -95,7 +97,8 @@ When --tukey-k is set, outlier loci are saved to
 `<output_dir>/<metric>.tukey_filtered.csv` with columns `loci,value`.
 
 phyloai pretree metrics correlate
-    --csv <metrics.csv>            # metrics CSV file (required)
+    --csv <metrics.csv>            # metrics table file (required)
+    [--input-format csv|tsv|auto]  # input table format, default auto
     [--metrics <col1,col2,...>|all]# explicit subset; default auto-selects core numeric metrics
     [--include-freq]               # include freq* columns in automatic metric selection
     [--include-sd]                 # include sd_* columns in automatic metric selection
@@ -315,9 +318,11 @@ Only computed when both MSA and tree exist for a given marker. For large taxa co
 
 | File            | Content                                                                 |
 |-----------------|-------------------------------------------------------------------------|
-| `metrics.csv`   | One row per marker, columns = all computed metrics + `DataType`          |
+| `metrics.csv` (or `.tsv`)  | One row per marker, columns = all computed metrics + `DataType`          |
 | `metrics.log`   | Per-step log (see Section 5.8)                                          |
 | `result.json`   | Structured result (see Section 8)                                       |
+
+File suffixes for tabular outputs follow the `--table-format` setting (default `csv`): `metrics.csv`, `metrics.basic_statistics.csv`, `correlation_matrix.csv` when `--table-format csv`; `metrics.tsv`, `metrics.basic_statistics.tsv`, `correlation_matrix.tsv` when `--table-format tsv`. All auxiliary tables produced in one run use a single consistent format.
 
 ### 5.8 Terminal Display and Logging
 
@@ -416,6 +421,7 @@ phyloai pretree metrics plot --csv metrics.csv --metric num_sites
 | Parameter     | Type  | Default                         | Description                                                     |
 |---------------|-------|----------------------------------|-----------------------------------------------------------------|
 | `--csv`       | Path  | (required)                       | Input metrics CSV                                               |
+| `--input-format`| choice | `auto`                        | Table format of the input csv: `csv`, `tsv`, or `auto` (content-based auto-detection) |
 | `--metric`    | str   | (required)                       | A single metric column to plot                                  |
 | `--bins`      | int   | 50                               | Histogram bins                                                  |
 | `--xmin`      | float | auto                             | X-axis minimum                                                  |
@@ -484,6 +490,7 @@ phyloai pretree metrics correlate --csv metrics.csv
 | Parameter              | Type   | Default                          | Description                                               |
 |------------------------|--------|----------------------------------|-----------------------------------------------------------|
 | `--csv`                | Path   | (required)                       | Input metrics CSV                                         |
+| `--input-format`       | choice | `auto`                           | Table format of the input csv: `csv`, `tsv`, or `auto` (content-based auto-detection) |
 | `--metrics`            | str    | core numeric cols                | Comma-separated list of columns to correlate; `all` means every numeric column |
 | `--include-freq`       | flag   | false                            | Include `freq*` columns in automatic metric selection     |
 | `--include-sd`         | flag   | false                            | Include `sd_*` columns in automatic metric selection      |
@@ -529,17 +536,17 @@ phyloai pretree metrics correlate --csv metrics.csv
 
 ```
 runs/pretree/metrics/
-├── metrics.csv                         # per-marker metrics table
+├── metrics.csv               (or metrics.tsv if --table-format tsv)
 ├── metrics.log                         # log file
 ├── result.json                         # structured result
-├── metrics.basic_statistics.csv        # per-metric summary statistics
+├── metrics.basic_statistics.csv (or .tsv)  # per-metric summary statistics
 ├── plots/                              # distribution plots (all metrics)
 │   ├── num_taxa.pdf
 │   ├── num_sites.pdf
 │   ├── ...                             # one PDF per metric
 └── correlate/
-    ├── correlation_heatmap.pdf          # Spearman correlation heatmap
-    └── correlation_matrix.csv           # full correlation matrix
+    ├── correlation_heatmap.pdf
+    └── correlation_matrix.csv (or .tsv)
 ```
 
 When `metrics plot` is used independently, the single PDF is written directly to `<csv_parent>/plot_<metric>/` by default, alongside its own `result.json`. When `metrics correlate` is used independently, its outputs go to `runs/pretree/metrics/correlate/` by default.
@@ -557,6 +564,7 @@ When `metrics plot` is used independently, the single PDF is written directly to
     "tree_dir": null,
     "seq_type": "AA",
     "round": 6,
+    "table_format": "csv",
     "skip_freq_statistics": false,
     "pseudo_tree_metrics": false,
     "skip_pairwise_identity": false,
@@ -574,7 +582,7 @@ When `metrics plot` is used independently, the single PDF is written directly to
   },
   "error": null,
   "data": {
-    "metrics_csv": "runs/pretree/metrics/metrics.csv",
+    "metrics_table": "runs/pretree/metrics/metrics.csv",
     "taxon_mismatches": [
       {"marker": "gene_042", "msa_only": ["taxon_X"], "tree_only": ["taxon_Y"]}
     ],
@@ -596,7 +604,7 @@ When `metrics plot` is used independently, the single PDF is written directly to
 ```json
 {
   "status": "success",
-  "params": {"csv": "...", "metric": "num_sites", "bins": 50, "tukey_k": null},
+  "params": {"csv": "...", "input_format": "auto", "metric": "num_sites", "bins": 50, "tukey_k": null},
   "key_results": {"n_plots": 1},
   "data": {"plot_pdf": "runs/pretree/metrics/num_sites.pdf", "statistics_csv": "runs/pretree/metrics/metrics.basic_statistics.csv"}
 }
@@ -606,7 +614,7 @@ When `metrics plot` is used independently, the single PDF is written directly to
 ```json
 {
   "status": "success",
-  "params": {"csv": "...", "triangle": "full", "cluster_rectangles": null, "metrics": [...]},
+  "params": {"csv": "...", "input_format": "auto", "triangle": "full", "cluster_rectangles": null, "metrics": [...]},
   "key_results": {"n_variables": 21, "n_complete_cases": 145},
   "data": {"heatmap_pdf": "...", "matrix_csv": "..."}
 }
@@ -651,6 +659,8 @@ Detection: run `FastTree` without arguments. The first line of stdout contains t
 | `metrics plot` outputs one metric only | Mirrors the R script's interactive use case: pick a variable, tweak bins/x-range/Tukey, replot |
 | Standalone subcommands skip dir conflict | `metrics plot` and `metrics correlate` overwrite only their own outputs when requested; they are designed for iterative replotting against an existing metrics directory |
 | `metrics.csv` as canonical intermediate | Decouples computation from visualisation; filter module reads the same CSV |
+| `--table-format csv\|tsv` for auxiliary outputs | Follows total design Section 9.8; all auxiliary tabular outputs (metrics table, basic statistics, correlation matrix) share one format per run |
+| `--input-format csv\|tsv\|auto` for plot/correlate | Content-based auto-detection (tab vs comma count) with file extension fallback; explicit override when auto-detection is ambiguous |
 | No interactive dashboard | Too complex for CLI phase; static PDF output covers the essential use case |
 | Clustering by `\|\r\|` not `r` | Groups strong positive and strong negative correlations together, matching user's intent |
 | Core metrics by default | Keeps the default PDF readable; `freq*` and `sd_*` metrics remain available through `--include-freq`, `--include-sd`, explicit `--metrics`, or `--metrics all` |
