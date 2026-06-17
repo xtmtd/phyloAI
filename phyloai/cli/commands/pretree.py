@@ -46,7 +46,7 @@ def _fail(message: str, exit_code: int) -> None:
 
 class _PretreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["convert", "stats", "align", "trim", "metrics", "concat"]
+        return ["convert", "stats", "align", "trim", "metrics", "filter", "concat"]
 
 
 @click.group(cls=_PretreeGroup)
@@ -1290,6 +1290,610 @@ def metrics_correlate_command(
         click.echo(f"Heatmap saved to {heatmap_path}", err=True)
         click.echo(f"Correlation matrix saved to {output_dir / 'correlation_matrix.csv'}", err=True)
 
+
+# ---------------------------------------------------------------------------
+# filter group
+# ---------------------------------------------------------------------------
+
+from phyloai.pretree.filter import render_filter_summary_table, run_taper, run_treeshrink, run_metrics_filter, run_cluster_filter  # noqa: E402
+
+
+class _FilterGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["taper", "treeshrink", "metrics", "cluster"]
+
+
+@click.group(
+    "filter",
+    cls=_FilterGroup,
+    help="TAPER site masking, TreeShrink taxa pruning, "
+    "metric-rule loci filtering, cluster-based exploration.",
+)
+def filter_group() -> None:
+    pass
+
+
+# ---- filter taper ----
+
+_TAPER_HELP = (
+    "Mask erroneous amino-acid or nucleotide sites within multiple sequence "
+    "alignments using the TAPER error-correction tool (bundled "
+    "correction_multi.jl, executed by Julia).\n"
+    "\n"
+    "Operating modes (one per paragraph):\n"
+    "\n"
+    "  AA-only\n"
+    "    --msa-dir with AA alignments.\n"
+    "    Output: masked AA to seqs/\n"
+    "\n"
+    "  NT-only\n"
+    "    --msa-dir with NT alignments, --seq-type NT.\n"
+    "    Output: masked NT to seqs/\n"
+    "\n"
+    "  AA+CDS\n"
+    "    --msa-dir with AA alignments, --nt-dir with codon-aligned NT MSAs.\n"
+    "    Output: masked AA to seqs/faa/, projected CDS to seqs/fna/\n"
+    "\n"
+    "TAPER is run per locus in parallel.  Only newly introduced 'X' masks "
+    "(not original ambiguity) are counted.  --resume skips loci whose output "
+    "files already exist and pass validation."
+)
+
+@filter_group.command("taper", help=_TAPER_HELP)
+@click.option(
+    "--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Directory containing input MSA files (any suffix).  All regular non-empty "
+    "files are scanned; format is validated when parsed.",
+)
+@click.option(
+    "--nt-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="AA+CDS mode only: directory of codon-aligned nucleotide MSAs "
+    "(one per AA locus, length == 3 * AA length).  Requires amino-acid --msa-dir input.",
+)
+@click.option(
+    "--seq-type", type=click.Choice(["AA", "NT", "auto"]),
+    default="auto", show_default=True,
+    help="Expected molecule type of the MSA files.  'auto' detects from the first "
+    "file's sequence characters (presence of EFILPQWYZ -> AA, otherwise NT).  "
+    "AA+CDS mode (--nt-dir) requires AA input; --seq-type NT is rejected with --nt-dir.",
+)
+@click.option(
+    "--cutoff", type=click.IntRange(1), default=3, show_default=True,
+    help="TAPER -c error-correction cutoff.  Lower values mask more aggressively "
+    "(1 = most aggressive); values 1-10 are typical.  The TAPER default is 3.",
+)
+@click.option(
+    "--taper-path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Explicit path to correction_multi.jl.  When omitted, the bundled copy "
+    "inside the PhyloAI package is used.",
+)
+@click.option(
+    "--julia-path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Explicit path to the Julia executable.  When omitted, PhyloAI resolves "
+    "it via PATH (see 'phyloai doctor' for detection status).",
+)
+@click.option(
+    "--tool-args", type=str, default=None,
+    help="Additional TAPER command-line flags passed through verbatim.  "
+    "PhyloAI-managed flags (-m, -a, -c, -l, input path, output redirection) "
+    "must not appear here; the command exits with an error if they do.",
+)
+@click.option(
+    "--threads", "-t", type=int, default=4, show_default=True,
+    help="Number of parallel worker processes (one locus per worker).",
+)
+@click.option(
+    "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/pretree/filter/taper"), show_default=True,
+    help="Directory for masked output files, decision tables, result.json, and filter.log.",
+)
+@click.option(
+    "--table-format", type=click.Choice(["csv", "tsv"]),
+    default="csv", show_default=True,
+    help="Delimiter and file suffix for auxiliary tables (retained_loci, dropped_loci, "
+    "filter_decisions).  Does not affect result.json.",
+)
+@click.option(
+    "--show-masked-sites", is_flag=True, default=False,
+    help="Include per-taxon masked-site counts in filter_decisions.csv.  "
+    "Default off to keep the output table compact.",
+)
+@click.option(
+    "--resume", is_flag=True, default=False,
+    help="Resume a previous run from the checkpoint.json inside --output-dir.  "
+    "Parameters must match exactly; successfully completed loci are skipped.",
+)
+@click.option(
+    "--overwrite", is_flag=True, default=False,
+    help="Delete and recreate --output-dir if it already exists.  "
+    "Mutually exclusive with --resume.",
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False,
+    help="Validate inputs and show the planned TAPER commands and output layout "
+    "without executing anything or writing files.",
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False,
+    help="Suppress all terminal output except errors.",
+)
+def filter_taper_command(msa_dir, nt_dir, seq_type, cutoff, taper_path, julia_path, tool_args, threads, output_dir, table_format, show_masked_sites, resume, overwrite, dry_run, quiet):
+    if threads < 1:
+        _fail("--threads must be at least 1.", 1)
+    if nt_dir is not None and seq_type == "NT":
+        _fail("--nt-dir (AA+CDS mode) requires amino-acid input.  --seq-type NT is incompatible with --nt-dir.", 1)
+
+    def _invoke(progress_callback=None):
+        return run_taper(msa_dir=msa_dir, output_dir=output_dir, seq_type=seq_type, nt_dir=nt_dir, cutoff=cutoff, taper_path=taper_path, julia_path=julia_path, threads=threads, tool_args=tool_args, resume=resume, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format, show_masked_sites=show_masked_sites, progress_callback=progress_callback)
+
+    error_msg = None
+    if not quiet and not dry_run:
+        from phyloai.core.file_matching import scan_msa_dir
+        from phyloai.core.checkpoint import load_checkpoint as _load_ckpt
+
+        if resume:
+            ckpt_path = output_dir / "checkpoint.json"
+            ckpt = _load_ckpt(ckpt_path)
+            total = len(ckpt.tasks)
+            label = f"TAPER masking (resume, {total} total)"
+        else:
+            msa_map = scan_msa_dir(msa_dir)
+            total = max(len(msa_map), 1)
+            label = "TAPER masking"
+        with Progress(console=console, transient=True) as progress:
+            task = progress.add_task(label, total=total)
+            try:
+                payload = _invoke(progress_callback=lambda _: progress.advance(task))
+            except (ValueError, FileNotFoundError) as exc:
+                error_msg = str(exc)
+    else:
+        try:
+            payload = _invoke()
+        except (ValueError, FileNotFoundError) as exc:
+            error_msg = str(exc)
+
+    if error_msg is not None:
+        exit_code = 3 if "not found" in error_msg.lower() else 1
+        _fail(error_msg, exit_code)
+    if dry_run:
+        click.echo(f"Dry run: {payload['key_results']['n_input']} loci would be processed.")
+        for cmd in payload["data"]["dry_run_cmds"]:
+            click.echo(cmd)
+        return
+    if not quiet:
+        console.print(render_filter_summary_table({
+            "Input": payload["key_results"]["n_input"],
+            "Retained": payload["key_results"]["n_retained"],
+            "Dropped": payload["key_results"]["n_dropped"],
+            "Masked loci": payload["key_results"]["masked_loci"],
+            "Masked taxa": payload["key_results"]["total_masked_taxa"],
+            "Masked sites": payload["key_results"]["total_masked_aa_sites"],
+        }))
+        msa_stats = payload["data"].get("retained_msa_stats", {})
+        if msa_stats and msa_stats.get("n_msa", 0) > 0:
+            console.print(render_filter_summary_table({
+                "Retained MSAs": msa_stats["n_msa"],
+                "Total length": msa_stats["total_length"],
+                "Mean length": msa_stats["mean_length"],
+                "Min length": msa_stats["min_length"],
+                "Max length": msa_stats["max_length"],
+                "Mean taxa": msa_stats["mean_taxa"],
+            }))
+        click.echo(f"Masked MSAs saved to {output_dir / 'seqs'}", err=True)
+        click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "All loci failed."), 1)
+
+
+# ---- filter treeshrink ----
+
+_TREESHRINK_HELP = (
+    "Detect and prune outlier long-branch taxa from gene trees using TreeShrink.\n\n"
+    "TreeShrink is run once across the entire gene-tree dataset (not per gene) "
+    "because it can use information from multiple trees jointly.  PhyloAI creates "
+    "a per-gene working layout (input.tree, optional input.fasta) in a temporary "
+    "directory, invokes run_treeshrink.py, then collects the shrunk outputs.\n\n"
+    "When --msa-dir is provided, matching MSAs are also shrunk to remove the "
+    "same pruned taxa, and retained-MSA statistics are included in the output."
+)
+
+@filter_group.command("treeshrink", help=_TREESHRINK_HELP)
+@click.option(
+    "--tree-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Directory of input gene tree files (any suffix).  All regular non-empty "
+    "files are scanned; logical locus names are derived from filename stems.",
+)
+@click.option(
+    "--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Optional directory of MSA files paired with the gene trees by logical "
+    "locus name.  When provided, TreeShrink is invoked with both tree and "
+    "alignment input per locus, and shrunk MSAs are written to seqs/.",
+)
+@click.option(
+    "--threshold", type=click.FloatRange(0.0), default=0.05, show_default=True,
+    help="TreeShrink -q false-positive threshold.  Smaller values remove more taxa; "
+    "0.05 is the TreeShrink default.  Must be >=0.",
+)
+@click.option(
+    "--treeshrink-mode", type=click.Choice(["auto", "per-gene", "all-genes", "per-species"]),
+    default="auto", show_default=True,
+    help="TreeShrink -m operating mode.  'auto' omits -m (TreeShrink default).  "
+    "'per-gene' runs independently per gene.  'all-genes' and 'per-species' "
+    "use cross-gene information.",
+)
+@click.option(
+    "--treeshrink-path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Explicit path to run_treeshrink.py.  When omitted, PhyloAI resolves it "
+    "via PATH (see 'phyloai doctor').",
+)
+@click.option(
+    "--tool-args", type=str, default=None,
+    help="Additional TreeShrink flags passed through verbatim.  "
+    "PhyloAI-managed flags (-i, -t, -a, -q, -m, -o, -O) must not appear here.",
+)
+@click.option(
+    "--keep-work-dir", is_flag=True, default=False,
+    help="Retain the per-gene working directory under --output-dir/work/ for "
+    "debugging.  By default the temporary work layout is deleted after the run.",
+)
+@click.option(
+    "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/pretree/filter/treeshrink"), show_default=True,
+    help="Directory for shrunk trees, optional shrunk MSAs, decision tables, "
+    "result.json, and filter.log.",
+)
+@click.option(
+    "--table-format", type=click.Choice(["csv", "tsv"]),
+    default="csv", show_default=True,
+    help="Delimiter and file suffix for auxiliary tables (retained_loci, "
+    "modified_loci, dropped_loci, removed_taxa, filter_decisions).  "
+    "Does not affect result.json.",
+)
+@click.option(
+    "--overwrite", is_flag=True, default=False,
+    help="Delete and recreate --output-dir if it already exists.",
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False,
+    help="Validate inputs and show the resolved TreeShrink command and number of "
+    "loci without executing or writing files.",
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False,
+    help="Suppress all terminal output except errors.",
+)
+def filter_treeshrink_command(tree_dir, msa_dir, threshold, treeshrink_mode, treeshrink_path, tool_args, keep_work_dir, output_dir, table_format, overwrite, dry_run, quiet):
+    if not quiet and not dry_run:
+        with Progress(console=console, transient=True) as progress:
+            progress.add_task("TreeShrink running...", total=None)
+            try:
+                payload = run_treeshrink(tree_dir=tree_dir, output_dir=output_dir, msa_dir=msa_dir, threshold=threshold, treeshrink_mode=treeshrink_mode, treeshrink_path=treeshrink_path, tool_args=tool_args, keep_work_dir=keep_work_dir, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
+            except (ValueError, FileNotFoundError) as exc:
+                _fail(str(exc), 3 if "not found" in str(exc).lower() else 1)
+    else:
+        try:
+            payload = run_treeshrink(tree_dir=tree_dir, output_dir=output_dir, msa_dir=msa_dir, threshold=threshold, treeshrink_mode=treeshrink_mode, treeshrink_path=treeshrink_path, tool_args=tool_args, keep_work_dir=keep_work_dir, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
+        except (ValueError, FileNotFoundError) as exc:
+            _fail(str(exc), 3 if "not found" in str(exc).lower() else 1)
+    if dry_run:
+        click.echo(f"Dry run: would process {payload['key_results']['n_input']} loci.")
+        click.echo(payload["data"]["dry_run_cmd"])
+        return
+    if not quiet:
+        console.print(render_filter_summary_table({"Input": payload["key_results"]["n_input"], "Retained": payload["key_results"]["n_retained"], "Modified": payload["key_results"]["n_modified"], "Dropped": payload["key_results"]["n_dropped"], "Taxa removed": payload["key_results"]["n_removed_taxa_total"]}))
+        msa_stats = payload["data"].get("retained_msa_stats", {})
+        if msa_stats and msa_stats.get("n_msa", 0) > 0:
+            console.print(render_filter_summary_table({
+                "Retained MSAs": msa_stats["n_msa"],
+                "Total length": msa_stats["total_length"],
+                "Mean length": msa_stats["mean_length"],
+                "Min length": msa_stats["min_length"],
+                "Max length": msa_stats["max_length"],
+                "Mean taxa": msa_stats["mean_taxa"],
+            }))
+        console.print("[dim]Tip: filtered alignments may be used to re-construct "
+                      "phylogenetic trees, which are possibly more accurate than "
+                      "those pruned by TreeShrink.[/dim]")
+        click.echo(f"Shrunk trees saved to {output_dir / 'trees'}", err=True)
+        click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "All loci failed."), 1)
+
+
+# ---- filter metrics ----
+
+_METRICS_HELP = (
+    "Filter whole loci by explicit numeric or string conditions on a metrics "
+    "CSV/TSV table (typically the output of 'phyloai pretree metrics').\n\n"
+    "All conditions in --keep are combined with AND logic (a locus must satisfy "
+    "every condition to be retained).  OR logic is not supported in this version.\n\n"
+    "Use --copy to copy retained MSA and/or tree files into the output directory.  "
+    "Without --copy only decision tables are written, which is useful for "
+    "threshold exploration without duplicating large files."
+)
+
+@filter_group.command("metrics", help=_METRICS_HELP)
+@click.option(
+    "--table", "table_path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Path to a CSV or TSV metrics table.  Delimiter is auto-detected from "
+    "file content unless --input-format csv|tsv is specified explicitly.",
+)
+@click.option(
+    "--keep", type=str, required=True,
+    help="Comma-separated list of AND conditions.  Supported operators: "
+    ">=, >, <=, <, ==, !=.  Numeric comparisons require numeric values; "
+    "only == and != are valid for string columns.  "
+    "Example: 'dvmc>=0,dvmc<=0.3,average_BS>=0.8,DataType==AA'.",
+)
+@click.option(
+    "--input-format", type=click.Choice(["csv", "tsv", "auto"]),
+    default="auto", show_default=True,
+    help="Delimiter format of the input --table.  'auto' inspects file content; "
+    "use csv or tsv to override when auto-detection is ambiguous.",
+)
+@click.option(
+    "--loci-column", type=str, default="loci", show_default=True,
+    help="Name of the column that holds the logical locus identifier.",
+)
+@click.option(
+    "--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Directory of MSA files for computing retained-MSA statistics (terminal "
+    "summary and result.json).  When combined with --copy, retained MSAs are "
+    "copied to --output-dir/seqs/.",
+)
+@click.option(
+    "--tree-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Directory of tree files.  When combined with --copy, retained trees are "
+    "copied to --output-dir/trees/.",
+)
+@click.option(
+    "--copy", is_flag=True, default=False,
+    help="Copy retained MSA and/or tree files into the output directory.  "
+    "Requires at least one of --msa-dir or --tree-dir.",
+)
+@click.option(
+    "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/pretree/filter/metrics"), show_default=True,
+    help="Directory for decision tables, optional copied files, result.json, and filter.log.",
+)
+@click.option(
+    "--table-format", type=click.Choice(["csv", "tsv"]),
+    default="csv", show_default=True,
+    help="Delimiter and file suffix for auxiliary tables (retained_loci, "
+    "dropped_loci, filter_decisions).  Does not affect result.json.",
+)
+@click.option(
+    "--overwrite", is_flag=True, default=False,
+    help="Delete and recreate --output-dir if it already exists.",
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False,
+    help="Parse --keep rules and show how many loci would be retained/dropped "
+    "without writing any files.",
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False,
+    help="Suppress all terminal output except errors.",
+)
+def filter_metrics_command(table_path, keep, input_format, loci_column, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
+    try:
+        payload = run_metrics_filter(table_path=table_path, output_dir=output_dir, keep=keep, input_format=input_format, loci_column=loci_column, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
+    except (ValueError, FileNotFoundError) as exc:
+        _fail(str(exc), 1)
+    if dry_run:
+        click.echo(f"Dry run: {payload['key_results']['n_total']} loci -> {payload['key_results']['n_retained']} retained, {payload['key_results']['n_dropped']} dropped")
+        return
+    if not quiet:
+        console.print(render_filter_summary_table({"Total": payload["key_results"]["n_total"], "Retained": payload["key_results"]["n_retained"], "Dropped": payload["key_results"]["n_dropped"]}))
+        msa_stats = payload["data"].get("retained_msa_stats", {})
+        if msa_stats and msa_stats.get("n_msa", 0) > 0:
+            console.print(render_filter_summary_table({
+                "Retained MSAs": msa_stats["n_msa"],
+                "Total length": msa_stats["total_length"],
+                "Mean length": msa_stats["mean_length"],
+                "Min length": msa_stats["min_length"],
+                "Max length": msa_stats["max_length"],
+                "Mean taxa": msa_stats["mean_taxa"],
+            }))
+        click.echo(f"Decision tables saved to {output_dir}", err=True)
+        click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "Filtering failed."), 1)
+
+
+# ---- filter cluster ----
+
+_CLUSTER_HELP = (
+    "Group loci by their metric profiles using dimensionality reduction "
+    "(PCA or UMAP) followed by hierarchical clustering.\n\n"
+    "This is primarily an exploratory tool: by default it only writes clusters, "
+    "diagnostic plots, and per-cluster metric summaries.  Use "
+    "--drop-outlier-clusters auto to optionally remove the worst-performing "
+    "clusters based on a specified metric (e.g. average_BS).\n\n"
+    "Clustering is run once in-memory; --resume and --threads are not supported "
+    "in this version.  PCA is the default reduction method because it is "
+    "deterministic and dependency-light; UMAP is recommended for exploring "
+    "non-linear structure but adds the optional umap-learn dependency."
+)
+
+@filter_group.command("cluster", help=_CLUSTER_HELP)
+@click.option(
+    "--table", "table_path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Path to a CSV or TSV metrics table.  Delimiter auto-detected unless "
+    "--input-format is specified.",
+)
+@click.option(
+    "--input-format", type=click.Choice(["csv", "tsv", "auto"]),
+    default="auto", show_default=True,
+    help="Delimiter format of the input --table.",
+)
+@click.option(
+    "--metrics", type=str, default=None,
+    help="Comma-separated list of metric column names to use as features.  "
+    "When omitted or set to 'all', all numeric columns are used except the "
+    "locus identifier, DataType column, constant columns, and columns "
+    "matching --exclude-regex.",
+)
+@click.option(
+    "--exclude-regex", type=str, multiple=True, default=None,
+    help="Regular expression for excluding metric columns.  Repeatable: "
+    "--exclude-regex '^freq' --exclude-regex '^sd_'.  Matched columns are "
+    "dropped from the feature set (logged in features_used output table).",
+)
+@click.option(
+    "--reduction", type=click.Choice(["pca", "umap"]),
+    default="pca", show_default=True,
+    help="Dimensionality reduction method.  'pca' uses sklearn PCA (n_components=3).  "
+    "'umap' requires 'pip install umap-learn'; supports --umap-replicates for "
+    "stability assessment.",
+)
+@click.option(
+    "--n-clusters", type=int, default=None,
+    help="Fixed number of clusters.  When omitted, the best k in [2..max_clusters] "
+    "is selected by multi-metric voting (silhouette, Calinski-Harabasz, "
+    "Davies-Bouldin).",
+)
+@click.option(
+    "--max-clusters", type=int, default=None,
+    help="Upper bound for automatic cluster-count search.  Defaults to "
+    "min(30, max(6, ceil(sqrt(n_loci)/3))).  Ignored when --n-clusters is set.",
+)
+@click.option(
+    "--cluster-linkage", type=click.Choice(["ward", "average", "complete", "single"]),
+    default="ward", show_default=True,
+    help="Agglomerative clustering linkage criterion.  'ward' minimizes "
+    "within-cluster variance (requires Euclidean distance).  'average' and "
+    "'complete' are conservative alternatives.  'single' is prone to chaining.",
+)
+@click.option(
+    "--cluster-distance", type=click.Choice(["euclidean", "cosine", "manhattan"]),
+    default="euclidean", show_default=True,
+    help="Distance metric for clustering.  'ward' linkage requires 'euclidean'.",
+)
+@click.option(
+    "--drop-outlier-clusters", type=click.Choice(["none", "auto"]),
+    default="none", show_default=True,
+    help="When 'auto', rank clusters by mean --outlier-metric and remove the "
+    "worst-performing clusters up to --max-drop-fraction of total loci.  "
+    "When 'none', no loci are removed; only diagnostics are written.",
+)
+@click.option(
+    "--outlier-metric", type=str, default="average_BS", show_default=True,
+    help="Metric column used to rank clusters for outlier removal.  "
+    "Clusters with low (or high, per --outlier-direction) mean values are "
+    "dropped first.  Ignored unless --drop-outlier-clusters auto.",
+)
+@click.option(
+    "--outlier-direction", type=click.Choice(["low", "high"]),
+    default="low", show_default=True,
+    help="Interpretation of --outlier-metric for ranking.  'low' means smaller "
+    "values are worse (e.g. average_BS).  'high' means larger values are worse.",
+)
+@click.option(
+    "--max-drop-fraction", type=click.FloatRange(0.0, 1.0),
+    default=0.2, show_default=True,
+    help="Maximum fraction of total loci that can be removed by outlier-cluster "
+    "dropping.  Range [0.0, 1.0].",
+)
+@click.option(
+    "--plot-metrics-per-page", type=str, default="auto", show_default=True,
+    help="Number of metric boxplots per PDF page.  'auto' adapts to cluster count "
+    "(<=6 clusters: 12/page; <=12: 6; <=20: 4; >20: 2).  "
+    "Explicit integer values are also accepted.",
+)
+@click.option(
+    "--plot-label-angle", type=float, default=45.0, show_default=True,
+    help="Rotation angle in degrees for x-axis labels in diagnostic plots.",
+)
+@click.option(
+    "--umap-n-neighbors", type=int, default=15, show_default=True,
+    help="UMAP n_neighbors parameter.  Controls the balance between local and "
+    "global structure.  Ignored for PCA reduction.",
+)
+@click.option(
+    "--umap-min-dist", type=float, default=0.001, show_default=True,
+    help="UMAP min_dist parameter.  Controls how tightly points are packed.  "
+    "Ignored for PCA reduction.",
+)
+@click.option(
+    "--umap-replicates", type=int, default=1, show_default=True,
+    help="Number of UMAP replicates with different random seeds.  The best "
+    "replicate is selected by cluster-validation rank-sum scoring.  "
+    "Ignored for PCA reduction.",
+)
+@click.option(
+    "--umap-random-state", type=int, default=0, show_default=True,
+    help="Base random seed for UMAP.  Each replicate uses base_seed + replicate_index.  "
+    "Ignored for PCA reduction.",
+)
+@click.option(
+    "--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Directory of MSA files.  Used with --copy to copy retained MSAs into "
+    "--output-dir/seqs/ when outlier dropping is active.",
+)
+@click.option(
+    "--tree-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Directory of tree files.  Used with --copy to copy retained trees into "
+    "--output-dir/trees/ when outlier dropping is active.",
+)
+@click.option(
+    "--copy", is_flag=True, default=False,
+    help="Copy retained MSA and/or tree files into the output directory.  "
+    "Only takes effect when --drop-outlier-clusters auto actually drops loci.",
+)
+@click.option(
+    "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/pretree/filter/cluster"), show_default=True,
+    help="Directory for cluster assignments, diagnostic plots, decision tables, "
+    "result.json, and filter.log.",
+)
+@click.option(
+    "--table-format", type=click.Choice(["csv", "tsv"]),
+    default="csv", show_default=True,
+    help="Delimiter and file suffix for all auxiliary tables (features_used, "
+    "reduction, clusters, cluster_summary, cluster_metric_means, and "
+    "optionally retained/dropped/filter_decisions).  Does not affect result.json.",
+)
+@click.option(
+    "--overwrite", is_flag=True, default=False,
+    help="Delete and recreate --output-dir if it already exists.",
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False,
+    help="Validate inputs, resolve the feature set, and show planned reduction, "
+    "cluster-count range, and whether outlier dropping would be applied.",
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False,
+    help="Suppress all terminal output except errors.",
+)
+def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_per_page, plot_label_angle, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
+    try:
+        payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_per_page=plot_metrics_per_page, plot_label_angle=plot_label_angle, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
+    except (ValueError, FileNotFoundError, ImportError) as exc:
+        _fail(str(exc), 1)
+    if dry_run:
+        click.echo(f"Dry run: {payload['key_results']['n_loci']} loci, {payload['key_results']['n_features']} features")
+        return
+    if not quiet:
+        console.print(render_filter_summary_table({"Loci": payload["key_results"]["n_loci"], "Features": payload["key_results"]["n_features"], "Reduction": payload["key_results"]["reduction"], "Clusters": payload["key_results"]["n_clusters"], "Dropped": payload["key_results"]["n_dropped"]}))
+        click.echo(f"Results saved to {output_dir}", err=True)
+
+
+pretree.add_command(filter_group)
 
 # Register the group on the pretree instance
 pretree.add_command(metrics_group)

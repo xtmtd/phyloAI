@@ -87,4 +87,5 @@ Fish loads completions from that directory automatically in new shells, so you d
 | `phyloai pretree align`   | Align sequences with MAFFT or MAGUS. | [docs/commands/pretree-align.md](docs/commands/pretree-align.md)     |
 | `phyloai pretree trim`    | Batch-trim aligned MSAs with PhyloAI using trimAl, BMGE, or ClipKIT backends. | [docs/commands/pretree-trim.md](docs/commands/pretree-trim.md)       |
 | `phyloai pretree metrics` | Compute MSA/tree metrics, distribution plots, and compact correlation heatmaps for marker evaluation. | [docs/commands/pretree-metrics.md](docs/commands/pretree-metrics.md) |
+| `phyloai pretree filter`  | Marker-level filtering: TAPER error-site masking, TreeShrink taxon pruning, metric-rule filtering, cluster-based exploration. | [docs/commands/pretree-filter.md](docs/commands/pretree-filter.md) |
 | `phyloai pretree concat`  | Concatenate multiple MSAs into a supermatrix with occupancy filtering, recoding, codon variants, and outgroup reordering. | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.md) |

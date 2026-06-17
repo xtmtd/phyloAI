@@ -148,6 +148,7 @@ phyloai pretree filter taper \
   [--taper-path <correction_multi.jl>] \
   [--julia-path <julia>] \
   [--tool-args "..."] \
+  [--show-masked-sites] \
   [--output-dir runs/pretree/filter/taper] \
   [--threads 4] [--resume] [--dry-run] [--overwrite]
 ```
@@ -222,9 +223,11 @@ Output directories:
 Tables:
 - `retained_loci.csv|tsv`: loci with successful masked output
 - `dropped_loci.csv|tsv`: loci that failed or were skipped
-- `filter_decisions.csv|tsv`: one row per locus with status, reason, masked site counts, and output paths
+- `filter_decisions.csv|tsv`: one row per locus with `locus`, `status`, `new_masked_sites` (total AA sites masked), `masked_taxa_count` (number of taxa with >=1 masked site), and when `--show-masked-sites` is set, `masked_taxa_detail` (semicolon-separated `taxon:site_count` entries). The `--show-masked-sites` flag defaults to off to keep the output table compact for large datasets.
 
-Terminal and `result.json` include retained MSA statistics for the generated masked MSAs.
+Terminal summary includes total input, retained, dropped, masked loci (loci with >=1 masked site), masked taxa, and masked sites. `result.json.key_results` mirrors these fields.
+
+When retained MSAs are available, terminal output also reports retained MSA count, total retained alignment length, mean/min/max marker length, and mean taxa count.
 
 ---
 
@@ -296,7 +299,9 @@ Tables:
 - `removed_taxa.csv|tsv` with `locus,taxon`
 - `filter_decisions.csv|tsv`
 
-Terminal and `result.json` include retained MSA statistics only when `--msa-dir` was provided and shrunk MSAs were generated.
+Terminal and `result.json` include retained MSA statistics when shrunk MSAs were generated. During execution a transient indeterminate progress bar is shown while TreeShrink runs.
+
+A tip is shown reminding users that filtered alignments may be used to re-construct phylogenetic trees, which are possibly more accurate than those pruned by TreeShrink.
 
 ---
 

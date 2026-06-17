@@ -66,3 +66,54 @@ def pair_msa_and_tree_maps(msa_map: dict[str, Path], tree_paths: list[Path]) -> 
         warnings.append(f"No matching MSA found for tree file {tree_path}")
 
     return PairingResult(paired=paired, warnings=warnings)
+
+
+def scan_msa_dir(path: Path) -> dict[str, Path]:
+    """Scan a directory for potential MSA files, returning ``{logical_locus: path}``.
+
+    Per the global file-matching policy (MAIN §9.7): filename suffixes are
+    only dot-separated naming boundaries.  This helper does NOT use a
+    hard-coded suffix whitelist — it scans every regular non-empty file.
+    Downstream format detection and parser-level validation decide whether
+    each file is a valid alignment.
+    """
+    if not path.exists() or not path.is_dir():
+        return {}
+    result: dict[str, Path] = {}
+    for entry in sorted(path.iterdir(), key=lambda p: p.name):
+        if not entry.is_file() or entry.stat().st_size == 0:
+            continue
+        locus = logical_msa_locus_name(entry)
+        result[locus] = entry
+    return result
+
+
+def scan_tree_dir(path: Path) -> dict[str, Path]:
+    """Scan a directory for potential tree files, returning ``{logical_locus: path}``.
+
+    Same suffix-agnostic policy as :func:`scan_msa_dir`.  Logical locus
+    names are derived from one- or two-suffix dot reductions of the
+    filename.  Raises ValueError when a filename's logical candidates
+    are already occupied (duplicate/ambiguous tree input).
+    """
+    if not path.exists() or not path.is_dir():
+        return {}
+    result: dict[str, Path] = {}
+    for entry in sorted(path.iterdir(), key=lambda p: p.name):
+        if not entry.is_file() or entry.stat().st_size == 0:
+            continue
+        cand1, cand2 = logical_tree_locus_candidates(entry)
+        if cand1 is not None and cand1 not in result:
+            result[cand1] = entry
+        elif cand1 is not None and cand1 in result:
+            if cand2 is not None and cand2 not in result:
+                result[cand2] = entry
+            else:
+                existing = result[cand1]
+                raise ValueError(
+                    f"Duplicate or ambiguous tree file: {entry.name!r} maps to "
+                    f"candidates {[c for c in (cand1, cand2) if c is not None]}, "
+                    f"all of which are already occupied (e.g. {existing.name!r} -> {cand1!r}). "
+                    "Rename files so each logical locus has exactly one tree file."
+                )
+    return result
