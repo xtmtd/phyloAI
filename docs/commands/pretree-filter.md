@@ -40,6 +40,8 @@ The subcommands can also be used independently. For example, if you already have
 
 All subcommands write `result.json` and `filter.log` to their output directory. Terminal output uses Rich tables; suppress with `--quiet`.
 
+Any PhyloAI-authored FASTA-family outputs written by these subcommands wrap sequence lines at 60 characters.
+
 ### Shared options
 
 | Option | Default | Purpose |

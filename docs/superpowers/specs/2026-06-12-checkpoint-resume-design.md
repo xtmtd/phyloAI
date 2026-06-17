@@ -18,6 +18,7 @@ The design goals are:
 - make resume reproducible: resumed runs must use exactly the same parameters as the original run
 - avoid duplicating `result.json`: checkpoints store only the minimum state needed to continue work
 - support both batch-per-file commands and tool-native resume commands such as IQ-TREE and PhyloBayes
+- use one resume-aware progress rule: resumed runs display only remaining work, not restarted historical work
 
 ---
 
@@ -56,6 +57,8 @@ Long-running commands support three mutually exclusive output-directory modes:
 `--resume` requires `checkpoint.json` inside the output directory. If the file is missing, malformed, or incompatible with the command, the command exits with code 1 and tells the user to use `--overwrite` if they want a clean restart.
 
 `--resume` requires the current resolved parameters to match the checkpoint parameters exactly. This includes analysis parameters and run-control parameters such as `--threads` and `--quiet`. Exact matching is intentionally strict in the first version to avoid silently mixing outputs from different analytical settings.
+
+When a resumable command displays progress, the denominator must be computed from the runnable task set after checkpoint verification. Verified successful tasks are excluded from the displayed work queue, so the bar reflects remaining work only. ETA is based on the remaining queue only.
 
 If the checkpoint indicates that the command already completed successfully, `--resume` does not rerun work. The command reports that the run is already complete and points to the existing `result.json`.
 
@@ -299,10 +302,11 @@ The checkpoint framework should be command-agnostic. Each command defines its ta
 |---------|-----------|-----------------|
 | `pretree trim` | one MSA file | skip verified trimmed alignments; rerun failed/incomplete files |
 | `pretree metrics` | one MSA or MSA/tree pair | skip metric records that exist in command-specific partial outputs; rerun missing records |
-| `tree genetree` | one gene alignment | skip verified tree files; rerun failed/incomplete gene trees |
-| `tree iqtree` | one matrix analysis | prefer IQ-TREE native checkpoint/resume; PhyloAI records tool state and verifies final outputs |
-| `tree phylobayes` | one chain | use PhyloBayes chain resume; PhyloAI tracks chain status and convergence-check outputs |
-| `posttree concordance` | tree/branch or gene-tree batch unit | skip verified output tables; rerun incomplete units |
+| `tree ml iqtree` | one matrix analysis | prefer IQ-TREE native checkpoint/resume; PhyloAI records tool state and verifies final outputs |
+| `tree ml fasttree` | one matrix analysis | rerun the matrix analysis if output is missing or invalid |
+| `tree bi phylobayes` | one chain | use PhyloBayes chain resume; PhyloAI tracks chain status and convergence-check outputs |
+| `tree msc wastral` | one gene-tree set | rerun if species-tree output is missing or invalid |
+| `tree concordance` | tree/branch or gene-tree batch unit | skip verified output tables; rerun incomplete units |
 | `posttree topology` | one hypothesis/test unit | skip verified test outputs; rerun incomplete tests |
 | `posttree dating` | one MCMCTree run or chain | use tool-native restart where available; verify final posterior outputs |
 | `posttree signal` | one site/gene/hypothesis unit | skip verified support tables; rerun incomplete units |

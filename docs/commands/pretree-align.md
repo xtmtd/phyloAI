@@ -85,6 +85,8 @@ runs/pretree/align/
 └── result.json
 ```
 
+Aligned FASTA outputs use PhyloAI's shared FASTA writer and wrap sequence lines at 60 characters.
+
 `result.json` contains `key_results` with `n_aligned`, `method`, `mean_alignment_length`, and `mean_n_taxa` for report integration.
 
 `align.log` records commands, timing, exit status, and stderr. MAFFT alignment stdout is saved as FASTA files under `seqs/` and is not duplicated in the log.
@@ -122,6 +124,7 @@ phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
 - The current invocation's resolved parameters must match the checkpoint exactly. This includes analysis parameters and run-control parameters such as `--threads` and `--quiet`.
 - Tasks with status `success` and still-valid output files are skipped.
 - Tasks with status `failed`, `pending`, `running`, or `success` whose outputs are now missing or invalid are rerun.
+- The progress bar counts only remaining runnable tasks after checkpoint verification. Completed verified tasks are summarized, not replayed through the bar.
 - `--resume` and `--overwrite` are mutually exclusive.
 - Resume appends to `align.log` and rewrites `result.json` on completion.
 

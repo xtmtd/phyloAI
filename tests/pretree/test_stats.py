@@ -22,25 +22,25 @@ def test_pretree_group_is_registered() -> None:
 
 
 def test_detect_seq_type_aa() -> None:
-    from phyloai.pretree.stats import detect_seq_type
+    from phyloai.core.sequence_normalization import detect_seq_type
 
     assert detect_seq_type(["MTEYKLVVVG", "ACDEFGHIKL"]) == "AA"
 
 
 def test_detect_seq_type_nt() -> None:
-    from phyloai.pretree.stats import detect_seq_type
+    from phyloai.core.sequence_normalization import detect_seq_type
 
     assert detect_seq_type(["ACGTACGT", "AUGCUUAA"]) == "NT"
 
 
 def test_detect_seq_type_nt_with_iupac_ambiguity() -> None:
-    from phyloai.pretree.stats import detect_seq_type
+    from phyloai.core.sequence_normalization import detect_seq_type
 
     assert detect_seq_type(["ACGT", "ACGR", "ACGN"]) == "NT"
 
 
 def test_detect_seq_type_ambiguous_falls_back_to_aa() -> None:
-    from phyloai.pretree.stats import detect_seq_type
+    from phyloai.core.sequence_normalization import detect_seq_type
 
     assert detect_seq_type(["ACGT", "ACGX"]) == "AA"
 
@@ -56,13 +56,13 @@ def test_detect_seq_type_ambiguous_falls_back_to_aa() -> None:
     ],
 )
 def test_classify_char(char: str, seq_type: str, expected: str) -> None:
-    from phyloai.pretree.stats import classify_char
+    from phyloai.core.sequence_normalization import classify_char
 
     assert classify_char(char, seq_type) == expected
 
 
 def test_normalize_pattern_char_treats_question_mark_as_gap() -> None:
-    from phyloai.pretree.stats import normalize_pattern_char
+    from phyloai.core.sequence_normalization import normalize_pattern_char
 
     assert normalize_pattern_char("?") == "-"
     assert normalize_pattern_char("A") == "A"

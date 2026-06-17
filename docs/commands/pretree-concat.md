@@ -83,6 +83,8 @@ runs/pretree/concat/
 `result.json` records generated and planned variant outputs as full paths in
 both `key_results.variants_produced` and `data.variants[].path`.
 
+All PhyloAI-authored FASTA-family outputs from this command wrap sequence lines at 60 characters.
+
 ## Screen Display (Rich)
 
 Three panels:

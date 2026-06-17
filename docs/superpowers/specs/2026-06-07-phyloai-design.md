@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-16 (global file-matching policy and csv/tsv table I/O rules unified; checkpoint/resume policy added for long-running commands; pretree convert order clarified; README split into command-level docs; convert default output aligned with run layout; TAPER/BMGE bundled paths clarified; filter CLI and rationale updated for subcommand model per pretree-filter-design)  
+**Last updated:** 2026-06-17 (tree module reshaped into ml/bi/msc/concordance; progress/resume display unified; FASTA wrapping standardized; sequence-output docs aligned)  
 **Status:** Approved for implementation
 
 ---
@@ -65,15 +65,12 @@ phyloai/
 │                       # recoding (Dayhoff6 etc.), format conversion for downstream
 │
 ├── tree/
-│   ├── genetree.py     # batch gene tree inference (IQ-TREE, parallel)
-│   ├── iqtree.py       # partitioned / unpartitioned / mixture (C20-C60, EX_EHO) /
-│   │                   # GHOST / PMSF / recoding (Dayhoff6) / model selection
-│   ├── astral.py       # astral-hybrid species-tree inference, local branch support
-│   └── phylobayes.py   # CAT-GTR, convergence checking (bpcomp, tracecomp),
-│                       # chain management (start, stop, resume)
+│   ├── ml.py           # ML tree inference: IQ-TREE and FastTree
+│   ├── bi.py           # Bayesian tree inference: PhyloBayes
+│   ├── msc.py          # multispecies coalescent inference: wASTRAL
+│   └── concordance.py  # concordance factors: gCF, sCF, combined summaries
 │
 ├── posttree/
-│   ├── concordance.py  # gCF, sCF, combined gCF+sCF
 │   ├── topology.py     # AU / WKH / WSH tests, Four-cluster Likelihood Mapping (FcLM)
 │   ├── dating.py       # MCMCTree (PAML): fossil calibration, convergence diagnostics,
 │   │                   # infinite-sites plots, prior vs posterior comparison
@@ -143,14 +140,13 @@ phyloai pretree filter cluster \
 phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 
 # Tree
-phyloai tree genetree    --msa-dir ./filtered --model LG --threads 4
-phyloai tree iqtree      --matrix ./concat/matrix.fa --mode pmsf \
-                         [--guide-tree ./tree.nwk]
-phyloai tree astral      --gene-trees ./genetrees/ --mode wastral
-phyloai tree phylobayes  --matrix ./concat/matrix.phy --chains 3 --threads 8
+phyloai tree ml iqtree    --matrix ./concat/matrix.fa --mode pmsf \
+                          [--guide-tree ./tree.nwk]
+phyloai tree ml fasttree  --matrix ./concat/matrix.fa
+phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3 --threads 8
+phyloai tree msc wastral  --gene-trees ./genetrees/
 
 # Post-tree
-phyloai posttree concordance --tree ./tree.nwk --gene-trees ./genetrees/
 phyloai posttree topology    --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk,h3.nwk
 phyloai posttree dating      --tree ./tree.nwk --matrix ./matrix.fa \
                              --calibrations calibrations.txt
@@ -338,17 +334,23 @@ runs/
 │   # note: convert defaults to runs/pretree/convert;
 │   # stats writes reports to caller-specified files; neither writes a log
 ├── tree/
-│   ├── genetree/
-│   │   ├── genetree.log
-│   │   └── result.json
-│   ├── iqtree/
-│   │   ├── iqtree.log
-│   │   └── result.json
-│   ├── astral/
-│   │   ├── astral.log
-│   │   └── result.json
-│   └── phylobayes/
-│       ├── phylobayes.log
+│   ├── ml/
+│   │   ├── iqtree/
+│   │   │   ├── iqtree.log
+│   │   │   └── result.json
+│   │   └── fasttree/
+│   │       ├── fasttree.log
+│   │       └── result.json
+│   ├── bi/
+│   │   └── phylobayes/
+│   │       ├── phylobayes.log
+│   │       └── result.json
+│   ├── msc/
+│   │   └── wastral/
+│   │       ├── wastral.log
+│   │       └── result.json
+│   └── concordance/
+│       ├── concordance.log
 │       └── result.json
 ├── posttree/
 │   ├── concordance/
@@ -385,13 +387,13 @@ Log file content per step: tool version, full command, stderr, wall time, exit c
 | `pretree filter` | retained/removed gene counts, removal reason breakdown |
 | `pretree concat` | taxon × gene occupancy matrix, retained/dropped MSA counts, per-variant matrix stats |
 | `pretree align` / `trim` | alignment length distribution before/after |
-| `tree iqtree` / `genetree` | model selected, log-likelihood, tree file path |
+| `tree ml` / `bi` / `msc` / `concordance` | model selected, log-likelihood, tree/support file path |
 
 `pretree stats` and `pretree convert` are utility commands and do not contribute to `report`.
 
 ### 7.3 Methods Paragraph Example
 
-> Protein sequences were aligned using MAFFT 7.520 with the L-INS-i strategy. Alignments were trimmed using BMGE 1.12 with stringent parameters (−m BLOSUM90 −h 0.4). Error sites were detected and masked using TAPER. Trimmed alignments were concatenated into supermatrices at 75%, 90%, and 100% occupancy thresholds using PhyKIT. Phylogenetic trees were inferred using IQ-TREE3 3.0.1 under the PMSF model (LG+C60+F+R4), with node support estimated from 1,000 UFBoot2 replicates and 1,000 SH-aLRT replicates. Gene concordance factors (gCF) and site concordance factors (sCF) were calculated in IQ-TREE3 to quantify branch-level topological support.
+> Protein sequences were aligned using MAFFT 7.520 with the L-INS-i strategy. Alignments were trimmed using BMGE 1.12 with stringent parameters (−m BLOSUM90 −h 0.4). Error sites were detected and masked using TAPER. Trimmed alignments were concatenated into supermatrices at 75%, 90%, and 100% occupancy thresholds using PhyKIT. Maximum-likelihood trees were inferred using IQ-TREE3 3.0.1 under the PMSF model (LG+C60+F+R4), Bayesian trees were inferred with PhyloBayes CAT-GTR, and multispecies coalescent species trees were inferred with wASTRAL. Gene concordance factors (gCF) and site concordance factors (sCF) were calculated in the tree module to quantify branch-level topological support.
 
 ---
 
@@ -528,9 +530,9 @@ runs/pretree/stats/
 └── per-gene.csv          # per-gene table (when --per-gene is used)
 ```
 
-Example directory structure for pipeline commands (`tree iqtree`, etc.):
+Example directory structure for pipeline commands (`tree ml iqtree`, etc.):
 ```
-runs/tree/iqtree/
+runs/tree/ml/iqtree/
 ├── result.json           # JSON result
 └── ...                   # tool output files
 ```
@@ -562,9 +564,11 @@ The detailed checkpoint schema and command adoption rules are defined in `docs/s
 
 ### 9.6 Display and Logging
 
-- Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators. Non-`doctor` commands always write machine-readable structured output to `result.json`; they do not expose a text/json structured stdout switch.
+- Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators. Progress bars must use one shared style across commands: a single task label, percentage, completed/total count, elapsed time, and ETA when the total is known.
+- Resume-aware progress bars display remaining work, not historical work. On `--resume`, the command verifies checkpoint tasks first, then sets the progress denominator to the number of runnable tasks only. Already successful verified tasks are reported in the pre-run or final summary, not replayed through the progress bar. If the checkpoint is already complete, the command prints a completion message and does not show a progress bar restarting from 1%.
+- Non-`doctor` commands always write machine-readable structured output to `result.json`; they do not expose a text/json structured stdout switch.
 - `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
-- Every pipeline command (align, trim, metrics, filter, concat, genetree, iqtree, astral, phylobayes, and all posttree commands) writes a log file to its own output directory alongside `result.json`, named `<step>.log` (e.g., `runs/pretree/align/align.log`). The log contains: resolved command, tool versions, stderr, wall time, exit code, and stdout only when stdout is diagnostic text rather than the primary data output. Logs are never written to a separate `runs/<run>/logs/` directory. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
+- Every pipeline command (align, trim, metrics, filter, concat, tree ml/bi/msc/concordance, and all posttree commands) writes a log file to its own output directory alongside `result.json`, named `<step>.log` (e.g., `runs/pretree/align/align.log`). The log contains: resolved command, tool versions, stderr, wall time, exit code, and stdout only when stdout is diagnostic text rather than the primary data output. Logs are never written to a separate `runs/<run>/logs/` directory. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
 - Log files are appended (not overwritten) on retry or resume, with a timestamp separator between runs. Resumed log entries should include resume context when useful. On `--overwrite` runs the log file is deleted and recreated together with the output directory.
 - Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
 - When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
@@ -625,6 +629,13 @@ Rules:
 - Per-file validation failures are recorded in `result.json` under `data.skipped` or per-file warnings, depending on whether the command can continue. If all generated files fail validation, the command exits with code 1.
 - Input scanning follows the same principle: empty files, directories, unrecognized file types, and unparsable sequence files are skipped with explicit reasons; if no valid inputs remain, the command exits with code 1.
 
+### 9.11 FASTA Line Wrapping Policy
+
+- All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 characters.
+- The policy applies to plain FASTA outputs and FASTA-like files inside `seqs/` directories, including outputs from `pretree convert`, `pretree align`, `pretree trim`, and `pretree concat`.
+- If a downstream tool requires a different native format, PhyloAI may preserve that tool's serialization, but any PhyloAI-written FASTA serialization must use the shared writer helper and the same width.
+- PHYLIP and NEXUS outputs keep their format-specific serialization rules; this policy only standardizes FASTA-family line wrapping.
+
 ---
 
 ## 10. Platform Support
@@ -642,9 +653,9 @@ Rules:
 |-------|-------|-------------|----------------|
 | 1 | `core/` infrastructure | env, runner, formats, logger | — |
 | 2 | `pretree/` modules | stats, convert, align, trim, metrics, filter, concat | Phase 1 |
-| 3 | `tree/` modules | genetree, iqtree, astral, phylobayes | Phase 1 |
-| 4 | `posttree/` modules | concordance, topology, dating, signal, syserror, simulate | Phases 2–3 |
-| 5 | `phyloai run` | one-click supermatrix and coalescent pipelines | Phases 2–3 (align, trim, filter/TAPER, concat, genetree, iqtree, astral) |
+| 3 | `tree/` modules | ml, bi, msc, concordance | Phase 1 |
+| 4 | `posttree/` modules | topology, dating, signal, syserror, simulate | Phases 2–3 |
+| 5 | `phyloai run` | one-click supermatrix and coalescent pipelines | Phases 2–3 (align, trim, filter/TAPER, concat, tree ml/msc) |
 | 6 | `report/` module | collector, methods generation, figures rendering, run_record.yaml | Phases 2–4 |
 | 7 | MCP Server | JSON tool interface | Phases 2–6 (full CLI stable) |
 | 8 | AI Coding Assistant Skill | workflow orchestration, syserror guided sub-workflow | Phase 7 |
@@ -652,7 +663,7 @@ Rules:
 **Spec and plan granularity by phase:**
 
 - **Phase 1** — one spec + plan covering the entire `core/` infrastructure (already complete).
-- **Phases 2–4** — every subcommand (`pretree stats`, `pretree align`, `tree iqtree`, `posttree concordance`, etc.) has its own design spec and implementation plan under `docs/superpowers/specs/` and `docs/superpowers/plans/` respectively. Subcommands are designed and implemented one at a time in pipeline order within each phase.
+- **Phases 2–4** — every subcommand (`pretree stats`, `pretree align`, `tree ml iqtree`, `tree bi phylobayes`, `tree msc wastral`, `tree concordance`, etc.) has its own design spec and implementation plan under `docs/superpowers/specs/` and `docs/superpowers/plans/` respectively. Subcommands are designed and implemented one at a time in pipeline order within each phase.
 - **Phase 5** — one spec + plan for `phyloai run` (pipeline orchestration only; does not include report).
 - **Phase 6** — one spec + plan for the `report/` module (collector, methods, figures, run_record); depends on Phases 2–4 being stable so JSON output schemas are finalized.
 - **Phase 7** — one spec + plan for the MCP Server.

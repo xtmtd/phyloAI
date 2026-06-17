@@ -196,6 +196,8 @@ Output file stems match input file stems after path normalization. Target suffix
 
 Converted sequence files are written to `seqs/` subdirectory inside `--output-dir`. The command always writes one output file per converted input file.
 
+All PhyloAI-authored FASTA-family outputs from `convert` wrap sequence lines at 60 characters.
+
 Example output structure:
 ```
 runs/pretree/convert/

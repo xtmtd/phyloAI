@@ -21,7 +21,7 @@ Exactly one of `--seq` or `--seq-dir` is required.
 | `--seq-dir DIRECTORY` | none | Directory mode. Scan supported sequence/alignment files in one folder and compute a dataset-level summary. |
 | `--seq FILE` | none | Single-file mode. Inspect one sequence or alignment file in detail. |
 | `--unaligned` | `False` | Directory mode only. Treat input as unaligned sequences. Per-gene CSV excludes `alignment_length` and site-pattern columns, includes `seq_length_*` columns. |
-| `--per-gene` | `False` | Directory mode only. Show per-gene results in terminal output and save per-gene table to output directory. |
+| `--per-gene` | `False` | Directory mode only. Write per-gene results to a CSV/TSV file in the output directory. No terminal table is printed; use the file for detailed per-locus inspection. |
 | `--table-format csv\|tsv` | `csv` | Directory mode only. Format for the per-gene table written with `--per-gene`. |
 | `--output-dir DIRECTORY` | `runs/pretree/stats` | Directory where `result.json` and per-gene files are written. |
 | `--input-format fasta\|phylip-relaxed\|nexus` | auto | Override automatic format detection. |
@@ -44,7 +44,7 @@ Terminal output uses Rich tables and panels unless `--quiet` is set.
 
 Single-file mode shows overview, character summary, per-taxon statistics, and site-pattern statistics when the file is aligned.
 
-Directory mode shows a summary table. With `--per-gene`, it also shows a per-gene table in the terminal.
+Directory mode shows a summary table. `--per-gene` writes a per-gene table to the output directory as a file only; it is not printed to the terminal.
 
 Results are always written to the output directory:
 

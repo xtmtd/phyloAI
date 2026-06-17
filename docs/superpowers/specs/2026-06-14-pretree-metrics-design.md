@@ -21,7 +21,7 @@ Steps 1–3 execute by default under `phyloai pretree metrics`. Steps 2 and 3 ca
 What it does **not** do:
 - UMAP clustering (moved to `pretree filter`)
 - Marker-level filtering decisions (use `pretree filter`)
-- Tree inference (use `tree genetree`)
+- Tree inference (use the relevant `tree ml`, `tree bi`, or `tree msc` command)
 
 ---
 

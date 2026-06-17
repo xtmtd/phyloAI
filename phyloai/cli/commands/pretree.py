@@ -14,7 +14,6 @@ from phyloai.pretree.convert import convert_input, render_convert_summary_table
 from phyloai.pretree.stats import (
     aggregate_summary,
     collect_seq_files,
-    render_per_gene_table,
     render_single_file_panels,
     render_summary_table,
     stats_directory,
@@ -166,7 +165,7 @@ def convert_command(
     "--per-gene",
     is_flag=True,
     default=False,
-    help="Directory mode only. Include per-gene results in terminal output, or write them to per-gene.csv in the output directory.",
+    help="Directory mode only. Write per-gene results to a per-gene CSV/TSV file in the output directory.",
 )
 @click.option(
     "--table-format",
@@ -368,8 +367,6 @@ def _run_stats_command(
         _fail("All files failed during processing.", 2)
     if not quiet:
         console.print(render_summary_table(summary))
-        if per_gene:
-            console.print(render_per_gene_table(results))
     with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
     click.echo(f"Summary saved to {result_path}", err=True)
@@ -520,14 +517,33 @@ def align_command(
         )
 
     if not quiet and not dry_run:
-        from phyloai.pretree.align import _scan_input
-        found, _ = _scan_input(seq_dir)
-        with Progress(console=console, transient=True) as progress:
-            task = progress.add_task("Aligning sequences", total=len(found))
-            try:
-                payload = _invoke(progress_callback=lambda _: progress.advance(task))
-            except (ValueError, FileNotFoundError) as exc:
-                error_msg = str(exc)
+        if resume and overwrite:
+            _fail("--overwrite and --resume are mutually exclusive.", 1)
+        if resume:
+            ckpt_path = output_dir / "checkpoint.json"
+            if ckpt_path.exists():
+                from phyloai.core.checkpoint import load_checkpoint
+                from phyloai.pretree.checkpoint_helpers import plan_resume
+                from phyloai.pretree.align import verify_align_outputs
+                ckpt = load_checkpoint(ckpt_path)
+                to_run, _ = plan_resume(ckpt, verify_align_outputs)
+                total = len(to_run)
+            else:
+                total = 1
+        else:
+            from phyloai.pretree.align import _scan_input
+            found, _ = _scan_input(seq_dir)
+            total = len(found)
+        if total == 0:
+            click.echo("Run already complete — all tasks verified.", err=True)
+            payload = _invoke()
+        else:
+            with Progress(console=console, transient=True) as progress:
+                task = progress.add_task("Aligning sequences", total=total)
+                try:
+                    payload = _invoke(progress_callback=lambda _: progress.advance(task))
+                except (ValueError, FileNotFoundError) as exc:
+                    error_msg = str(exc)
     else:
         try:
             payload = _invoke()
@@ -697,13 +713,32 @@ def trim_command(
         )
 
     if not quiet and not dry_run:
-        found, _ = _trim_scan_input(msa_dir)
-        with Progress(console=console, transient=True) as progress:
-            task = progress.add_task("Trimming alignments", total=len(found))
-            try:
-                payload = _invoke(progress_callback=lambda _path: progress.advance(task))
-            except (ValueError, FileNotFoundError) as exc:
-                error_msg = str(exc)
+        if resume and overwrite:
+            _fail("--overwrite and --resume are mutually exclusive.", 1)
+        if resume:
+            ckpt_path = output_dir / "checkpoint.json"
+            if ckpt_path.exists():
+                from phyloai.core.checkpoint import load_checkpoint
+                from phyloai.pretree.checkpoint_helpers import plan_resume
+                from phyloai.pretree.trim import verify_trim_outputs
+                ckpt = load_checkpoint(ckpt_path)
+                to_run, _ = plan_resume(ckpt, verify_trim_outputs)
+                total = len(to_run)
+            else:
+                total = 1
+        else:
+            found, _ = _trim_scan_input(msa_dir)
+            total = len(found)
+        if total == 0:
+            click.echo("Run already complete — all tasks verified.", err=True)
+            payload = _invoke()
+        else:
+            with Progress(console=console, transient=True) as progress:
+                task = progress.add_task("Trimming alignments", total=total)
+                try:
+                    payload = _invoke(progress_callback=lambda _path: progress.advance(task))
+                except (ValueError, FileNotFoundError) as exc:
+                    error_msg = str(exc)
     else:
         try:
             payload = _invoke()
@@ -1434,24 +1469,37 @@ def filter_taper_command(msa_dir, nt_dir, seq_type, cutoff, taper_path, julia_pa
 
     error_msg = None
     if not quiet and not dry_run:
+        if resume and overwrite:
+            _fail("--overwrite and --resume are mutually exclusive.", 1)
         from phyloai.core.file_matching import scan_msa_dir
-        from phyloai.core.checkpoint import load_checkpoint as _load_ckpt
 
         if resume:
             ckpt_path = output_dir / "checkpoint.json"
-            ckpt = _load_ckpt(ckpt_path)
-            total = len(ckpt.tasks)
-            label = f"TAPER masking (resume, {total} total)"
+            if ckpt_path.exists():
+                from phyloai.core.checkpoint import load_checkpoint as _load_ckpt
+                from phyloai.pretree.checkpoint_helpers import plan_resume
+                from phyloai.pretree.filter import _verify_taper_outputs
+                ckpt = _load_ckpt(ckpt_path)
+                to_run, _ = plan_resume(ckpt, _verify_taper_outputs)
+                total = len(to_run)
+                label = f"TAPER masking (resume, {len(ckpt.tasks)} total)"
+            else:
+                total = 1
+                label = "TAPER masking"
         else:
             msa_map = scan_msa_dir(msa_dir)
             total = max(len(msa_map), 1)
             label = "TAPER masking"
-        with Progress(console=console, transient=True) as progress:
-            task = progress.add_task(label, total=total)
-            try:
-                payload = _invoke(progress_callback=lambda _: progress.advance(task))
-            except (ValueError, FileNotFoundError) as exc:
-                error_msg = str(exc)
+        if total == 0:
+            click.echo("Run already complete — all tasks verified.", err=True)
+            payload = _invoke()
+        else:
+            with Progress(console=console, transient=True) as progress:
+                task = progress.add_task(label, total=total)
+                try:
+                    payload = _invoke(progress_callback=lambda _: progress.advance(task))
+                except (ValueError, FileNotFoundError) as exc:
+                    error_msg = str(exc)
     else:
         try:
             payload = _invoke()

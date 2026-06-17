@@ -38,6 +38,8 @@ The JSON result is written to `result.json` inside `--output-dir`. The payload c
 
 For `phylip-paml`, output records use the PAML sequential header form with `S`, write the normalized taxon name in a 30-character field, and place at least two spaces between the name field and the sequence.
 
+All PhyloAI-authored FASTA-family outputs from `convert` wrap sequence lines at 60 characters.
+
 Example output structure:
 ```
 runs/pretree/convert/

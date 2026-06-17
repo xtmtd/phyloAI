@@ -151,6 +151,34 @@ def test_mark_task_updates_status() -> None:
     assert checkpoint.tasks[0].updated_at is not None
 
 
+def test_plan_resume_progress_total_matches_remaining_tasks(tmp_path: Path) -> None:
+    from phyloai.pretree.checkpoint_helpers import plan_resume
+    from phyloai.core.checkpoint import Checkpoint, CheckpointTask
+
+    def _verifier(aa, nt):
+        if aa is None:
+            return False
+        return Path(str(aa)).exists()
+
+    cp = Checkpoint(
+        schema_version=1, step="pretree.align",
+        command="phyloai pretree align", status="interrupted",
+        params_hash="sha256:...", params={}, started_at="2026-06-12T00:00:00",
+        updated_at="2026-06-12T00:00:00", completed_at=None,
+        tasks=[
+            CheckpointTask(task_id="g1", status="success", input="gene1.fa", outputs={"aa": str(tmp_path / "g1.fa"), "nt": None}),
+            CheckpointTask(task_id="g2", status="failed", input="gene2.fa", outputs={"aa": str(tmp_path / "g2.fa"), "nt": None}),
+            CheckpointTask(task_id="g3", status="pending", input="gene3.fa", outputs={"aa": str(tmp_path / "g3.fa"), "nt": None}),
+            CheckpointTask(task_id="g4", status="skipped", input="gene4.fa", outputs={"aa": str(tmp_path / "g4.fa"), "nt": None}),
+        ],
+    )
+    (tmp_path / "g1.fa").write_text(">a\nMKT\n")
+    (tmp_path / "g3.fa").write_text(">a\nMKT\n")
+    to_run, skipped = plan_resume(cp, _verifier)
+    assert sorted(to_run) == ["g2", "g3"]
+    assert sorted(skipped) == ["g1", "g4"]
+
+
 def test_plan_resume_marks_invalid_success_for_rerun(tmp_path: Path) -> None:
     from phyloai.pretree.align import verify_align_outputs
     from phyloai.pretree.checkpoint_helpers import plan_resume

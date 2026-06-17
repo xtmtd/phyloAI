@@ -84,6 +84,8 @@ runs/pretree/trim/
 
 `result.json` reports trimmed/skipped counts, skipped reasons, before/after alignment lengths, resolved parameters, and warnings.
 
+All PhyloAI-authored FASTA-family outputs from this command wrap sequence lines at 60 characters.
+
 ## Examples
 
 ```bash

@@ -151,6 +151,22 @@ def test_convert_aa_special_keep_preserves_special_codes(tmp_path: Path) -> None
     assert replacements["invalid_to_missing"] == 1
 
 
+def test_convert_fasta_output_wraps_at_60_chars(tmp_path: Path) -> None:
+    from Bio.Seq import Seq
+    from Bio.SeqRecord import SeqRecord
+    from Bio import SeqIO
+    long_seq = "A" * 150
+    records = [SeqRecord(Seq(long_seq), id="test", description="")]
+    out = tmp_path / "long.fa"
+    SeqIO.write(records, str(out), "fasta")
+    content = out.read_text()
+    seq_lines = [line for line in content.strip().split("\n") if not line.startswith(">")]
+    assert len(seq_lines) == 3
+    assert len(seq_lines[0]) == 60
+    assert len(seq_lines[1]) == 60
+    assert len(seq_lines[2]) == 30
+
+
 def test_convert_skips_invalid_generated_fasta(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from phyloai.pretree import convert
 
