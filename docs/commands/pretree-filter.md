@@ -4,12 +4,12 @@ Marker-level filtering with four subcommands for distinct filtering workflows.
 
 ## Subcommands
 
-| Subcommand | Purpose |
-|------------|---------|
-| `taper` | Mask erroneous sequence stretches within MSAs using TAPER. |
-| `treeshrink` | Remove outlier taxa from gene trees (and optionally MSAs) using TreeShrink. |
-| `metrics` | Remove whole loci by explicit conditions on a `metrics.csv`-like table. |
-| `cluster` | Group loci by metric profiles using PCA or UMAP + hierarchical clustering, with optional outlier cluster removal. |
+| Subcommand | Purpose | README |
+|------------|---------|--------|
+| `taper` | Mask erroneous sequence stretches within MSAs using TAPER. | [pretree-filter-taper.md](pretree-filter-taper.md) |
+| `treeshrink` | Remove outlier taxa from gene trees (and optionally MSAs) using TreeShrink. | [pretree-filter-treeshrink.md](pretree-filter-treeshrink.md) |
+| `metrics` | Remove whole loci by explicit conditions on a `metrics.csv`-like table. | [pretree-filter-metrics.md](pretree-filter-metrics.md) |
+| `cluster` | Group loci by metric profiles using PCA or UMAP + hierarchical clustering, with optional outlier cluster removal. | — |
 
 ## `filter taper` — TAPER Error-Site Masking
 
