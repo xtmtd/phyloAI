@@ -18,6 +18,7 @@ from typing import Any
 
 from Bio import SeqIO
 from rich.table import Table
+from rich.console import Console
 
 from phyloai.core.checkpoint import (
     Checkpoint,
@@ -44,6 +45,7 @@ from phyloai.pretree.checkpoint_helpers import (
 )
 
 _CHECKPOINT_FLUSH_INTERVAL = 2.0
+_console = Console()
 
 
 # --- Shared output helpers ---
@@ -885,13 +887,17 @@ def _select_best_umap_replicate(
     max_clusters: int | None,
     linkage: str,
     distance: str,
+    threads: int = 1,
 ) -> tuple[np.ndarray, int, int, list[dict], list[dict]]:
     from umap import UMAP
 
     replicate_rows: list[dict] = []
     for replicate_index in range(n_replicates):
-        random_state = base_random_state + replicate_index
-        reducer = UMAP(n_components=3, n_neighbors=n_neighbors, min_dist=min_dist, random_state=random_state)
+        if n_replicates == 1:
+            kwargs = dict(n_components=3, n_neighbors=n_neighbors, min_dist=min_dist, random_state=base_random_state, n_jobs=1)
+        else:
+            kwargs = dict(n_components=3, n_neighbors=n_neighbors, min_dist=min_dist, n_jobs=threads)
+        reducer = UMAP(**kwargs)
         reduced = reducer.fit_transform(scaled)
         selected_k, labels, selection_rows = _hierarchical_clustering(
             reduced, n_clusters, max_clusters, linkage, distance, len(scaled)
@@ -907,7 +913,7 @@ def _select_best_umap_replicate(
             db = float("nan")
         replicate_rows.append({
             "replicate": replicate_index,
-            "random_state": random_state,
+            "random_state": base_random_state + replicate_index if n_replicates == 1 else None,
             "selected_k": selected_k,
             "silhouette": silhouette,
             "calinski_harabasz": ch,
@@ -928,8 +934,11 @@ def _select_best_umap_replicate(
             row["rank_sum"] = "NA"
         best_index = 0
 
-    reducer = UMAP(n_components=3, n_neighbors=n_neighbors, min_dist=min_dist, random_state=base_random_state + best_index)
-    best_reduced = reducer.fit_transform(scaled)
+    if n_replicates == 1:
+        best_reduced = reduced
+    else:
+        reducer = UMAP(n_components=3, n_neighbors=n_neighbors, min_dist=min_dist, n_jobs=threads)
+        best_reduced = reducer.fit_transform(scaled)
     best_k, best_labels, best_selection_rows = _hierarchical_clustering(
         best_reduced, n_clusters, max_clusters, linkage, distance, len(scaled)
     )
@@ -944,6 +953,8 @@ def _generate_cluster_plots(reduced: np.ndarray, labels: np.ndarray, output_dir:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    plots_dir = output_dir / "cluster_plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     cmap = plt.get_cmap("tab20")
     # 2D scatter
@@ -956,7 +967,7 @@ def _generate_cluster_plots(reduced: np.ndarray, labels: np.ndarray, output_dir:
     ax.set_title(f"Cluster Scatter (2D) -- k={n_clusters}")
     ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
     fig.tight_layout()
-    pdf_2d = output_dir / "cluster_2d.pdf"
+    pdf_2d = plots_dir / "cluster_2d.pdf"
     fig.savefig(pdf_2d, dpi=150, bbox_inches="tight")
     plt.close(fig)
     paths.append(str(pdf_2d))
@@ -973,7 +984,7 @@ def _generate_cluster_plots(reduced: np.ndarray, labels: np.ndarray, output_dir:
         ax.set_zlabel("Dim 3")
         ax.set_title(f"Cluster Scatter (3D) -- k={n_clusters}")
         fig.tight_layout()
-        pdf_3d = output_dir / "cluster_3d.pdf"
+        pdf_3d = plots_dir / "cluster_3d.pdf"
         fig.savefig(pdf_3d, dpi=150, bbox_inches="tight")
         plt.close(fig)
         paths.append(str(pdf_3d))
@@ -1059,28 +1070,51 @@ def _auto_drop_outlier_clusters(labels: np.ndarray, rows: list[dict], n_loci: in
 
 def _generate_cluster_metric_boxplots(
     valid_rows: list[dict], labels: np.ndarray, features: list[str],
-    output_dir: Path, n_clusters: int, plot_metrics_per_page: str,
+    output_dir: Path, n_clusters: int,
+    plot_metrics_rows: str = "auto", plot_metrics_cols: int = 2,
 ) -> list[str]:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    if plot_metrics_per_page != "auto":
-        per_page = int(plot_metrics_per_page)
+    if plot_metrics_rows != "auto":
+        nrows = int(plot_metrics_rows)
     else:
-        per_page = 12 if n_clusters <= 6 else 6 if n_clusters <= 12 else 4 if n_clusters <= 20 else 2
+        nrows = 12 if n_clusters <= 6 else 6 if n_clusters <= 12 else 4 if n_clusters <= 20 else 2
+    ncols = plot_metrics_cols
+    per_page = nrows * ncols
+
+    box_dir = output_dir / "cluster_metric_boxplots"
+    box_dir.mkdir(parents=True, exist_ok=True)
+    cmap = plt.get_cmap("tab10")
     pdf_paths: list[str] = []
     for page_start in range(0, len(features), per_page):
         page_features = features[page_start:page_start + per_page]
-        fig, axes = plt.subplots(len(page_features), 1, figsize=(10, max(3, 2.5 * len(page_features))))
-        if len(page_features) == 1:
+        n_page_rows = min(nrows, int(np.ceil(len(page_features) / ncols)))
+        if len(page_features) <= ncols:
+            n_page_rows = 1
+            ncols_actual = len(page_features)
+        else:
+            ncols_actual = ncols
+        fig, axes = plt.subplots(n_page_rows, ncols_actual, figsize=(ncols_actual * 4, n_page_rows * 2.8))
+        if n_page_rows * ncols_actual == 1:
+            axes = [[axes]]
+        elif n_page_rows == 1:
             axes = [axes]
-        for ax, feature in zip(axes, page_features):
+        elif ncols_actual == 1:
+            axes = [[ax] for ax in axes]
+        for idx, feature in enumerate(page_features):
+            r, c = divmod(idx, ncols_actual)
+            if r < len(axes) and c < len(axes[r]):
+                ax = axes[r][c]
+            else:
+                continue
             grouped = []
-            for c in range(n_clusters):
+            cluster_colors = []
+            for cl in range(n_clusters):
                 values = []
                 for i, lb in enumerate(labels):
-                    if lb != c:
+                    if lb != cl:
                         continue
                     raw = valid_rows[i].get(feature, "")
                     if raw in ("", "NA"):
@@ -1090,10 +1124,19 @@ def _generate_cluster_metric_boxplots(
                     except (TypeError, ValueError):
                         continue
                 grouped.append(values)
-            ax.boxplot(grouped, labels=[f"C{c}" for c in range(n_clusters)])
-            ax.set_title(feature)
+                cluster_colors.append(cmap(cl % 10))
+            bp = ax.boxplot(grouped, labels=[f"C{c}" for c in range(n_clusters)], patch_artist=True)
+            for patch, color in zip(bp["boxes"], cluster_colors):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.5)
+            ax.set_title(feature, fontsize=9)
+            ax.tick_params(axis="x", labelsize=7)
+        for idx in range(len(page_features), n_page_rows * ncols_actual):
+            r, c = divmod(idx, ncols_actual)
+            if r < len(axes) and c < len(axes[r]):
+                axes[r][c].set_visible(False)
         fig.tight_layout()
-        pdf_path = output_dir / f"cluster_metric_boxplots_{(page_start // per_page) + 1:03d}.pdf"
+        pdf_path = box_dir / f"cluster_metric_boxplots_{(page_start // per_page) + 1:03d}.pdf"
         fig.savefig(pdf_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         pdf_paths.append(str(pdf_path))
@@ -1103,6 +1146,7 @@ def _generate_cluster_metric_boxplots(
 def _write_outlier_diagnostics(
     valid_rows: list[dict], labels: np.ndarray, drop_clusters: set[int],
     features: list[str], output_dir: Path, table_format: str,
+    outlier_boxplot_rows: str = "auto", outlier_boxplot_cols: int = 4,
 ) -> list[str]:
     from scipy.stats import mannwhitneyu
     import matplotlib
@@ -1151,14 +1195,38 @@ def _write_outlier_diagnostics(
     _write_csv_table(comparison_rows, output_dir / f"outlier_comparison{suffix}", ["metric", "normal_mean", "normal_median", "normal_std", "normal_n", "outlier_mean", "outlier_median", "outlier_std", "outlier_n"], delimiter_out)
     _write_csv_table(wilcoxon_rows, output_dir / f"outlier_wilcoxon{suffix}", ["metric", "u_statistic", "p_value", "direction"], delimiter_out)
 
+    if outlier_boxplot_rows != "auto":
+        nrows = int(outlier_boxplot_rows)
+    else:
+        nrows = 12 if len(drop_clusters) <= 6 else 6
+    ncols = outlier_boxplot_cols
+    per_page = nrows * ncols
+
+    box_dir = output_dir / "outlier_comparison_boxplots"
+    box_dir.mkdir(parents=True, exist_ok=True)
     pdf_paths: list[str] = []
-    per_page = 12 if len(drop_clusters) <= 6 else 6
+    normal_color = "#a6cee3"
+    outlier_color = "#fb9a99"
     for page_start in range(0, len(features), per_page):
         page_features = features[page_start:page_start + per_page]
-        fig, axes = plt.subplots(len(page_features), 1, figsize=(10, max(3, 2.5 * len(page_features))))
-        if len(page_features) == 1:
+        n_page_rows = min(nrows, int(np.ceil(len(page_features) / ncols)))
+        if len(page_features) <= ncols:
+            n_page_rows = 1
+            ncols_actual = len(page_features)
+        else:
+            ncols_actual = ncols
+        fig, axes = plt.subplots(n_page_rows, ncols_actual, figsize=(ncols_actual * 3.5, n_page_rows * 2.8))
+        if n_page_rows * ncols_actual == 1:
+            axes = [[axes]]
+        elif n_page_rows == 1:
             axes = [axes]
-        for ax, feature in zip(axes, page_features):
+        elif ncols_actual == 1:
+            axes = [[ax] for ax in axes]
+        for idx, feature in enumerate(page_features):
+            r, c = divmod(idx, ncols_actual)
+            if r >= len(axes) or c >= len(axes[r]):
+                continue
+            ax = axes[r][c]
             normal_vals = []
             outlier_vals = []
             for row, is_outlier in zip(valid_rows, outlier_flags):
@@ -1170,10 +1238,33 @@ def _write_outlier_diagnostics(
                 except (TypeError, ValueError):
                     continue
                 (outlier_vals if is_outlier else normal_vals).append(value)
-            ax.boxplot([normal_vals, outlier_vals], labels=["normal", "outlier"])
-            ax.set_title(feature)
+            bp = ax.boxplot([normal_vals, outlier_vals], labels=["normal", "outlier"], patch_artist=True)
+            bp["boxes"][0].set_facecolor(normal_color)
+            bp["boxes"][0].set_alpha(0.6)
+            bp["boxes"][1].set_facecolor(outlier_color)
+            bp["boxes"][1].set_alpha(0.6)
+            ax.set_title(feature, fontsize=9)
+            ax.tick_params(axis="x", labelsize=7)
+            # significance annotation
+            wrow = next((row for row in wilcoxon_rows if row["metric"] == feature), None)
+            if wrow and isinstance(wrow.get("p_value"), (int, float)):
+                p = wrow["p_value"]
+                if p < 0.001:
+                    sig = "***"
+                elif p < 0.01:
+                    sig = "**"
+                elif p < 0.05:
+                    sig = "*"
+                else:
+                    sig = f"p={p:.3f}"
+                y_max = max(max(normal_vals) if normal_vals else 0, max(outlier_vals) if outlier_vals else 0)
+                ax.annotate(sig, xy=(1.5, y_max * 1.02), ha="center", fontsize=10, fontweight="bold")
+        for idx in range(len(page_features), n_page_rows * ncols_actual):
+            r, c = divmod(idx, ncols_actual)
+            if r < len(axes) and c < len(axes[r]):
+                axes[r][c].set_visible(False)
         fig.tight_layout()
-        pdf_path = output_dir / f"outlier_comparison_boxplots_{(page_start // per_page) + 1:03d}.pdf"
+        pdf_path = box_dir / f"outlier_comparison_boxplots_{(page_start // per_page) + 1:03d}.pdf"
         fig.savefig(pdf_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         pdf_paths.append(str(pdf_path))
@@ -1191,9 +1282,12 @@ def run_cluster_filter(
     cluster_linkage: str = "ward", cluster_distance: str = "euclidean",
     drop_outlier_clusters: str = "none", outlier_metric: str = "average_BS",
     outlier_direction: str = "low", max_drop_fraction: float = 0.2,
-    plot_metrics_per_page: str = "auto", plot_label_angle: float = 45.0,
+    plot_metrics_rows: str = "auto", plot_metrics_cols: int = 2,
+    plot_label_angle: float = 45.0,
+    outlier_boxplot_rows: str = "auto", outlier_boxplot_cols: int = 4,
     umap_n_neighbors: int = 15, umap_min_dist: float = 0.001,
-    umap_replicates: int = 1, umap_random_state: int = 0,
+    umap_replicates: int = 1, umap_random_state: int = 42,
+    threads: int = 1,
     msa_dir: Path | None = None, tree_dir: Path | None = None,
     copy: bool = False, overwrite: bool = False,
     dry_run: bool = False, quiet: bool = False,
@@ -1211,6 +1305,8 @@ def run_cluster_filter(
     delimiter_out = _table_delimiter(table_format)
     suffix = _table_suffix(table_format)
     loci_column = "loci"
+    if not quiet:
+        _console.print("[bold]Selecting features from metrics table ...[/bold]")
     rows = []
     with open(table_path, newline="") as fh:
         for row in csv.DictReader(fh, delimiter=delimiter_in):
@@ -1221,19 +1317,28 @@ def run_cluster_filter(
     features, feature_entries = _select_features(rows, columns, metrics, exclude_regex or [], loci_column)
     if len(features) < 2:
         raise ValueError(f"Need >=2 features; found {len(features)}.")
-    params = {"table": str(table_path), "metrics": metrics, "reduction": reduction, "n_clusters": n_clusters, "max_clusters": max_clusters, "cluster_linkage": cluster_linkage, "cluster_distance": cluster_distance, "drop_outlier_clusters": drop_outlier_clusters, "table_format": table_format}
+    if not quiet:
+        _console.print(f"  {len(features)} features selected, {len(feature_entries) - len(features)} excluded")
+    params = {"table": str(table_path), "metrics": metrics, "reduction": reduction, "n_clusters": n_clusters, "max_clusters": max_clusters, "cluster_linkage": cluster_linkage, "cluster_distance": cluster_distance, "drop_outlier_clusters": drop_outlier_clusters, "outlier_metric": outlier_metric, "outlier_direction": outlier_direction, "max_drop_fraction": max_drop_fraction, "plot_metrics_rows": plot_metrics_rows, "plot_metrics_cols": plot_metrics_cols, "plot_label_angle": plot_label_angle, "outlier_boxplot_rows": outlier_boxplot_rows, "outlier_boxplot_cols": outlier_boxplot_cols, "umap_n_neighbors": umap_n_neighbors, "umap_min_dist": umap_min_dist, "umap_replicates": umap_replicates, "umap_random_state": umap_random_state, "threads": threads, "table_format": table_format}
     command = f"phyloai pretree filter cluster --table {table_path} --reduction {reduction}"
     if dry_run:
         k_range = [n_clusters, n_clusters] if n_clusters is not None else [2, min(max_clusters or min(30, max(6, int(np.ceil(np.sqrt(len(rows)) / 3)))), max(2, len(rows) - 1))]
         return {"status": "success", "command": command, "wall_time": 0, "tool_versions": {}, "params": params, "key_results": {"n_loci": len(rows), "n_features": len(features)}, "error": None, "data": {"features": features, "reduction": reduction, "k_range": k_range, "drop_outlier_clusters": drop_outlier_clusters, "copy": copy}}
     _common_output_conflict(output_dir, overwrite)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if not quiet:
+        _console.print(f"[bold]Extracting feature matrix ({len(rows)} loci, {len(features)} features) ...[/bold]")
     matrix, valid_loci, valid_rows = _extract_feature_matrix(rows, features, loci_column)
     scaled = _scale_features(matrix)
+    if not quiet:
+        _console.print(f"  Valid loci: {len(valid_loci)}")
+        _console.print(f"[bold]Reducing dimensions ({reduction.upper()}) ...[/bold]")
     if reduction == "pca":
         reduced = _reduce_pca(scaled)
         selected_replicate = None
         umap_replicate_rows: list[dict] = []
+        if not quiet:
+            _console.print("[bold]Clustering ...[/bold]")
         selected_k, labels, selection_rows = _hierarchical_clustering(reduced, n_clusters, max_clusters, cluster_linkage, cluster_distance, len(valid_loci))
     else:
         reduced, selected_k, selected_replicate, umap_replicate_rows, selection_rows = _select_best_umap_replicate(
@@ -1246,11 +1351,16 @@ def run_cluster_filter(
             max_clusters,
             cluster_linkage,
             cluster_distance,
+            threads=threads,
         )
+        if not quiet:
+            _console.print(f"[bold]Clustering (selected k={selected_k}) ...[/bold]")
         _, labels, _ = _hierarchical_clustering(reduced, selected_k, max_clusters, cluster_linkage, cluster_distance, len(valid_loci))
 
     coord_names = ["PC1", "PC2", "PC3"] if reduction == "pca" else ["UMAP1", "UMAP2", "UMAP3"]
 
+    if not quiet:
+        _console.print(f"[bold]Writing cluster assignments ({selected_k} clusters) ...[/bold]")
     _write_csv_table(
         feature_entries,
         output_dir / f"features_used{suffix}", ["column", "included", "reason"], delimiter_out,
@@ -1265,28 +1375,50 @@ def run_cluster_filter(
         red_rows.append(row)
     _write_csv_table(red_rows, output_dir / f"reduction{suffix}",
                      [loci_column] + coord_names[:reduced.shape[1]] + ["cluster"], delimiter_out)
+    if not quiet:
+        _console.print(f"  reduction{suffix} — reduced coordinates with cluster labels")
     if selection_rows:
         _write_csv_table(selection_rows, output_dir / f"cluster_selection{suffix}",
                          ["k", "silhouette", "calinski_harabasz", "davies_bouldin"], delimiter_out)
+        if not quiet:
+            _console.print(f"  cluster_selection{suffix} — k-selection scoring metrics")
     if umap_replicate_rows:
         _write_csv_table(umap_replicate_rows, output_dir / f"umap_replicates{suffix}", ["replicate", "random_state", "selected_k", "silhouette", "calinski_harabasz", "davies_bouldin", "rank_sum"], delimiter_out)
+        if not quiet:
+            _console.print(f"  umap_replicates{suffix} — per-replicate UMAP metrics")
     cluster_assign_rows = [{loci_column: valid_loci[i], "cluster": int(labels[i])} for i in range(len(valid_loci))]
     _write_csv_table(cluster_assign_rows, output_dir / f"clusters{suffix}", [loci_column, "cluster"], delimiter_out)
-    _write_csv_table([{"cluster": c, "n_loci": int((labels == c).sum())} for c in range(selected_k)],
+    if not quiet:
+        _console.print(f"  clusters{suffix} — per-locus cluster assignments")
+    _write_csv_table([{"cluster": int(c), "n_loci": int((labels == c).sum())} for c in range(selected_k)],
                      output_dir / f"cluster_summary{suffix}", ["cluster", "n_loci"], delimiter_out)
+    if not quiet:
+        _console.print(f"  cluster_summary{suffix} — cluster sizes")
     cluster_loci_dir = output_dir / "cluster_loci"
     cluster_loci_dir.mkdir(parents=True, exist_ok=True)
     for c in range(selected_k):
         mask = labels == c
         loci_in = [valid_loci[i] for i in range(len(valid_loci)) if mask[i]]
         _write_csv_table([{loci_column: locus} for locus in loci_in], cluster_loci_dir / f"cluster_{c}{suffix}", [loci_column], delimiter_out)
+
+    if not quiet:
+        _console.print("[bold]Generating diagnostic plots ...[/bold]")
     means_path = _generate_cluster_metric_means(valid_rows, labels, features, output_dir, table_format, plot_label_angle)
-    boxplot_paths = _generate_cluster_metric_boxplots(valid_rows, labels, features, output_dir, selected_k, plot_metrics_per_page)
+    if not quiet:
+        _console.print(f"  cluster_metric_means{suffix} + cluster_metric_heatmap.pdf — per-cluster mean values (standardized heatmap shows relative patterns across metrics)")
+    boxplot_paths = _generate_cluster_metric_boxplots(valid_rows, labels, features, output_dir, selected_k, plot_metrics_rows, plot_metrics_cols)
+    if not quiet:
+        _console.print(f"  cluster_metric_boxplots/ — per-metric distributions by cluster ({len(boxplot_paths)} page(s))")
     plot_paths = _generate_cluster_plots(reduced, labels, output_dir, selected_k)
+    if not quiet:
+        _console.print("  cluster_plots/ — 2D scatter + 3D scatter colored by cluster")
 
     drop_clusters: set[int] = set()
     outer_plot_paths: list[str] = []
+    retained_set: list[str] = []
     if drop_outlier_clusters == "auto":
+        if not quiet:
+            _console.print(f"[bold]Running outlier cluster detection (by {outlier_metric}, direction={outlier_direction}) ...[/bold]")
         drop_clusters, _ = _auto_drop_outlier_clusters(labels, valid_rows, len(valid_rows), outlier_metric, outlier_direction, max_drop_fraction)
         if drop_clusters:
             retained_set = [valid_loci[i] for i in range(len(valid_loci)) if labels[i] not in drop_clusters]
@@ -1295,7 +1427,13 @@ def run_cluster_filter(
             _write_csv_table([{loci_column: locus, "reason": "outlier_cluster"} for locus in dropped_set], output_dir / f"dropped_loci{suffix}", [loci_column, "reason"], delimiter_out)
             decisions = [{loci_column: valid_loci[i], "status": "dropped" if labels[i] in drop_clusters else "retained", "cluster": int(labels[i])} for i in range(len(valid_loci))]
             _write_csv_table(decisions, output_dir / f"filter_decisions{suffix}", [loci_column, "status", "cluster"], delimiter_out)
-            outer_plot_paths = _write_outlier_diagnostics(valid_rows, labels, drop_clusters, features, output_dir, table_format)
+            outer_plot_paths = _write_outlier_diagnostics(valid_rows, labels, drop_clusters, features, output_dir, table_format, outlier_boxplot_rows, outlier_boxplot_cols)
+            if not quiet:
+                _console.print(f"  retained_loci{suffix} — {len(retained_set)} loci kept")
+                _console.print(f"  dropped_loci{suffix} — {len(dropped_set)} loci removed (clusters {sorted(drop_clusters)})")
+                _console.print(f"  filter_decisions{suffix} — per-locus keep/drop status")
+                _console.print(f"  outlier_comparison{suffix} + outlier_wilcoxon{suffix} — normal vs outlier stats")
+                _console.print(f"  outlier_comparison_boxplots/ — {len(outer_plot_paths)} page(s)")
             if copy:
                 retained_locus_names = set(retained_set)
                 if msa_dir:
@@ -1311,11 +1449,39 @@ def run_cluster_filter(
                         if locus in tree_map:
                             shutil.copy2(tree_map[locus], output_dir / "trees" / tree_map[locus].name)
         elif copy:
+            if not quiet:
+                _console.print("[WARN] No outlier clusters dropped (all within max_drop_fraction). Copy skipped.")
             print("[WARN] No outlier clusters dropped (all within max_drop_fraction). Copy skipped.",
                   file=sys.stderr)
 
     wall_time = time.monotonic() - start
-    payload = {"status": "success", "command": command, "wall_time": round(wall_time, 2), "tool_versions": {}, "params": params, "key_results": {"n_loci": len(rows), "n_features": len(features), "n_clusters": selected_k, "reduction": reduction, "selected_umap_replicate": selected_replicate, "n_dropped": sum((labels == c).sum() for c in drop_clusters) if drop_clusters else 0}, "error": None, "data": {"features": features, "cluster_sizes": {c: int((labels == c).sum()) for c in range(selected_k)}, "drop_clusters": sorted(drop_clusters), "plot_paths": plot_paths + boxplot_paths + [means_path] + outer_plot_paths, "umap_replicates": umap_replicate_rows}}
+    n_dropped = int(sum((labels == c).sum() for c in drop_clusters)) if drop_clusters else 0
+    n_retained = len(valid_loci) - n_dropped
+    msa_stats = {}
+    if msa_dir and retained_set:
+        msa_paths = [msa_dir / f"{locus}.fa" for locus in retained_set]
+        msa_stats = _compute_retained_msa_stats([p for p in msa_paths if p.exists()])
+    payload = {
+        "status": "success", "command": command, "wall_time": round(wall_time, 2),
+        "tool_versions": {}, "params": params,
+        "key_results": {
+            "n_loci": len(rows), "n_valid_loci": len(valid_loci),
+            "n_features": len(features), "n_clusters": int(selected_k),
+            "reduction": reduction,
+            "selected_umap_replicate": selected_replicate,
+            "n_retained": n_retained, "n_dropped": n_dropped,
+        },
+        "error": None,
+        "data": {
+            "features": features,
+            "cluster_sizes": {int(c): int((labels == c).sum()) for c in range(selected_k)},
+            "drop_clusters": [int(c) for c in sorted(drop_clusters)],
+            "retained_loci": retained_set,
+            "retained_msa_stats": msa_stats,
+            "plot_paths": plot_paths + boxplot_paths + [means_path] + outer_plot_paths,
+            "umap_replicates": umap_replicate_rows,
+        },
+    }
     _write_result_json(payload, output_dir)
     _write_filter_log(output_dir, command, wall_time, {}, True)
     return payload

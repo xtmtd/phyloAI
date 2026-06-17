@@ -1739,11 +1739,10 @@ _CLUSTER_HELP = (
     help="Delimiter format of the input --table.",
 )
 @click.option(
-    "--metrics", type=str, default=None,
+    "--metrics", type=str, default="all", show_default=True,
     help="Comma-separated list of metric column names to use as features.  "
-    "When omitted or set to 'all', all numeric columns are used except the "
-    "locus identifier, DataType column, constant columns, and columns "
-    "matching --exclude-regex.",
+    "Default 'all' uses all numeric columns except the locus identifier, "
+    "DataType column, constant columns, and columns matching --exclude-regex.",
 )
 @click.option(
     "--exclude-regex", type=str, multiple=True, default=None,
@@ -1807,14 +1806,30 @@ _CLUSTER_HELP = (
     "dropping.  Range [0.0, 1.0].",
 )
 @click.option(
-    "--plot-metrics-per-page", type=str, default="auto", show_default=True,
-    help="Number of metric boxplots per PDF page.  'auto' adapts to cluster count "
-    "(<=6 clusters: 12/page; <=12: 6; <=20: 4; >20: 2).  "
+    "--plot-metrics-rows", type=str, default="auto", show_default=True,
+    help="Number of metric boxplot rows per PDF page (for cluster_metric_boxplots).  "
+    "'auto' adapts to cluster count (<=6 clusters: 12 rows; <=12: 6; <=20: 4; >20: 2).  "
     "Explicit integer values are also accepted.",
+)
+@click.option(
+    "--plot-metrics-cols", type=int, default=2, show_default=True,
+    help="Number of metric boxplot columns per PDF page (for cluster_metric_boxplots).  "
+    "Together with --plot-metrics-rows defines a rows x cols grid per page.",
 )
 @click.option(
     "--plot-label-angle", type=float, default=45.0, show_default=True,
     help="Rotation angle in degrees for x-axis labels in diagnostic plots.",
+)
+@click.option(
+    "--outlier-boxplot-rows", type=str, default="auto", show_default=True,
+    help="Number of boxplot rows per PDF page (for outlier_comparison_boxplots).  "
+    "'auto' adapts to cluster count (<=6 clusters: 12 rows; >6: 6).  "
+    "Explicit integer values are also accepted.",
+)
+@click.option(
+    "--outlier-boxplot-cols", type=int, default=4, show_default=True,
+    help="Number of boxplot columns per PDF page (for outlier_comparison_boxplots).  "
+    "Together with --outlier-boxplot-rows defines a rows x cols grid per page.",
 )
 @click.option(
     "--umap-n-neighbors", type=int, default=15, show_default=True,
@@ -1833,9 +1848,15 @@ _CLUSTER_HELP = (
     "Ignored for PCA reduction.",
 )
 @click.option(
-    "--umap-random-state", type=int, default=0, show_default=True,
-    help="Base random seed for UMAP.  Each replicate uses base_seed + replicate_index.  "
+    "--umap-random-state", type=int, default=42, show_default=True,
+    help="Random seed for reproducible UMAP.  Only applied when --umap-replicates 1; "
+    "when replicates > 1, no seed is set so --threads can parallelize across CPUs.  "
     "Ignored for PCA reduction.",
+)
+@click.option(
+    "--threads", type=int, default=1, show_default=True,
+    help="Number of CPU threads for UMAP (n_jobs).  Only takes effect when "
+    "--reduction umap and --umap-replicates > 1.  Ignored for PCA reduction.",
 )
 @click.option(
     "--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
@@ -1880,17 +1901,38 @@ _CLUSTER_HELP = (
     "--quiet", "-q", is_flag=True, default=False,
     help="Suppress all terminal output except errors.",
 )
-def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_per_page, plot_label_angle, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
+def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_rows, plot_metrics_cols, plot_label_angle, outlier_boxplot_rows, outlier_boxplot_cols, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, threads, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
     try:
-        payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_per_page=plot_metrics_per_page, plot_label_angle=plot_label_angle, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
+        payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_rows=plot_metrics_rows, plot_metrics_cols=plot_metrics_cols, plot_label_angle=plot_label_angle, outlier_boxplot_rows=outlier_boxplot_rows, outlier_boxplot_cols=outlier_boxplot_cols, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, threads=threads, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
     except (ValueError, FileNotFoundError, ImportError) as exc:
         _fail(str(exc), 1)
     if dry_run:
         click.echo(f"Dry run: {payload['key_results']['n_loci']} loci, {payload['key_results']['n_features']} features")
         return
     if not quiet:
-        console.print(render_filter_summary_table({"Loci": payload["key_results"]["n_loci"], "Features": payload["key_results"]["n_features"], "Reduction": payload["key_results"]["reduction"], "Clusters": payload["key_results"]["n_clusters"], "Dropped": payload["key_results"]["n_dropped"]}))
-        click.echo(f"Results saved to {output_dir}", err=True)
+        console.print(render_filter_summary_table({
+            "Loci": payload["key_results"]["n_loci"],
+            "Valid loci": payload["key_results"]["n_valid_loci"],
+            "Features": payload["key_results"]["n_features"],
+            "Reduction": payload["key_results"]["reduction"],
+            "Clusters": payload["key_results"]["n_clusters"],
+            "Dropped": payload["key_results"]["n_dropped"],
+        }))
+        if payload["data"].get("drop_clusters"):
+            drop_list = payload["data"]["drop_clusters"]
+            console.print(f"[yellow]Dropped clusters: {drop_list} "
+                          f"({payload['key_results']['n_dropped']} loci removed)[/yellow]")
+        msa_stats = payload["data"].get("retained_msa_stats", {})
+        if msa_stats and msa_stats.get("n_msa", 0) > 0:
+            console.print(render_filter_summary_table({
+                "Retained MSAs": msa_stats["n_msa"],
+                "Total length": msa_stats["total_length"],
+                "Mean length": msa_stats["mean_length"],
+                "Min length": msa_stats["min_length"],
+                "Max length": msa_stats["max_length"],
+                "Mean taxa": msa_stats["mean_taxa"],
+            }))
+        console.print(f"Results saved to {output_dir}")
 
 
 pretree.add_command(filter_group)

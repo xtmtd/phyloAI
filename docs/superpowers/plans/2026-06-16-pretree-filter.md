@@ -1972,12 +1972,16 @@ Insert before `pretree.add_command(filter_group)`:
 @click.option("--outlier-metric", type=str, default="average_BS", show_default=True)
 @click.option("--outlier-direction", type=click.Choice(["low", "high"]), default="low", show_default=True)
 @click.option("--max-drop-fraction", type=click.FloatRange(0.0, 1.0), default=0.2, show_default=True)
-@click.option("--plot-metrics-per-page", type=str, default="auto", show_default=True)
+@click.option("--plot-metrics-rows", type=str, default="auto", show_default=True)
+@click.option("--plot-metrics-cols", type=int, default=2, show_default=True)
 @click.option("--plot-label-angle", type=float, default=45.0, show_default=True)
+@click.option("--outlier-boxplot-rows", type=str, default="auto", show_default=True)
+@click.option("--outlier-boxplot-cols", type=int, default=4, show_default=True)
 @click.option("--umap-n-neighbors", type=int, default=15)
 @click.option("--umap-min-dist", type=float, default=0.001)
 @click.option("--umap-replicates", type=int, default=1)
-@click.option("--umap-random-state", type=int, default=0)
+@click.option("--umap-random-state", type=int, default=42)
+@click.option("--threads", type=int, default=1)
 @click.option("--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None)
 @click.option("--tree-dir", type=click.Path(exists=True, file_okay=False, path_type=Path), default=None)
 @click.option("--copy", is_flag=True, default=False)
@@ -1986,7 +1990,7 @@ Insert before `pretree.add_command(filter_group)`:
 @click.option("--overwrite", is_flag=True, default=False)
 @click.option("--dry-run", is_flag=True, default=False)
 @click.option("--quiet", "-q", is_flag=True, default=False)
-def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_per_page, plot_label_angle, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
+def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_rows, plot_metrics_cols, plot_label_angle, outlier_boxplot_rows, outlier_boxplot_cols, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, threads, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
     try:
         payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_per_page=plot_metrics_per_page, plot_label_angle=plot_label_angle, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
     except (ValueError, FileNotFoundError, ImportError) as exc:

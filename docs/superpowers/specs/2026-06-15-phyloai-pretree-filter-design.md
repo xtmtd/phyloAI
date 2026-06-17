@@ -394,7 +394,6 @@ phyloai pretree filter cluster \
   [--input-format auto|csv|tsv] \
   [--metrics all|col1,col2,...] \
   [--exclude-regex REGEX] [--exclude-regex REGEX] \
-  [--seq-type AA|NT|auto] \
   [--reduction pca|umap] \
   [--n-clusters N] [--max-clusters N] \
   [--cluster-linkage ward|average|complete|single] \
@@ -403,12 +402,20 @@ phyloai pretree filter cluster \
   [--outlier-metric average_BS] \
   [--outlier-direction low|high] \
   [--max-drop-fraction 0.2] \
-  [--plot-metrics-per-page auto|N] \
+  [--plot-metrics-rows auto|N] [--plot-metrics-cols N] \
   [--plot-label-angle FLOAT] \
+  [--outlier-boxplot-rows auto|N] [--outlier-boxplot-cols N] \
+  [--umap-n-neighbors N] [--umap-min-dist FLOAT] \
+  [--umap-replicates N] [--umap-random-state N] [--threads N] \
   [--msa-dir <msa_dir>] [--tree-dir <tree_dir>] [--copy] \
   [--output-dir runs/pretree/filter/cluster] \
   [--dry-run] [--overwrite]
+  [--quiet] [--table-format csv|tsv]
 ```
+
+`--metrics` defaults to `"all"`.  `--plot-metrics-rows` (default `auto`) and `--plot-metrics-cols` (default `2`) define grid layout for `cluster_metric_boxplots`.  `--outlier-boxplot-rows` (default `auto`) and `--outlier-boxplot-cols` (default `4`) do the same for `outlier_comparison_boxplots`.
+
+UMAP-specific: `--umap-random-state` (default `42`) is only applied when `--umap-replicates 1`; when replicates > 1, no seed is set so `--threads` (default `1`) can parallelize UMAP across CPUs.
 
 ### 8.2 Feature Selection
 
@@ -540,16 +547,21 @@ runs/pretree/filter/cluster/
 ├── cluster_summary.csv|tsv
 ├── cluster_metric_means.csv|tsv
 ├── cluster_metric_heatmap.pdf
-├── cluster_2d.pdf
-├── cluster_3d.pdf
-├── cluster_metric_boxplots_001.pdf
+├── cluster_plots/
+│   ├── cluster_2d.pdf
+│   └── cluster_3d.pdf
+├── cluster_metric_boxplots/
+│   ├── cluster_metric_boxplots_001.pdf
+│   └── ...
 ├── cluster_loci/
 │   ├── cluster_1.csv|tsv
 │   ├── cluster_2.csv|tsv
 │   └── ...
 ├── outlier_comparison.csv|tsv                 # only when auto drop is active
 ├── outlier_wilcoxon.csv|tsv                   # only when auto drop is active
-├── outlier_comparison_boxplots_001.pdf        # only when auto drop is active
+├── outlier_comparison_boxplots/               # only when auto drop is active
+│   ├── outlier_comparison_boxplots_001.pdf
+│   └── ...
 ├── retained_loci.csv|tsv                      # only when auto drop is active
 ├── dropped_loci.csv|tsv                       # only when auto drop is active
 ├── filter_decisions.csv|tsv                   # only when auto drop is active
@@ -585,20 +597,21 @@ Always write:
 - `cluster_metric_boxplots_001.pdf`, etc.: per-metric distributions grouped by cluster
 
 Boxplot pagination is adaptive:
-- `--plot-metrics-per-page auto|N`, default `auto`
-- `n_clusters <= 6`: up to 12 metrics per page
-- `7 <= n_clusters <= 12`: up to 6 metrics per page
-- `13 <= n_clusters <= 20`: up to 4 metrics per page
-- `n_clusters > 20`: 1-2 metrics per page, depending on label readability
-- `--plot-label-angle` defaults to `45`, but auto-increases to `60` or `90` when cluster labels are dense
-- figure width increases moderately with cluster count but has an upper bound to avoid very large PDFs
+- `--plot-metrics-rows auto|N`, default `auto`; `--plot-metrics-cols N`, default `2`
+- `n_clusters <= 6`: up to 12 rows per page
+- `7 <= n_clusters <= 12`: up to 6 rows per page
+- `13 <= n_clusters <= 20`: up to 4 rows per page
+- `n_clusters > 20`: up to 2 rows per page
+- Boxplots are arranged in a `rows × cols` grid. Per-page count = rows × cols.
+- `--plot-label-angle` defaults to `45`
 
 When outlier dropping is active, also write:
 - `outlier_comparison.csv|tsv`: normal vs outlier mean, median, standard deviation, and count for each metric
 - `outlier_wilcoxon.csv|tsv`: Mann-Whitney U / Wilcoxon rank-sum p-values and direction for each metric, using `scipy.stats.mannwhitneyu`
-- `outlier_comparison_boxplots_001.pdf`, etc.: per-metric distributions grouped by outlier status
+- `outlier_comparison_boxplots/`: per-metric distributions grouped by outlier status in `--outlier-boxplot-rows` × `--outlier-boxplot-cols` grid (defaults `auto` rows, `4` cols). Significant p-values are annotated with `*` (p<0.05), `**` (p<0.01), `***` (p<0.001).
+- Colors use paired light-blue (normal) and light-red (outlier) following the R reference script.
 
-The design intentionally avoids `plotly` in the first version to minimize dependencies.
+2D and 3D cluster scatter plots are saved under `cluster_plots/`. 3D scatter is rendered as a static 3-axis PDF. 2D scatter plus 3D scatter allow multi-angle inspection of cluster separation.
 
 ---
 

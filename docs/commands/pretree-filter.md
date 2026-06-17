@@ -453,9 +453,12 @@ phyloai pretree filter cluster \
   [--drop-outlier-clusters none|auto] \
   [--outlier-metric average_BS] [--outlier-direction low|high] \
   [--max-drop-fraction 0.2] \
-  [--plot-metrics-per-page auto|N] [--plot-label-angle 45] \
+  [--plot-metrics-rows auto|N] [--plot-metrics-cols N] \
+  [--plot-label-angle 45] \
+  [--outlier-boxplot-rows auto|N] [--outlier-boxplot-cols N] \
   [--umap-n-neighbors 15] [--umap-min-dist 0.001] \
-  [--umap-replicates 1] [--umap-random-state 0] \
+  [--umap-replicates 1] [--umap-random-state 42] \
+  [--threads 1] \
   [--msa-dir <msa_dir>] [--tree-dir <tree_dir>] [--copy] \
   [--output-dir runs/pretree/filter/cluster] \
   [--dry-run] [--overwrite]
@@ -476,14 +479,17 @@ phyloai pretree filter cluster \
 | `--outlier-metric` | `average_BS` | Metric for ranking clusters when dropping. |
 | `--outlier-direction` | `low` | `low`: smaller values worse. `high`: larger values worse. |
 | `--max-drop-fraction` | 0.2 | Maximum fraction of loci removable (0.0–1.0). |
-| `--msa-dir` / `--tree-dir` | — | Input directories for `--copy` mode. |
-| `--copy` | off | Copy retained MSAs/trees when outlier dropping is active. No-op if no loci dropped. |
-| `--plot-metrics-per-page` | `auto` | Boxplots per PDF page. `auto` adapts: ≤6 clusters → 12/page, ≤12 → 6, ≤20 → 4, >20 → 2. |
+| `--plot-metrics-rows` | `auto` | Boxplot rows per page for `cluster_metric_boxplots`. `auto`: ≤6 clusters → 12 rows, ≤12 → 6, ≤20 → 4, >20 → 2. |
+| `--plot-metrics-cols` | 2 | Boxplot columns per page. Together with `--plot-metrics-rows` defines `rows × cols` grid. |
 | `--plot-label-angle` | 45.0 | X-axis label rotation in plots. |
+| `--outlier-boxplot-rows` | `auto` | Boxplot rows per page for `outlier_comparison_boxplots`. |
+| `--outlier-boxplot-cols` | 4 | Boxplot columns per page for `outlier_comparison_boxplots`. |
 | `--umap-n-neighbors` | 15 | UMAP local/global balance (PCA: ignored). |
 | `--umap-min-dist` | 0.001 | UMAP point packing (PCA: ignored). |
 | `--umap-replicates` | 1 | UMAP runs; best selected by cluster-validation rank-sum scoring (PCA: ignored). |
-| `--umap-random-state` | 0 | Base random seed for UMAP. Replicates use `base + index`. |
+| `--umap-random-state` | 42 | Random seed for reproducible UMAP. Only applied when `--umap-replicates 1`; when >1, no seed is set so `--threads` can parallelize. |
+| `--threads` | 1 | CPU threads for UMAP n_jobs. Only used when `--reduction umap` and `--umap-replicates > 1`. |
+| `--msa-dir` / `--tree-dir` | — | Input directories for `--copy` mode. |
 | `--output-dir` / `-o` | `runs/pretree/filter/cluster` | Output directory. |
 | `--table-format` | `csv` | Format for all output tables. |
 | `--overwrite` | off | Delete and recreate output directory. |
@@ -506,15 +512,18 @@ Core (always written):
 ```
 runs/pretree/filter/cluster/
 ├── features_used.csv|tsv              (column, included, reason)
-├── reduction.csv|tsv                  (PC1/PC2/PC3 or UMAP1/UMAP2 per locus)
+├── reduction.csv|tsv                  (PC1/PC2/PC3 or UMAP1/UMAP2/UMAP3 per locus)
 ├── cluster_selection.csv|tsv          (k, silhouette, calinski_harabasz, davies_bouldin)
 ├── clusters.csv|tsv                   (locus, cluster)
-├── cluster_summary.csv|tsv            (per-cluster size, metric means)
+├── cluster_summary.csv|tsv            (per-cluster size)
 ├── cluster_metric_means.csv|tsv       (per-cluster mean for each numeric metric)
 ├── cluster_metric_heatmap.pdf         (z-score heatmap: metrics × clusters)
-├── cluster_2d.pdf                     (first 2 reduced dimensions, colored by cluster)
-├── cluster_3d.pdf                     (3D scatter, PCA only)
-├── cluster_metric_boxplots_*.pdf      (per-metric distributions by cluster)
+├── cluster_plots/
+│   ├── cluster_2d.pdf                 (first 2 reduced dimensions, colored by cluster)
+│   └── cluster_3d.pdf                 (3D scatter)
+├── cluster_metric_boxplots/
+│   ├── cluster_metric_boxplots_001.pdf (per-metric distributions by cluster)
+│   └── ...
 ├── cluster_loci/cluster_*.csv|tsv     (loci in each cluster)
 ├── filter.log
 └── result.json
@@ -526,7 +535,10 @@ With `--drop-outlier-clusters auto`, additionally:
 ├── dropped_loci.csv|tsv
 ├── filter_decisions.csv|tsv
 ├── outlier_comparison.csv|tsv         (normal vs outlier: mean, median, sd, count per metric)
-├── outlier_comparison_boxplots_*.pdf  (per-metric distributions by outlier status)
+├── outlier_wilcoxon.csv|tsv           (Mann-Whitney U p-values per metric)
+├── outlier_comparison_boxplots/
+│   ├── outlier_comparison_boxplots_001.pdf  (per-metric distributions by outlier status, * p<0.05)
+│   └── ...
 ├── seqs/                              (only with --copy --msa-dir)
 └── trees/                             (only with --copy --tree-dir)
 ```
@@ -579,9 +591,11 @@ Without `--drop-outlier-clusters auto`, the command is read-only — no loci are
 
 `features_used.csv` is the audit trail — it shows every column, whether included in the feature set, and why excluded.
 
-PCA is the default reduction because it is deterministic, stable, and requires only `scikit-learn`. UMAP is available for exploring non-linear structure but adds the optional `umap-learn` dependency and stochasticity.
+`cluster_metric_heatmap.pdf` is a standardized (z-score) heatmap showing per-cluster mean values across all metrics. Cooler colours (blue) indicate below-average values; warmer colours (red) indicate above-average. This helps identify which clusters score poorly/excellently on which metrics at a glance.
 
-`--resume` and `--threads` are not supported: clustering runs once in-memory.
+PCA is the default reduction because it is deterministic, stable, and requires only `scikit-learn`. UMAP is available for exploring non-linear structure but adds the optional `umap-learn` dependency and stochasticity. With `--umap-replicates 1`, a fixed `--umap-random-state` seed ensures reproducibility. With `--umap-replicates > 1`, no seed is set and `--threads` can parallelize UMAP.
+
+Terminal output shows step-by-step progress (feature selection → reduction → clustering → diagnostics → outlier detection) and describes each output file. After `--drop-outlier-clusters auto`, the screen also shows retained MSA statistics when `--msa-dir` is provided.
 
 ---
 
@@ -609,6 +623,6 @@ Mode-specific `key_results` and `data`:
 | `taper` | n_input, n_retained, n_dropped, masked_loci, total_masked_taxa, total_masked_aa_sites | retained_msa_stats, dry_run_cmds |
 | `treeshrink` | n_input, n_retained, n_modified, n_dropped, n_removed_taxa_total | retained_loci, modified_loci, dropped_loci, removed_taxa, retained_msa_stats |
 | `metrics` | n_total, n_retained, n_dropped, condition_failure_counts | copied_msa, copied_tree, retained_msa_stats |
-| `cluster` | n_loci, n_features, reduction, n_clusters, n_dropped | features_used, reduction_coords, cluster_assignments |
+| `cluster` | n_loci, n_valid_loci, n_features, n_clusters, reduction, selected_umap_replicate, n_retained, n_dropped | features, cluster_sizes, drop_clusters, retained_loci, retained_msa_stats, plot_paths, umap_replicates |
 
 `filter.log` records resolved command(s), tool versions, wall time, and per-locus outcomes.
