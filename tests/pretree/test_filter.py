@@ -120,3 +120,28 @@ class TestClusterFeatureSelection:
         assert any(e["column"] == "loci" and not e["included"] for e in entries)
         assert any(e["column"] == "name" and not e["included"] for e in entries)
         assert any(e["column"] == "dvmc" and e["included"] for e in entries)
+
+    def test_cluster_outputs_are_grouped_by_stage(self, tmp_path):
+        from phyloai.pretree.filter import run_cluster_filter
+
+        table = tmp_path / "metrics.csv"
+        table.write_text(
+            "loci,dvmc,average_BS,gc_content\n"
+            "g1,0.10,0.95,0.40\n"
+            "g2,0.20,0.90,0.45\n"
+            "g3,1.10,0.40,0.70\n"
+            "g4,1.20,0.35,0.75\n"
+        )
+        out = tmp_path / "out"
+
+        payload = run_cluster_filter(table_path=table, output_dir=out, n_clusters=2, quiet=True)
+
+        assert payload["status"] == "success"
+        assert (out / "01-input" / "features_used.csv").exists()
+        assert (out / "02-reduction" / "reduction.csv").exists()
+        assert (out / "03-clustering" / "clusters.csv").exists()
+        assert (out / "03-clustering" / "cluster_loci").is_dir()
+        assert (out / "04-diagnostics" / "cluster_metric_means.csv").exists()
+        assert (out / "04-diagnostics" / "plots" / "cluster_2d.pdf").exists()
+        assert not (out / "features_used.csv").exists()
+        assert not (out / "clusters.csv").exists()

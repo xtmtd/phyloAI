@@ -402,9 +402,8 @@ phyloai pretree filter cluster \
   [--outlier-metric average_BS] \
   [--outlier-direction low|high] \
   [--max-drop-fraction 0.2] \
-  [--plot-metrics-rows auto|N] [--plot-metrics-cols N] \
+  [--plot-metrics-cols N] [--outlier-boxplot-cols N] \
   [--plot-label-angle FLOAT] \
-  [--outlier-boxplot-rows auto|N] [--outlier-boxplot-cols N] \
   [--umap-n-neighbors N] [--umap-min-dist FLOAT] \
   [--umap-replicates N] [--umap-random-state N] [--threads N] \
   [--msa-dir <msa_dir>] [--tree-dir <tree_dir>] [--copy] \
@@ -413,7 +412,7 @@ phyloai pretree filter cluster \
   [--quiet] [--table-format csv|tsv]
 ```
 
-`--metrics` defaults to `"all"`.  `--plot-metrics-rows` (default `auto`) and `--plot-metrics-cols` (default `2`) define grid layout for `cluster_metric_boxplots`.  `--outlier-boxplot-rows` (default `auto`) and `--outlier-boxplot-cols` (default `4`) do the same for `outlier_comparison_boxplots`.
+`--metrics` defaults to `"all"`. `--plot-metrics-cols` (default `2`) and `--outlier-boxplot-cols` (default `4`) control the subplot grid columns; rows are auto-calculated from feature count.
 
 UMAP-specific: `--umap-random-state` (default `42`) is only applied when `--umap-replicates 1`; when replicates > 1, no seed is set so `--threads` (default `1`) can parallelize UMAP across CPUs.
 
@@ -540,52 +539,55 @@ Default output layout:
 runs/pretree/filter/cluster/
 ├── result.json
 ├── filter.log
-├── features_used.csv|tsv
-├── reduction.csv|tsv
-├── cluster_selection.csv|tsv
-├── clusters.csv|tsv
-├── cluster_summary.csv|tsv
-├── cluster_metric_means.csv|tsv
-├── cluster_metric_heatmap.pdf
-├── cluster_plots/
-│   ├── cluster_2d.pdf
-│   └── cluster_3d.pdf
-├── cluster_metric_boxplots/
-│   ├── cluster_metric_boxplots_001.pdf
-│   └── ...
-├── cluster_loci/
-│   ├── cluster_1.csv|tsv
-│   ├── cluster_2.csv|tsv
-│   └── ...
-├── outlier_comparison.csv|tsv                 # only when auto drop is active
-├── outlier_wilcoxon.csv|tsv                   # only when auto drop is active
-├── outlier_comparison_boxplots/               # only when auto drop is active
-│   ├── outlier_comparison_boxplots_001.pdf
-│   └── ...
-├── retained_loci.csv|tsv                      # only when auto drop is active
-├── dropped_loci.csv|tsv                       # only when auto drop is active
-├── filter_decisions.csv|tsv                   # only when auto drop is active
-├── seqs/                                      # only when auto drop is active and --copy + --msa-dir
-└── trees/                                     # only when auto drop is active and --copy + --tree-dir
+├── 01-input/
+│   └── features_used.csv|tsv
+├── 02-reduction/
+│   ├── reduction.csv|tsv
+│   ├── cluster_selection.csv|tsv
+│   └── umap_replicates.csv|tsv                # only when UMAP replicates > 1
+├── 03-clustering/
+│   ├── clusters.csv|tsv
+│   ├── cluster_summary.csv|tsv
+│   └── cluster_loci/
+│       ├── cluster_1.csv|tsv
+│       ├── cluster_2.csv|tsv
+│       └── ...
+├── 04-diagnostics/
+│   ├── cluster_metric_means.csv|tsv
+│   └── plots/
+│       ├── cluster_2d.pdf
+│       ├── cluster_3d.pdf
+│       ├── cluster_metric_heatmap.pdf
+│       └── cluster_metric_boxplots.pdf
+└── 05-outlier-drop/                           # only when auto drop is active
+    ├── retained_loci.csv|tsv
+    ├── dropped_loci.csv|tsv
+    ├── filter_decisions.csv|tsv
+    ├── outlier_comparison.csv|tsv
+    ├── outlier_wilcoxon.csv|tsv
+    ├── plots/
+    │   └── outlier_comparison_boxplots.pdf
+    ├── seqs/                                  # only when --copy + --msa-dir
+    └── trees/                                 # only when --copy + --tree-dir
 ```
 
 Core tables:
-- `features_used.csv|tsv`
-- `reduction.csv|tsv`
-- `cluster_selection.csv|tsv`
-- `clusters.csv|tsv`
-- `cluster_summary.csv|tsv`
-- `cluster_loci/cluster_*.csv|tsv`
+- `01-input/features_used.csv|tsv`
+- `02-reduction/reduction.csv|tsv`
+- `02-reduction/cluster_selection.csv|tsv`
+- `03-clustering/clusters.csv|tsv`
+- `03-clustering/cluster_summary.csv|tsv`
+- `03-clustering/cluster_loci/cluster_*.csv|tsv`
 
 Core plots:
-- `cluster_2d.pdf`: first two reduced dimensions, colored by cluster
-- `cluster_3d.pdf`: static 3D reduced coordinates, colored by cluster
+- `04-diagnostics/plots/cluster_2d.pdf`: first two reduced dimensions, colored by cluster
+- `04-diagnostics/plots/cluster_3d.pdf`: static 3D reduced coordinates, colored by cluster
 
 When outlier dropping is active, also write:
-- `retained_loci.csv|tsv`
-- `dropped_loci.csv|tsv`
-- `filter_decisions.csv|tsv`
-- optional copied `seqs/` and/or `trees/` when `--copy` is set
+- `05-outlier-drop/retained_loci.csv|tsv`
+- `05-outlier-drop/dropped_loci.csv|tsv`
+- `05-outlier-drop/filter_decisions.csv|tsv`
+- optional copied `05-outlier-drop/seqs/` and/or `05-outlier-drop/trees/` when `--copy` is set
 
 ### 8.9 Cluster Metric Diagnostics
 
@@ -593,25 +595,21 @@ Cluster diagnostics are required because the scatter plots alone are insufficien
 
 Always write:
 - `cluster_metric_means.csv|tsv`: per-cluster `n_loci` and means for every numeric input metric
-- `cluster_metric_heatmap.pdf`: standardized cluster mean heatmap across metrics
-- `cluster_metric_boxplots_001.pdf`, etc.: per-metric distributions grouped by cluster
+- `04-diagnostics/plots/cluster_metric_heatmap.pdf`: standardized cluster mean heatmap across metrics
+- `04-diagnostics/plots/cluster_metric_boxplots.pdf`: per-metric distributions grouped by cluster
 
-Boxplot pagination is adaptive:
-- `--plot-metrics-rows auto|N`, default `auto`; `--plot-metrics-cols N`, default `2`
-- `n_clusters <= 6`: up to 12 rows per page
-- `7 <= n_clusters <= 12`: up to 6 rows per page
-- `13 <= n_clusters <= 20`: up to 4 rows per page
-- `n_clusters > 20`: up to 2 rows per page
-- Boxplots are arranged in a `rows × cols` grid. Per-page count = rows × cols.
+Boxplot layout uses one PDF figure:
+- `--plot-metrics-cols N`, default `2`
+- rows are calculated from the number of selected metrics
+- all metric boxplots are arranged in one `rows x cols` grid
 - `--plot-label-angle` defaults to `45`
 
 When outlier dropping is active, also write:
 - `outlier_comparison.csv|tsv`: normal vs outlier mean, median, standard deviation, and count for each metric
 - `outlier_wilcoxon.csv|tsv`: Mann-Whitney U / Wilcoxon rank-sum p-values and direction for each metric, using `scipy.stats.mannwhitneyu`
-- `outlier_comparison_boxplots/`: per-metric distributions grouped by outlier status in `--outlier-boxplot-rows` × `--outlier-boxplot-cols` grid (defaults `auto` rows, `4` cols). Significant p-values are annotated with `*` (p<0.05), `**` (p<0.01), `***` (p<0.001).
-- Colors use paired light-blue (normal) and light-red (outlier) following the R reference script.
+- `05-outlier-drop/plots/outlier_comparison_boxplots.pdf`: single figure with all metrics in a 4-column grid. Colors use paired light-blue (normal) and light-red (outlier) following the R reference script. Significant p-values are annotated with `*` (p<0.05), `**` (p<0.01), `***` (p<0.001) above each boxplot pair.
 
-2D and 3D cluster scatter plots are saved under `cluster_plots/`. 3D scatter is rendered as a static 3-axis PDF. 2D scatter plus 3D scatter allow multi-angle inspection of cluster separation.
+All diagnostic plots (scatters, heatmap, boxplots, outlier comparison) are collected under `plots/`.
 
 ---
 

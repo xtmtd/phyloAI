@@ -978,11 +978,13 @@ def metrics_group(
     )
 
     if payload["status"] == "error":
-        if progress: progress.stop()
+        if progress is not None:
+            progress.stop()
         _fail(payload.get("error", "Unknown error"), 1)
 
     if dry_run:
-        if progress: progress.stop()
+        if progress is not None:
+            progress.stop()
         if not quiet:
             click.echo("[dry-run] No files written; no plots or correlation generated.", err=True)
         return
@@ -1806,30 +1808,18 @@ _CLUSTER_HELP = (
     "dropping.  Range [0.0, 1.0].",
 )
 @click.option(
-    "--plot-metrics-rows", type=str, default="auto", show_default=True,
-    help="Number of metric boxplot rows per PDF page (for cluster_metric_boxplots).  "
-    "'auto' adapts to cluster count (<=6 clusters: 12 rows; <=12: 6; <=20: 4; >20: 2).  "
-    "Explicit integer values are also accepted.",
-)
-@click.option(
     "--plot-metrics-cols", type=int, default=2, show_default=True,
-    help="Number of metric boxplot columns per PDF page (for cluster_metric_boxplots).  "
-    "Together with --plot-metrics-rows defines a rows x cols grid per page.",
+    help="Number of metric boxplot columns per figure (for cluster_metric_boxplots).  "
+    "All metrics are placed in a single figure with this many columns; rows are auto-calculated.",
 )
 @click.option(
     "--plot-label-angle", type=float, default=45.0, show_default=True,
     help="Rotation angle in degrees for x-axis labels in diagnostic plots.",
 )
 @click.option(
-    "--outlier-boxplot-rows", type=str, default="auto", show_default=True,
-    help="Number of boxplot rows per PDF page (for outlier_comparison_boxplots).  "
-    "'auto' adapts to cluster count (<=6 clusters: 12 rows; >6: 6).  "
-    "Explicit integer values are also accepted.",
-)
-@click.option(
     "--outlier-boxplot-cols", type=int, default=4, show_default=True,
-    help="Number of boxplot columns per PDF page (for outlier_comparison_boxplots).  "
-    "Together with --outlier-boxplot-rows defines a rows x cols grid per page.",
+    help="Number of boxplot columns per figure (for outlier_comparison_boxplots).  "
+    "All metrics are placed in a single figure with this many columns; rows are auto-calculated.",
 )
 @click.option(
     "--umap-n-neighbors", type=int, default=15, show_default=True,
@@ -1901,9 +1891,9 @@ _CLUSTER_HELP = (
     "--quiet", "-q", is_flag=True, default=False,
     help="Suppress all terminal output except errors.",
 )
-def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_rows, plot_metrics_cols, plot_label_angle, outlier_boxplot_rows, outlier_boxplot_cols, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, threads, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
+def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_cols, plot_label_angle, outlier_boxplot_cols, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, threads, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
     try:
-        payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_rows=plot_metrics_rows, plot_metrics_cols=plot_metrics_cols, plot_label_angle=plot_label_angle, outlier_boxplot_rows=outlier_boxplot_rows, outlier_boxplot_cols=outlier_boxplot_cols, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, threads=threads, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
+        payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_cols=plot_metrics_cols, plot_label_angle=plot_label_angle, outlier_boxplot_cols=outlier_boxplot_cols, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, threads=threads, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
     except (ValueError, FileNotFoundError, ImportError) as exc:
         _fail(str(exc), 1)
     if dry_run:

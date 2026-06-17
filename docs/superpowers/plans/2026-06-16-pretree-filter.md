@@ -1663,46 +1663,45 @@ def _auto_drop_outlier_clusters(labels: np.ndarray, rows: list[dict], n_loci: in
 
 def _generate_cluster_metric_boxplots(
     valid_rows: list[dict], labels: np.ndarray, features: list[str],
-    output_dir: Path, n_clusters: int, plot_metrics_per_page: str,
+    output_dir: Path, n_clusters: int, plot_metrics_cols: int = 2,
 ) -> list[str]:
-    """Write cluster_metric_boxplots_*.pdf pages required by design §8.8."""
+    """Write a single cluster_metric_boxplots.pdf figure."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    if plot_metrics_per_page != "auto":
-        per_page = int(plot_metrics_per_page)
-    else:
-        per_page = 12 if n_clusters <= 6 else 6 if n_clusters <= 12 else 4 if n_clusters <= 20 else 2
-    pdf_paths: list[str] = []
-    for page_start in range(0, len(features), per_page):
-        page_features = features[page_start:page_start + per_page]
-        fig, axes = plt.subplots(len(page_features), 1, figsize=(10, max(3, 2.5 * len(page_features))))
-        if len(page_features) == 1:
-            axes = [axes]
-        for ax, feature in zip(axes, page_features):
-            grouped = []
-            for c in range(n_clusters):
-                values = []
-                for i, lb in enumerate(labels):
-                    if lb != c:
-                        continue
-                    raw = valid_rows[i].get(feature, "")
-                    if raw in ("", "NA"):
-                        continue
-                    try:
-                        values.append(float(raw))
-                    except (TypeError, ValueError):
-                        continue
-                grouped.append(values)
-            ax.boxplot(grouped, labels=[f"C{c}" for c in range(n_clusters)])
-            ax.set_title(feature)
-        fig.tight_layout()
-        pdf_path = output_dir / f"cluster_metric_boxplots_{(page_start // per_page) + 1:03d}.pdf"
-        fig.savefig(pdf_path, dpi=150, bbox_inches="tight")
-        plt.close(fig)
-        pdf_paths.append(str(pdf_path))
-    return pdf_paths
+    ncols = plot_metrics_cols
+    nrows = int(math.ceil(len(features) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 4, nrows * 2.8))
+    axes = np.atleast_2d(axes)
+    for idx, feature in enumerate(features):
+        r, c = divmod(idx, ncols)
+        ax = axes[r, c]
+        grouped = []
+        for cl in range(n_clusters):
+            values = []
+            for i, lb in enumerate(labels):
+                if lb != cl:
+                    continue
+                raw = valid_rows[i].get(feature, "")
+                if raw in ("", "NA"):
+                    continue
+                try:
+                    values.append(float(raw))
+                except (TypeError, ValueError):
+                    continue
+            grouped.append(values)
+        ax.boxplot(grouped, labels=[f"C{cl}" for cl in range(n_clusters)])
+        ax.set_title(feature)
+    for idx in range(len(features), nrows * ncols):
+        r, c = divmod(idx, ncols)
+        axes[r, c].set_visible(False)
+    fig.tight_layout()
+    pdf_path = output_dir / "plots" / "cluster_metric_boxplots.pdf"
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(pdf_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return [str(pdf_path)]
 
 
 def _write_outlier_diagnostics(
@@ -1814,7 +1813,7 @@ def run_cluster_filter(
     cluster_linkage: str = "ward", cluster_distance: str = "euclidean",
     drop_outlier_clusters: str = "none", outlier_metric: str = "average_BS",
     outlier_direction: str = "low", max_drop_fraction: float = 0.2,
-    plot_metrics_per_page: str = "auto", plot_label_angle: float = 45.0,
+    plot_metrics_cols: int = 2, plot_label_angle: float = 45.0,
     umap_n_neighbors: int = 15, umap_min_dist: float = 0.001,
     umap_replicates: int = 1, umap_random_state: int = 0,
     msa_dir: Path | None = None, tree_dir: Path | None = None,
@@ -1912,7 +1911,7 @@ def run_cluster_filter(
         _write_csv_table([{loci_column: l} for l in loci_in], cluster_loci_dir / f"cluster_{c}{suffix}", [loci_column], delimiter_out)
     # cluster_metric_means.csv + heatmap
     means_path = _generate_cluster_metric_means(valid_rows, labels, features, loci_column, valid_loci, output_dir, table_format)
-    boxplot_paths = _generate_cluster_metric_boxplots(valid_rows, labels, features, output_dir, selected_k, plot_metrics_per_page)
+    boxplot_paths = _generate_cluster_metric_boxplots(valid_rows, labels, features, output_dir, selected_k, plot_metrics_cols)
     # Diagnostic plots: 2D scatter + 3D scatter
     plot_paths = _generate_cluster_plots(reduced, labels, output_dir, selected_k)
     # --- Outlier removal (opt-in) ---
@@ -1972,10 +1971,8 @@ Insert before `pretree.add_command(filter_group)`:
 @click.option("--outlier-metric", type=str, default="average_BS", show_default=True)
 @click.option("--outlier-direction", type=click.Choice(["low", "high"]), default="low", show_default=True)
 @click.option("--max-drop-fraction", type=click.FloatRange(0.0, 1.0), default=0.2, show_default=True)
-@click.option("--plot-metrics-rows", type=str, default="auto", show_default=True)
 @click.option("--plot-metrics-cols", type=int, default=2, show_default=True)
 @click.option("--plot-label-angle", type=float, default=45.0, show_default=True)
-@click.option("--outlier-boxplot-rows", type=str, default="auto", show_default=True)
 @click.option("--outlier-boxplot-cols", type=int, default=4, show_default=True)
 @click.option("--umap-n-neighbors", type=int, default=15)
 @click.option("--umap-min-dist", type=float, default=0.001)
@@ -1990,9 +1987,9 @@ Insert before `pretree.add_command(filter_group)`:
 @click.option("--overwrite", is_flag=True, default=False)
 @click.option("--dry-run", is_flag=True, default=False)
 @click.option("--quiet", "-q", is_flag=True, default=False)
-def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_rows, plot_metrics_cols, plot_label_angle, outlier_boxplot_rows, outlier_boxplot_cols, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, threads, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
+def filter_cluster_command(table_path, input_format, metrics, exclude_regex, reduction, n_clusters, max_clusters, cluster_linkage, cluster_distance, drop_outlier_clusters, outlier_metric, outlier_direction, max_drop_fraction, plot_metrics_cols, plot_label_angle, outlier_boxplot_cols, umap_n_neighbors, umap_min_dist, umap_replicates, umap_random_state, threads, msa_dir, tree_dir, copy, output_dir, table_format, overwrite, dry_run, quiet):
     try:
-        payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_per_page=plot_metrics_per_page, plot_label_angle=plot_label_angle, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
+        payload = run_cluster_filter(table_path=table_path, output_dir=output_dir, input_format=input_format, metrics=metrics, exclude_regex=list(exclude_regex) if exclude_regex else None, reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters, cluster_linkage=cluster_linkage, cluster_distance=cluster_distance, drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric, outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction, plot_metrics_cols=plot_metrics_cols, plot_label_angle=plot_label_angle, umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist, umap_replicates=umap_replicates, umap_random_state=umap_random_state, msa_dir=msa_dir, tree_dir=tree_dir, copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet, table_format=table_format)
     except (ValueError, FileNotFoundError, ImportError) as exc:
         _fail(str(exc), 1)
     if dry_run:

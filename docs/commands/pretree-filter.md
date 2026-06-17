@@ -453,9 +453,8 @@ phyloai pretree filter cluster \
   [--drop-outlier-clusters none|auto] \
   [--outlier-metric average_BS] [--outlier-direction low|high] \
   [--max-drop-fraction 0.2] \
-  [--plot-metrics-rows auto|N] [--plot-metrics-cols N] \
-  [--plot-label-angle 45] \
-  [--outlier-boxplot-rows auto|N] [--outlier-boxplot-cols N] \
+  [--plot-metrics-cols N] [--plot-label-angle 45] \
+  [--outlier-boxplot-cols N] \
   [--umap-n-neighbors 15] [--umap-min-dist 0.001] \
   [--umap-replicates 1] [--umap-random-state 42] \
   [--threads 1] \
@@ -470,7 +469,7 @@ phyloai pretree filter cluster \
 | `--input-format` | `auto` | `csv`, `tsv`, or `auto`. |
 | `--metrics` | all | Comma-separated metric columns. Default: all numeric except locus ID, `DataType`, constant columns, and `--exclude-regex` matches. |
 | `--exclude-regex` | — | Repeatable. `--exclude-regex '^freq' --exclude-regex '^sd_'` or combined: `--exclude-regex '^(freq\|sd_)'`. |
-| `--reduction` | `pca` | `pca` (3 components, deterministic, `scikit-learn`) or `umap` (2D embedding, stochastic, optional `umap-learn`). |
+| `--reduction` | `pca` | `pca` (3 components, deterministic, `scikit-learn`) or `umap` (3 components, stochastic, optional `umap-learn`). |
 | `--n-clusters` | auto | Fixed cluster count. Auto-selected via multi-metric voting when omitted. |
 | `--max-clusters` | auto | Upper bound for auto-selection. Default: `min(30, max(6, ceil(sqrt(n_loci)/3)))`. |
 | `--cluster-linkage` | `ward` | `ward` (minimizes within-cluster variance), `average`, `complete`, `single`. |
@@ -479,11 +478,9 @@ phyloai pretree filter cluster \
 | `--outlier-metric` | `average_BS` | Metric for ranking clusters when dropping. |
 | `--outlier-direction` | `low` | `low`: smaller values worse. `high`: larger values worse. |
 | `--max-drop-fraction` | 0.2 | Maximum fraction of loci removable (0.0–1.0). |
-| `--plot-metrics-rows` | `auto` | Boxplot rows per page for `cluster_metric_boxplots`. `auto`: ≤6 clusters → 12 rows, ≤12 → 6, ≤20 → 4, >20 → 2. |
-| `--plot-metrics-cols` | 2 | Boxplot columns per page. Together with `--plot-metrics-rows` defines `rows × cols` grid. |
+| `--plot-metrics-cols` | 2 | Boxplot columns per figure (cluster_metric_boxplots). Rows auto-calculated. |
 | `--plot-label-angle` | 45.0 | X-axis label rotation in plots. |
-| `--outlier-boxplot-rows` | `auto` | Boxplot rows per page for `outlier_comparison_boxplots`. |
-| `--outlier-boxplot-cols` | 4 | Boxplot columns per page for `outlier_comparison_boxplots`. |
+| `--outlier-boxplot-cols` | 4 | Boxplot columns per figure (outlier_comparison_boxplots). Rows auto-calculated. |
 | `--umap-n-neighbors` | 15 | UMAP local/global balance (PCA: ignored). |
 | `--umap-min-dist` | 0.001 | UMAP point packing (PCA: ignored). |
 | `--umap-replicates` | 1 | UMAP runs; best selected by cluster-validation rank-sum scoring (PCA: ignored). |
@@ -500,7 +497,7 @@ phyloai pretree filter cluster \
 
 Feature selection: all numeric columns from the input table, excluding locus ID, `DataType`, constant columns, and `--exclude-regex` matches. All features are z-score scaled before reduction.
 
-PCA produces `PC1`/`PC2`/`PC3` (3 components via `sklearn.decomposition.PCA`). UMAP produces a 2D embedding (requires `pip install umap-learn`; missing dependency exits with install hint).
+PCA produces `PC1`/`PC2`/`PC3` (3 components via `sklearn.decomposition.PCA`). UMAP produces `UMAP1`/`UMAP2`/`UMAP3` (requires `pip install umap-learn`; missing dependency exits with install hint).
 
 Cluster count selection (when `--n-clusters` not set): evaluate `k=2..max_clusters`. Three internal validation metrics vote — silhouette (higher), Calinski-Harabasz (higher), Davies-Bouldin (lower). Ties broken by higher silhouette, then smaller `k`. UMAP replicate selection uses rank-sum scoring across the same three metrics.
 
@@ -511,36 +508,39 @@ Outlier dropping (when `--drop-outlier-clusters auto`): rank clusters by mean `-
 Core (always written):
 ```
 runs/pretree/filter/cluster/
-├── features_used.csv|tsv              (column, included, reason)
-├── reduction.csv|tsv                  (PC1/PC2/PC3 or UMAP1/UMAP2/UMAP3 per locus)
-├── cluster_selection.csv|tsv          (k, silhouette, calinski_harabasz, davies_bouldin)
-├── clusters.csv|tsv                   (locus, cluster)
-├── cluster_summary.csv|tsv            (per-cluster size)
-├── cluster_metric_means.csv|tsv       (per-cluster mean for each numeric metric)
-├── cluster_metric_heatmap.pdf         (z-score heatmap: metrics × clusters)
-├── cluster_plots/
-│   ├── cluster_2d.pdf                 (first 2 reduced dimensions, colored by cluster)
-│   └── cluster_3d.pdf                 (3D scatter)
-├── cluster_metric_boxplots/
-│   ├── cluster_metric_boxplots_001.pdf (per-metric distributions by cluster)
-│   └── ...
-├── cluster_loci/cluster_*.csv|tsv     (loci in each cluster)
+├── 01-input/
+│   └── features_used.csv|tsv          (column, included, reason)
+├── 02-reduction/
+│   ├── reduction.csv|tsv              (PC1/PC2/PC3 or UMAP1/UMAP2/UMAP3 per locus)
+│   ├── cluster_selection.csv|tsv      (k, silhouette, calinski_harabasz, davies_bouldin)
+│   └── umap_replicates.csv|tsv        (only when UMAP replicates > 1)
+├── 03-clustering/
+│   ├── clusters.csv|tsv               (locus, cluster)
+│   ├── cluster_summary.csv|tsv        (per-cluster size)
+│   └── cluster_loci/cluster_*.csv|tsv  (loci in each cluster)
+├── 04-diagnostics/
+│   ├── cluster_metric_means.csv|tsv   (per-cluster mean for each numeric metric)
+│   └── plots/
+│       ├── cluster_2d.pdf             (first 2 reduced dimensions)
+│       ├── cluster_3d.pdf             (3D scatter)
+│       ├── cluster_metric_heatmap.pdf (z-score heatmap: metrics × clusters)
+│       └── cluster_metric_boxplots.pdf (per-metric distributions by cluster)
 ├── filter.log
 └── result.json
 ```
 
 With `--drop-outlier-clusters auto`, additionally:
 ```
-├── retained_loci.csv|tsv
-├── dropped_loci.csv|tsv
-├── filter_decisions.csv|tsv
-├── outlier_comparison.csv|tsv         (normal vs outlier: mean, median, sd, count per metric)
-├── outlier_wilcoxon.csv|tsv           (Mann-Whitney U p-values per metric)
-├── outlier_comparison_boxplots/
-│   ├── outlier_comparison_boxplots_001.pdf  (per-metric distributions by outlier status, * p<0.05)
-│   └── ...
-├── seqs/                              (only with --copy --msa-dir)
-└── trees/                             (only with --copy --tree-dir)
+├── 05-outlier-drop/
+│   ├── retained_loci.csv|tsv
+│   ├── dropped_loci.csv|tsv
+│   ├── filter_decisions.csv|tsv
+│   ├── outlier_comparison.csv|tsv     (normal vs outlier: mean, median, sd, count per metric)
+│   ├── outlier_wilcoxon.csv|tsv       (Mann-Whitney U p-values per metric)
+│   ├── plots/
+│   │   └── outlier_comparison_boxplots.pdf  (all metrics, * p<0.05 ** p<0.01 *** p<0.001)
+│   ├── seqs/                          (only with --copy --msa-dir)
+│   └── trees/                         (only with --copy --tree-dir)
 ```
 
 ### Examples
@@ -591,7 +591,11 @@ Without `--drop-outlier-clusters auto`, the command is read-only — no loci are
 
 `features_used.csv` is the audit trail — it shows every column, whether included in the feature set, and why excluded.
 
-`cluster_metric_heatmap.pdf` is a standardized (z-score) heatmap showing per-cluster mean values across all metrics. Cooler colours (blue) indicate below-average values; warmer colours (red) indicate above-average. This helps identify which clusters score poorly/excellently on which metrics at a glance.
+`plots/cluster_metric_heatmap.pdf` is a z-score standardized heatmap where:
+- **Rows** = clusters, **Columns** = metrics, **Color** = how far above (red) or below (blue) a cluster's mean is from the global mean across all clusters, measured in standard deviations.
+- A deep-red cell means that cluster scores much higher than average on that metric; deep-blue means much lower.
+- Each cell is annotated with the exact z-score value (e.g. `+1.53` or `−0.87`).
+- Use this to quickly identify: which clusters score well/poorly on which metrics, whether outlier clusters have systematically low values on quality proxies like `average_BS`, and whether cluster separation is driven by a few dominant metrics.
 
 PCA is the default reduction because it is deterministic, stable, and requires only `scikit-learn`. UMAP is available for exploring non-linear structure but adds the optional `umap-learn` dependency and stochasticity. With `--umap-replicates 1`, a fixed `--umap-random-state` seed ensures reproducibility. With `--umap-replicates > 1`, no seed is set and `--threads` can parallelize UMAP.
 
