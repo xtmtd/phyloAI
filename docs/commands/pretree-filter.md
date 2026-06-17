@@ -22,6 +22,22 @@ phyloai pretree filter   →  quality-controlled MSAs & trees  ← YOU ARE HERE
 phyloai pretree concat   →  supermatrix
 ```
 
+### Recommended workflow
+
+For typical phylogenomic MSAs, the four subcommands are designed to be applied in sequence:
+
+1. **`taper`** — mask potential site-level errors in the trimmed MSAs. This produces cleaner alignments without discarding loci or taxa.
+
+2. **Build gene trees** from the masked MSAs (using an external tree-inference tool). These trees reflect the corrected sequences.
+
+3. **`treeshrink`** — feed the gene trees (and optionally the masked MSAs) into TreeShrink to identify and prune outlier long-branch taxa. The result is a set of shrunk trees and optionally shrunk MSAs with problematic taxa removed.
+
+4. **(Optional) Re-infer gene trees** on the shrunk MSAs — TreeShrink ensures long-branch taxa are removed, but the tree topology may improve further with the pruned alignment.
+
+5. **`metrics`** and/or **`cluster`** — only after site masking and taxon pruning should you compute per-locus quality metrics (`phyloai pretree metrics`) and apply locus-level filtering. These subcommands evaluate the final, cleaned dataset.
+
+The subcommands can also be used independently. For example, if you already have gene trees and only want to prune taxa, start from step 3. If you only need to apply metric thresholds, jump directly to `filter metrics`.
+
 All subcommands write `result.json` and `filter.log` to their output directory. Terminal output uses Rich tables; suppress with `--quiet`.
 
 ### Shared options
