@@ -496,6 +496,7 @@ runs/pretree/filter/symtest/
 ├── retained_loci.csv|tsv
 ├── dropped_loci.csv|tsv               (locus, reason)
 ├── filter_decisions.csv|tsv           (locus, status, p_value, symtest_type,
+│                                       sym_pval, mar_pval, int_pval,
 │                                       sym_sig, sym_non, mar_sig, mar_non,
 │                                       int_sig, int_non)
 ├── filter.log

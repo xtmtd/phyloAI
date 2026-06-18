@@ -1558,8 +1558,12 @@ def _filter_by_symtest_pval(
 
         decision = {
             "locus": locus,
+            "status": "",  # set below
             "p_value": p_value,
             "symtest_type": symtest_type,
+            "sym_pval": entry.get("SymPval"),
+            "mar_pval": entry.get("MarPval"),
+            "int_pval": entry.get("IntPval"),
             "sym_sig": entry.get("SymSig", 0),
             "sym_non": entry.get("SymNon", 0),
             "mar_sig": entry.get("MarSig", 0),
@@ -1674,6 +1678,7 @@ def run_symtest(
     start = time.monotonic()
     env = ToolEnv()
     iqtree_exe = str(iqtree_path) if iqtree_path else str(env.require("iqtree3"))
+    iqtree_version = env._tools.get("iqtree3") and env._tools["iqtree3"].version or "unknown"
 
     msa_map = scan_msa_dir(msa_dir) if msa_map is None else msa_map
     if not msa_map:
@@ -1697,7 +1702,7 @@ def run_symtest(
         sym_extra = f" --symtest-type {symtest_type}" if symtest_type else ""
         return {
             "status": "success", "command": command, "wall_time": 0,
-            "tool_versions": {"iqtree3": "unknown"}, "params": params,
+            "tool_versions": {"iqtree3": iqtree_version}, "params": params,
             "key_results": {"n_input": len(msa_map)},
             "error": None,
             "data": {"dry_run_cmd": f"{iqtree_exe} -s <matrix> -p <partitions> "
@@ -1818,6 +1823,7 @@ def run_symtest(
         _write_csv_table(
             decisions, output_dir / f"filter_decisions{suffix}",
             ["locus", "status", "p_value", "symtest_type",
+             "sym_pval", "mar_pval", "int_pval",
              "sym_sig", "sym_non", "mar_sig", "mar_non", "int_sig", "int_non"],
             delimiter,
         )
@@ -1831,7 +1837,7 @@ def run_symtest(
             "status": "success",
             "command": command,
             "wall_time": round(wall_time, 2),
-            "tool_versions": {"iqtree3": "unknown"},
+            "tool_versions": {"iqtree3": iqtree_version},
             "params": params,
             "key_results": {
                 "n_input": len(symtest_results),

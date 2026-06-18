@@ -135,6 +135,21 @@ def test_filter_symtest_boundary_at_threshold():
     assert retained[0]["p_value"] == 0.05
 
 
+def test_filter_symtest_decision_has_all_pval_columns():
+    from phyloai.pretree.filter import _filter_by_symtest_pval
+    results = [
+        {"Name": "gene1", "SymPval": 0.475, "SymSig": 44, "SymNon": 92,
+         "MarSig": 50, "MarNon": 86, "MarPval": 0.722,
+         "IntSig": 4, "IntNon": 132, "IntPval": 0.239},
+    ]
+    _, _, decisions = _filter_by_symtest_pval(results, "Sym", 0.05)
+    d = decisions[0]
+    assert d["sym_pval"] == 0.475
+    assert d["mar_pval"] == 0.722
+    assert d["int_pval"] == 0.239
+    assert d["p_value"] == 0.475  # selected column
+
+
 # --- _build_symtest_supermatrix ---
 
 def test_build_symtest_supermatrix(tmp_path):
