@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`phyloai pretree filter` is the quality-control gate between tree inference and supermatrix concatenation. It provides four complementary filtering workflows:
+`phyloai pretree filter` is the quality-control gate between tree inference and supermatrix concatenation. It provides five complementary filtering workflows:
 
 - `taper` — mask erroneous sites within individual loci (site-level)
 - `treeshrink` — prune outlier long-branch taxa from gene trees (taxon-level)
@@ -24,7 +24,7 @@ phyloai pretree concat   →  supermatrix
 
 ### Recommended workflow
 
-For typical phylogenomic MSAs, the four subcommands are designed to be applied in sequence:
+For typical phylogenomic MSAs, the five subcommands are designed to be applied in sequence:
 
 1. **`taper`** — mask potential site-level errors in the trimmed MSAs. This produces cleaner alignments without discarding loci or taxa.
 
@@ -34,7 +34,7 @@ For typical phylogenomic MSAs, the four subcommands are designed to be applied i
 
 4. **(Optional) Re-infer gene trees** on the shrunk MSAs — TreeShrink ensures long-branch taxa are removed, but the tree topology may improve further with the pruned alignment.
 
-5. **`metrics`** and/or **`cluster`** — only after site masking and taxon pruning should you compute per-locus quality metrics (`phyloai pretree metrics`) and apply locus-level filtering. These subcommands evaluate the final, cleaned dataset.
+5. **`metrics`**, **`symtest`** and/or **`cluster`** — only after site masking and taxon pruning should you evaluate per-locus quality. These subcommands are optional but complementary: `metrics` computes marker attributes for rule-based filtering, `symtest` tests phylogenetic symmetry assumptions (stationarity/homogeneity) via IQ-TREE3 and filters loci by p-value, and `cluster` groups loci by metric profiles for exploration and outlier removal. Use one or more of these on the cleaned dataset as needed.
 
 The subcommands can also be used independently. For example, if you already have gene trees and only want to prune taxa, start from step 3. If you only need to apply metric thresholds, jump directly to `filter metrics`.
 
