@@ -278,6 +278,15 @@ def _write_matrix(
     return converter.write_alignment(alignment, out_path, fmt, molecule_type=molecule_type)
 
 
+def _write_partitions(
+    out_path: Path,
+    genes: list[tuple[str, int, int]],
+    prefix_type: str,
+) -> None:
+    lines = [f"{prefix_type}, {name} = {start}-{end}\n" for name, start, end in genes]
+    out_path.write_text("".join(lines))
+
+
 def _compute_concat_stats(matrix: dict[str, str], seq_type: str) -> dict[str, Any]:
     from phyloai.pretree.stats import compute_site_patterns, _summarize_per_taxon, per_taxon_stats
 
@@ -463,9 +472,38 @@ def run_concat(
     if not dry_run:
         output_dir.mkdir(parents=True, exist_ok=True)
 
+    def _fail_with_error(message: str) -> None:
+        if not dry_run:
+            err_payload: dict[str, Any] = {
+                "status": "error",
+                "command": f"phyloai pretree concat --msa-dir {msa_dir}",
+                "wall_time": round(time.time() - start_time, 3),
+                "tool_versions": {},
+                "params": {
+                    "msa_dir": str(msa_dir),
+                    "output_dir": str(output_dir),
+                    "prefix": prefix,
+                    "seq_type": seq_type,
+                    "taxa_occupancy": taxa_occupancy,
+                    "recoding": recoding,
+                    "outgroup": outgroup,
+                    "to_format": to_format,
+                    "translate_codon": translate_codon,
+                    "exclude_codon3": exclude_codon3,
+                    "dry_run": dry_run,
+                },
+                "key_results": {},
+                "error": message,
+                "data": {},
+            }
+            result_path = output_dir / "result.json"
+            with open(result_path, "w") as fh:
+                json.dump(err_payload, fh, indent=2)
+        raise ValueError(message)
+
     msa_paths = _scan_msa_files(msa_dir)
     if not msa_paths:
-        raise ValueError(f"No alignment files found in '{msa_dir}'")
+        _fail_with_error(f"No alignment files found in '{msa_dir}'")
 
     # --- Pass 1: Header-first scan ---------------------------------------------
     all_taxa: set[str] = set()
@@ -485,26 +523,32 @@ def run_concat(
     else:
         resolved_seq_type = seq_type
 
-    # --- Validation -------------------------------------------------------------
+    # --- Validation (before any directory or file creation) ---------------------
     if resolved_seq_type != "CODON" and (translate_codon or exclude_codon3):
-        raise ValueError(
+        _fail_with_error(
             "--translate-codon and --exclude-codon3 require --seq-type CODON, "
             f"got {resolved_seq_type}"
         )
     if recoding:
+        known = list(AA_RECODING_TABLES) + list(NT_RECODING_TABLES)
+        if recoding not in known:
+            _fail_with_error(
+                f"Unknown recoding scheme: {recoding!r}. "
+                f"Supported schemes: {', '.join(sorted(known))}"
+            )
         if recoding in AA_RECODING_TABLES and resolved_seq_type not in ("AA",):
-            raise ValueError(
+            _fail_with_error(
                 f"Recoding scheme '{recoding}' requires AA seq_type, got {resolved_seq_type}"
             )
         if recoding in NT_RECODING_TABLES and resolved_seq_type not in ("NT", "CODON"):
-            raise ValueError(
+            _fail_with_error(
                 f"Recoding scheme '{recoding}' requires NT or CODON seq_type, got {resolved_seq_type}"
             )
 
     # --- Occupancy filtering ----------------------------------------------------
     kept_paths, dropped = _filter_by_occupancy(msa_paths, msa_taxa_map, all_taxa, taxa_occupancy)
     if not kept_paths:
-        raise ValueError("No MSAs passed occupancy filtering")
+        _fail_with_error("No MSAs passed occupancy filtering")
 
     # --- Pass 2: Streaming concat -----------------------------------------------
     def _accumulate_replacements(counts: dict[str, int]) -> None:
@@ -517,6 +561,8 @@ def run_concat(
     msa_data: dict[str, tuple[list[str], list[str], int]] = {}
 
     matrix_parts: dict[str, list[str]] = {taxon: [] for taxon in all_taxa}
+    genes_original: list[tuple[str, int, int]] = []
+    pos = 1
     for path in kept_paths:
         taxa, seqs, length = _read_msa(path)
         norm = normalize_sequences(seqs, norm_seq_type)
@@ -525,6 +571,10 @@ def run_concat(
 
         if needs_variant_data:
             msa_data[str(path)] = (taxa, normalized_seqs, length)
+
+        gene_name = path.stem
+        genes_original.append((gene_name, pos, pos + length - 1))
+        pos += length
 
         taxon_to_seq = dict(zip(taxa, normalized_seqs))
         for taxon in all_taxa:
@@ -539,10 +589,18 @@ def run_concat(
     ext = ext_map.get(to_format, ".fa")
     recoding_warnings: list[str] = []
 
-    matrix = _reorder_outgroup(matrix, outgroup)
+    try:
+        matrix = _reorder_outgroup(matrix, outgroup)
+    except ValueError as exc:
+        _fail_with_error(str(exc))
     original_path = output_dir / f"{prefix}{ext}"
     if not dry_run:
         _write_matrix(matrix, original_path, to_format, resolved_seq_type)
+        _write_partitions(
+            output_dir / f"{prefix}.partitions",
+            genes_original,
+            "DNA" if resolved_seq_type in ("NT", "CODON") else "LG",
+        )
     variants.append({
         "variant": "original", "path": str(original_path),
         "seq_type": resolved_seq_type,
@@ -553,10 +611,18 @@ def run_concat(
         recoded_seq_type = "other"
         recoded_matrix, rw = _apply_recoding(matrix, recoding)
         recoding_warnings = rw
-        recoded_matrix = _reorder_outgroup(recoded_matrix, outgroup)
+        try:
+            recoded_matrix = _reorder_outgroup(recoded_matrix, outgroup)
+        except ValueError as exc:
+            _fail_with_error(str(exc))
         recoded_path = output_dir / f"{prefix}.recoded{ext}"
         if not dry_run:
             _write_matrix(recoded_matrix, recoded_path, to_format, recoded_seq_type)
+            _write_partitions(
+                output_dir / f"{prefix}.recoded.partitions",
+                genes_original,
+                "AUTO",
+            )
         variants.append({
             "variant": "recoded", "path": str(recoded_path),
             "seq_type": recoded_seq_type,
@@ -575,10 +641,24 @@ def run_concat(
         tnorm = normalize_sequences([translated_matrix[t] for t in translated_taxa], "AA")
         translated_matrix = dict(zip(translated_taxa, tnorm.sequences))
         _accumulate_replacements(tnorm.replacements)
-        translated_matrix = _reorder_outgroup(translated_matrix, outgroup)
+        try:
+            translated_matrix = _reorder_outgroup(translated_matrix, outgroup)
+        except ValueError as exc:
+            _fail_with_error(str(exc))
         translated_path = output_dir / f"{prefix}.translated{ext}"
         if not dry_run:
             _write_matrix(translated_matrix, translated_path, to_format, "AA")
+            genes_translated: list[tuple[str, int, int]] = []
+            tpos = 1
+            for path_t in kept_paths:
+                _, _, tlen = translated_data[str(path_t)]
+                genes_translated.append((path_t.stem, tpos, tpos + tlen - 1))
+                tpos += tlen
+            _write_partitions(
+                output_dir / f"{prefix}.translated.partitions",
+                genes_translated,
+                "LG",
+            )
         variants.append({
             "variant": "translated", "path": str(translated_path),
             "seq_type": "AA",
@@ -597,10 +677,24 @@ def run_concat(
         cnorm = normalize_sequences([cds12_matrix[t] for t in cds12_taxa], "NT")
         cds12_matrix = dict(zip(cds12_taxa, cnorm.sequences))
         _accumulate_replacements(cnorm.replacements)
-        cds12_matrix = _reorder_outgroup(cds12_matrix, outgroup)
+        try:
+            cds12_matrix = _reorder_outgroup(cds12_matrix, outgroup)
+        except ValueError as exc:
+            _fail_with_error(str(exc))
         cds12_path = output_dir / f"{prefix}.cds12{ext}"
         if not dry_run:
             _write_matrix(cds12_matrix, cds12_path, to_format, "NT")
+            genes_cds12: list[tuple[str, int, int]] = []
+            cpos = 1
+            for path_c in kept_paths:
+                _, _, clen = cds12_data[str(path_c)]
+                genes_cds12.append((path_c.stem, cpos, cpos + clen - 1))
+                cpos += clen
+            _write_partitions(
+                output_dir / f"{prefix}.cds12.partitions",
+                genes_cds12,
+                "DNA",
+            )
         variants.append({
             "variant": "cds12", "path": str(cds12_path),
             "seq_type": "NT",

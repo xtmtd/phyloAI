@@ -62,13 +62,13 @@ def pretree() -> None:
     ),
 )
 @click.option("--input", "input_path", type=click.Path(path_type=Path), required=True, help="Input directory or single sequence/alignment file.")
-@click.option("--output-dir", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/convert"), show_default=True, help="Directory where converted files and result.json are written.")
+@click.option("--output-dir", "-o", "output_dir", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/convert"), show_default=True, help="Directory where converted files and result.json are written.")
 @click.option("--to", "target_format", type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="fasta", show_default=True, help="Target output format.")
 @click.option("--input-format", type=click.Choice(["auto", "fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="auto", show_default=True, help="Override input format detection for all input files.")
 @click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True, help="Override sequence type detection.")
 @click.option("--aa-special", type=click.Choice(["x", "keep"]), default="x", show_default=True, help="Convert B/Z/J/X/U/O to X, or preserve them with keep.")
-@click.option("--threads", "threads", type=int, default=4, show_default=True, help="Directory mode worker count.")
-@click.option("--quiet", "quiet", is_flag=True, default=False, help="Suppress Rich terminal output except errors.")
+@click.option("--threads", "-t", "threads", type=int, default=4, show_default=True, help="Directory mode worker count.")
+@click.option("--quiet", "-q", "quiet", is_flag=True, default=False, help="Suppress Rich terminal output except errors.")
 @click.option("--overwrite", "overwrite", is_flag=True, default=False, help="Delete and recreate a non-empty output directory before conversion.")
 def convert_command(
     input_path: Path,
@@ -176,6 +176,7 @@ def convert_command(
 )
 @click.option(
     "--output-dir",
+    "-o",
     "output_dir",
     type=click.Path(file_okay=False, path_type=Path),
     default=Path("runs/pretree/stats"),
@@ -196,6 +197,7 @@ def convert_command(
 )
 @click.option(
     "--threads",
+    "-t",
     "threads",
     type=int,
     default=4,
@@ -204,6 +206,7 @@ def convert_command(
 )
 @click.option(
     "--quiet",
+    "-q",
     is_flag=True,
     default=False,
     help="Suppress terminal output except for errors.",
@@ -879,6 +882,34 @@ def concat_command(
         )
     except ValueError as exc:
         error_msg = str(exc)
+        if not dry_run and output_dir.exists():
+            import json
+
+            err_payload = {
+                "status": "error",
+                "command": f"phyloai pretree concat --msa-dir {msa_dir}",
+                "wall_time": 0.0,
+                "tool_versions": {},
+                "params": {
+                    "msa_dir": str(msa_dir),
+                    "output_dir": str(output_dir),
+                    "prefix": prefix,
+                    "seq_type": seq_type,
+                    "taxa_occupancy": taxa_occupancy,
+                    "recoding": recoding,
+                    "outgroup": outgroup,
+                    "to_format": to_format,
+                    "translate_codon": translate_codon,
+                    "exclude_codon3": exclude_codon3,
+                    "dry_run": dry_run,
+                },
+                "key_results": {},
+                "error": error_msg,
+                "data": {},
+            }
+            result_path = output_dir / "result.json"
+            with open(result_path, "w") as fh:
+                json.dump(err_payload, fh, indent=2)
 
     if error_msg is not None:
         _fail(error_msg, 1)
@@ -901,7 +932,7 @@ def concat_command(
         for panel in panels:
             console.print(panel)
 
-    if payload is not None and not dry_run:
+    if payload is not None and not dry_run and not quiet:
         click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
     elif dry_run and not quiet:
         click.echo("[dry-run] No files written.", err=True)

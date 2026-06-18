@@ -1556,7 +1556,206 @@ git commit -m "feat(cli): register pretree concat command with --dry-run"
 
 ---
 
-### Task 10: Integration Tests and Edge Cases
+### Task 10: Partition File Generation
+
+**Files:**
+- Modify: `phyloai/pretree/concat.py`
+- Modify: `tests/pretree/test_concat.py`
+
+- [ ] **Step 1: Write failing tests for `_write_partitions` and partition tracking**
+
+```python
+# Append to tests/pretree/test_concat.py
+
+
+def test_write_partitions_dna_three_genes(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_partitions
+
+    out_path = tmp_path / "matrix.partitions"
+    genes = [("COI", 1, 654), ("16S", 655, 1203), ("CYTB", 1204, 1980)]
+    _write_partitions(out_path, genes, "DNA")
+
+    content = out_path.read_text()
+    assert "DNA, COI = 1-654\n" in content
+    assert "DNA, 16S = 655-1203\n" in content
+    assert "DNA, CYTB = 1204-1980\n" in content
+
+
+def test_write_partitions_lg_single_gene(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_partitions
+
+    out_path = tmp_path / "matrix.partitions"
+    genes = [("GENE1", 1, 500)]
+    _write_partitions(out_path, genes, "LG")
+
+    content = out_path.read_text()
+    assert content == "LG, GENE1 = 1-500\n"
+
+
+def test_write_partitions_auto_pref(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_partitions
+
+    out_path = tmp_path / "matrix.recoded.partitions"
+    genes = [("geneA", 1, 100), ("geneB", 101, 200)]
+    _write_partitions(out_path, genes, "AUTO")
+
+    content = out_path.read_text()
+    assert "AUTO, geneA = 1-100\n" in content
+    assert "AUTO, geneB = 101-200\n" in content
+
+
+def test_run_concat_writes_partitions_for_all_variants(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n>C\nACGT\n")
+    (msa_dir / "gene2.fa").write_text(">A\nGGCC\n>B\nGGCC\n>C\nGGCC\n")
+
+    output_dir = tmp_path / "out"
+    payload = run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.5, recoding="RY-nucleotide",
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=False, overwrite=False,
+    )
+
+    assert (output_dir / "matrix.partitions").exists()
+    assert (output_dir / "matrix.recoded.partitions").exists()
+
+    orig = (output_dir / "matrix.partitions").read_text()
+    assert "DNA, gene1 = 1-4\n" in orig
+    assert "DNA, gene2 = 5-8\n" in orig
+
+    recoded = (output_dir / "matrix.recoded.partitions").read_text()
+    assert "AUTO, gene1 = 1-4\n" in recoded
+    assert "AUTO, gene2 = 5-8\n" in recoded
+
+
+def test_run_concat_partitions_dry_run_no_files(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.0, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=True, overwrite=False,
+    )
+
+    assert not (output_dir / "matrix.partitions").exists()
+
+
+def test_run_concat_partitions_with_codon_variants(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    # 6bp = 2 codons
+    (msa_dir / "gene1.fa").write_text(">A\nATGCGT\n>B\nATGCGT\n")
+
+    output_dir = tmp_path / "out"
+    run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="CODON", taxa_occupancy=0.0, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=True, exclude_codon3=True,
+        dry_run=False, overwrite=False,
+    )
+
+    # Original: codon matrix, 1 gene, length = 6
+    orig_p = (output_dir / "matrix.partitions").read_text()
+    assert "DNA, gene1 = 1-6\n" in orig_p
+
+    # Translated: AA matrix, 1 gene, length = 2 (6/3)
+    trans_p = (output_dir / "matrix.translated.partitions").read_text()
+    assert "LG, gene1 = 1-2\n" in trans_p
+
+    # Codon12: NT matrix, 1 gene, length = 4 (2*2 from exclude-codon3)
+    cds12_p = (output_dir / "matrix.cds12.partitions").read_text()
+    assert "DNA, gene1 = 1-4\n" in cds12_p
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `pytest tests/pretree/test_concat.py -v -k "write_partitions or partitions"`
+Expected: FAIL with `ImportError`
+
+- [ ] **Step 3: Write `_write_partitions()` and integrate into `run_concat()`**
+
+```python
+# Append to phyloai/pretree/concat.py
+
+
+def _write_partitions(
+    out_path: Path,
+    genes: list[tuple[str, int, int]],
+    prefix_type: str,
+) -> None:
+    lines = [f"{prefix_type}, {name} = {start}-{end}\n" for name, start, end in genes]
+    out_path.write_text("".join(lines))
+```
+
+**Integration into `run_concat()`** — track positions during Pass 2 and write partitions for each variant:
+
+In Pass 2 (streaming concat), accumulate `genes_original` as a list of `(gene_name, start, end)` tuples. After writing the original matrix, write its partitions file. For variant matrices, recompute positions from the per-gene variant data.
+
+Key code additions to `run_concat()` (position tracking in Pass 2):
+
+```python
+# In Pass 2 loop, after matrix_parts accumulation:
+genes_original: list[tuple[str, int, int]] = []
+pos = 1
+for path in kept_paths:
+    _, _, length = _read_msa(path)  # or from msa_data if CODON variants
+    gene_name = path.stem
+    genes_original.append((gene_name, pos, pos + length - 1))
+    pos += length
+```
+
+After writing original matrix:
+```python
+if not dry_run:
+    _write_partitions(
+        output_dir / f"{prefix}.partitions",
+        genes_original,
+        "DNA" if resolved_seq_type in ("NT", "CODON") else "LG",
+    )
+```
+
+For recoded matrix (same gene boundaries):
+```python
+if recoding and not dry_run:
+    _write_partitions(
+        output_dir / f"{prefix}.recoded.partitions",
+        genes_original,
+        "AUTO",
+    )
+```
+
+For translated/cds12 variants — recompute gene positions from the per-gene variant data (lengths may differ). The `_write_partitions` call uses the appropriate prefix type (`LG` for translated, `DNA` for cds12).
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `pytest tests/pretree/test_concat.py -v -k "write_partitions or partitions or run_concat"`
+Expected: All partition-related tests PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add phyloai/pretree/concat.py tests/pretree/test_concat.py
+git commit -m "feat(pretree): add RAxML-style .partitions file generation for concat"
+```
+
+---
+
+### Task 11: Integration Tests and Edge Cases
 
 **Files:**
 - Modify: `tests/pretree/test_concat.py`
@@ -1734,37 +1933,8 @@ git commit -m "test(pretree): add integration tests for concat (dry-run, recodin
 
 | # | Issue | Fix |
 |---|---|---|
-| 1 | `_translate_codon` gap logic buggy | Rewrote: process codons in 3bp blocks; codon with `-` → `"-"` |
-| 2 | cds12 `molecule_type="protein"` | Changed to `"NT"` (cds12 is nucleotide) |
-| 3 | Occupancy test `0.5 >= 0.5` expecting drop | New test data: gene3 has 1/4 taxa = 0.25 (clearly below 0.5) |
-| 4 | `--dry-run` missing | Added to `run_concat()` param and CLI; skips all file writes |
-| 5 | `concat.log` missing | Writes key=value log (wall_time, status, exit_code, counts) |
-| 6 | Overview panel missing fields | Added prefix, to_format, n_msa_input, n_msa_dropped, total_length, threshold, recoding, outgroup, variants |
-| 7 | Recoding×seq_type not validated | Validated in `run_concat()` before applying recoding |
-| 8 | `recoding_warnings` not tracked | `_apply_recoding` now returns `(dict, list[str])`; warnings saved to `result.json` |
-| 9 | `ambiguous_ratio` hardcoded 0.0 | `_compute_concat_stats` uses `per_taxon_stats()` from `stats.py` |
-| 10 | NT table missing `N, X, -, ?, .` | Added to `NT_RECODING_TABLES["RY-nucleotide"]` |
-| 11 | Dead code in `run_concat` | Simplified to single `if` check |
-| 12 | Sequences not normalized | Per-gene `normalize_sequences()` after MSA reading; all 4 variant matrices built from clean data. Translated/cds12 also normalized post-concat. `all_normalization_replacements` saved to `result.json`. |
-| 13 | AA recoding tables missing `X` | Added `"X": "X"` to all Dayhoff/SandR/KGB tables; added all IUPAC ambiguous NT codes to RY-nucleotide table |
-| 14 | RY-nucleotide test wrong I/O | Fixed test to use correct input "ACGTN--?." → "RYYR?--?." |
-| 15 | `_apply_recoding` preserve-chars test broken | Fixed: "A-C?F.U*X" → "A-H.?*X" (old test had C→0 which is wrong for Dayhoff-6) |
-| 16 | Double memory from msa_data + matrix | Two-pass streaming: Pass 1 header-only scan → occupancy → Pass 2 stream-concat only kept files. Dropped files never fully read. Peak memory ≈ output size. |
-| 17 | `_read_msa_headers` missing | Lightweight FASTA header parser + Biopython fallback for phylip |
-| 18 | `normalization_replacements` counts overwritten | Added per-key accumulation across files/variants instead of `dict.update()` |
-| 19 | `cds12` variant reported wrong `seq_type` | Changed metadata from `CODON` to `NT` |
-| 20 | CODON stats path ambiguous | `_compute_concat_stats()` now treats `CODON` as `NT` for character/site statistics |
-| 21 | Re-normalized variant rebuild depended on implicit dict ordering | Rebuild translated/cds12 matrices using an explicit taxon order list |
-| 22 | Pass 1 guarantee too absolute | Clarified as FASTA header-only with parser fallback for other formats |
-| 23 | `--dry-run` behavior underspecified | Standardized on: validate and compute in-memory summary, write no files |
-| 24 | `--recoding` free-text input | Changed to `click.Choice` with exact values; help text groups NT vs AA |
-| 25 | `--outgroup` help ambiguous | Clarified "Single taxon name to move to first position" |
-| 26 | Only original variant had stats | Per-variant stats computed for all variants; `variant_stats` added to `result.json`, `concat.log`, screen display |
-| 27 | `recoded` variant `seq_type` misleading | Changed to `"other"` since recoded characters don't match AA or NT alphabets |
-| 28 | Recoded stats missing gap_ratio + site patterns | Custom stats handler for `seq_type == "other"`: gap_ratio, site patterns; `ambiguous_ratio` = 0 |
-| 29 | Display showed per-variant stats with single-column layout | Rewrote `_render_concat_panels(overview, variant_stats)` with per-variant tables for Character Summary and Site Patterns; Overview drops `seq_type`/`total_length` |
-| 30 | Site pattern ratios displayed 2 decimal places | Changed to 4 decimal places |
-| 31 | `distinct_patterns` didn't match IQ-TREE | `compute_site_patterns()` now collapses all non-standard characters (not just `?`/`N`/`-`) to gap symbol; matches IQ-TREE exactly |
+| 1-31 | (from prior revisions) | ... |
+| 32 | Missing `.partitions` file generation | Added `_write_partitions()` and position tracking in `run_concat()`; each matrix variant gets a corresponding RAxML-style `.partitions` file. Generated as Task 10. |
 
 ## Self-Review Checklist
 

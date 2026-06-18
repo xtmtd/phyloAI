@@ -63,15 +63,19 @@ concatenation.  Missing taxa in a given gene are filled with `?`.
 ```
 runs/pretree/concat/
 ├── matrix.fa                   # (or .phy/.nex)
+├── matrix.partitions           # RAxML-style partition file
 ├── matrix.recoded.fa           # if --recoding
+├── matrix.recoded.partitions   # if --recoding
 ├── matrix.translated.fa        # if --translate-codon
+├── matrix.translated.partitions # if --translate-codon
 ├── matrix.cds12.fa             # if --exclude-codon3
+├── matrix.cds12.partitions     # if --exclude-codon3
 ├── dropped_alignments.csv      # if any MSA dropped
 ├── result.json
 └── concat.log
 ```
 
-**Variants:**
+### Variants
 
 | Variant | Condition | `seq_type` |
 |---------|-----------|-----------|
@@ -80,10 +84,43 @@ runs/pretree/concat/
 | Translated | `--translate-codon` | `AA` |
 | Codon1+2 | `--exclude-codon3` | `NT` |
 
-`result.json` records generated and planned variant outputs as full paths in
-both `key_results.variants_produced` and `data.variants[].path`.
+### Partition files
 
-All PhyloAI-authored FASTA-family outputs from this command wrap sequence lines at 60 characters.
+Each matrix is accompanied by a `.partitions` file in RAxML-style format,
+describing gene boundaries in the supermatrix for partitioned analysis with
+tools like IQ-TREE (`-p` option).
+
+Each line in the file has the form:
+
+```
+TYPE, gene_name = start-end
+```
+
+**Prefix rule:**
+
+| Matrix variant | `TYPE` |
+|---|---|
+| Original (NT / CODON) | `DNA` |
+| Original (AA) | `LG` |
+| Recoded (any) | `AUTO` |
+| Translated (CODON→AA) | `LG` |
+| Codon1+2 (CODON→NT) | `DNA` |
+
+Gene names use the input file basename (without extension).  Positions are
+1-indexed inclusive ranges.  For translated/cds12 variants, positions are
+recomputed to match variant matrix lengths.  Not written under `--dry-run`.
+
+Example:
+```
+DNA, COI = 1-654
+DNA, 16S = 655-1203
+```
+
+### result.json
+
+Generated and planned variant outputs are recorded as full paths in both
+`key_results.variants_produced` and `data.variants[].path`.  All PhyloAI-authored
+FASTA-family outputs from this command wrap sequence lines at 60 characters.
 
 ## Screen Display (Rich)
 
@@ -144,5 +181,7 @@ phyloai pretree concat --msa-dir ./aligned --taxa-occupancy 1.0 --dry-run
   conversion to avoid name truncation issues with Phylip-PAML output.
 - `result.json` includes `variant_stats` with per-variant character summary
   and site patterns.
+- `.partitions` files are generated alongside each matrix for partitioned
+  phylogenetic analysis (e.g., `iqtree -s matrix.fa -p matrix.partitions`).
 - `--dry-run --overwrite` still leaves any existing output directory untouched;
   `--overwrite` only removes files during a real run.

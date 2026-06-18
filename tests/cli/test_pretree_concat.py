@@ -53,3 +53,49 @@ def test_cli_pretree_concat_quiet_dry_run_suppresses_output(tmp_path: Path) -> N
 
     assert result.exit_code == 0, result.output
     assert result.output == ""
+
+
+def test_cli_pretree_concat_quiet_suppresses_success_message(tmp_path: Path) -> None:
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    result = CliRunner().invoke(
+        cli,
+        [
+            "pretree", "concat",
+            "--msa-dir", str(msa_dir),
+            "--output-dir", str(output_dir),
+            "--seq-type", "NT",
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Results saved to" not in result.output
+
+
+def test_cli_pretree_concat_invalid_recoding_writes_error_result_json(tmp_path: Path) -> None:
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    result = CliRunner().invoke(
+        cli,
+        [
+            "pretree", "concat",
+            "--msa-dir", str(msa_dir),
+            "--output-dir", str(output_dir),
+            "--seq-type", "NT",
+            "--recoding", "Dayhoff-6",
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    result_path = output_dir / "result.json"
+    assert result_path.exists()
+    payload = json.loads(result_path.read_text())
+    assert payload["status"] == "error"
+    assert "Dayhoff-6" in payload["error"]

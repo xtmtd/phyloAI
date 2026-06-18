@@ -653,3 +653,178 @@ def test_run_concat_output_dir_conflict(tmp_path: Path) -> None:
         dry_run=False, overwrite=True,
     )
     assert payload["status"] == "success"
+
+
+def test_run_concat_rejects_unknown_recoding_scheme(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match="Unknown recoding scheme"):
+        run_concat(
+            msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+            seq_type="NT", taxa_occupancy=0.0, recoding="NotARealScheme",
+            outgroup=None, to_format="fasta",
+            translate_codon=False, exclude_codon3=False,
+            dry_run=False, overwrite=False,
+        )
+
+
+def test_run_concat_validation_error_writes_result_json(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+    import json
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_concat(
+            msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+            seq_type="NT", taxa_occupancy=0.0, recoding="NotARealScheme",
+            outgroup=None, to_format="fasta",
+            translate_codon=False, exclude_codon3=False,
+            dry_run=False, overwrite=False,
+        )
+
+    assert output_dir.exists()
+    result_path = output_dir / "result.json"
+    assert result_path.exists()
+    payload = json.loads(result_path.read_text())
+    assert payload["status"] == "error"
+    assert "NotARealScheme" in payload["error"]
+
+
+def test_run_concat_validation_error_leaves_no_partial_matrix(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    with pytest.raises(ValueError):
+        run_concat(
+            msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+            seq_type="NT", taxa_occupancy=0.0, recoding="NotARealScheme",
+            outgroup=None, to_format="fasta",
+            translate_codon=False, exclude_codon3=False,
+            dry_run=False, overwrite=False,
+        )
+
+    assert not (output_dir / "matrix.fa").exists()
+    assert not (output_dir / "matrix.partitions").exists()
+
+
+def test_write_partitions_dna_three_genes(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_partitions
+
+    out_path = tmp_path / "matrix.partitions"
+    genes = [("COI", 1, 654), ("16S", 655, 1203), ("CYTB", 1204, 1980)]
+    _write_partitions(out_path, genes, "DNA")
+
+    content = out_path.read_text()
+    assert "DNA, COI = 1-654\n" in content
+    assert "DNA, 16S = 655-1203\n" in content
+    assert "DNA, CYTB = 1204-1980\n" in content
+
+
+def test_write_partitions_lg_single_gene(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_partitions
+
+    out_path = tmp_path / "matrix.partitions"
+    genes = [("GENE1", 1, 500)]
+    _write_partitions(out_path, genes, "LG")
+
+    content = out_path.read_text()
+    assert content == "LG, GENE1 = 1-500\n"
+
+
+def test_write_partitions_auto_prefix(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import _write_partitions
+
+    out_path = tmp_path / "matrix.recoded.partitions"
+    genes = [("geneA", 1, 100), ("geneB", 101, 200)]
+    _write_partitions(out_path, genes, "AUTO")
+
+    content = out_path.read_text()
+    assert "AUTO, geneA = 1-100\n" in content
+    assert "AUTO, geneB = 101-200\n" in content
+
+
+def test_run_concat_writes_partitions_for_all_variants(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n>C\nACGT\n")
+    (msa_dir / "gene2.fa").write_text(">A\nGGCC\n>B\nGGCC\n>C\nGGCC\n")
+
+    output_dir = tmp_path / "out"
+    run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.5, recoding="RY-nucleotide",
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=False, overwrite=False,
+    )
+
+    assert (output_dir / "matrix.partitions").exists()
+    assert (output_dir / "matrix.recoded.partitions").exists()
+
+    orig = (output_dir / "matrix.partitions").read_text()
+    assert "DNA, gene1 = 1-4\n" in orig
+    assert "DNA, gene2 = 5-8\n" in orig
+
+    recoded = (output_dir / "matrix.recoded.partitions").read_text()
+    assert "AUTO, gene1 = 1-4\n" in recoded
+    assert "AUTO, gene2 = 5-8\n" in recoded
+
+
+def test_run_concat_partitions_dry_run_no_files(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    output_dir = tmp_path / "out"
+    run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="NT", taxa_occupancy=0.0, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=False, exclude_codon3=False,
+        dry_run=True, overwrite=False,
+    )
+
+    assert not (output_dir / "matrix.partitions").exists()
+
+
+def test_run_concat_partitions_with_codon_variants(tmp_path: Path) -> None:
+    from phyloai.pretree.concat import run_concat
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nATGCGT\n>B\nATGCGT\n")
+
+    output_dir = tmp_path / "out"
+    run_concat(
+        msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
+        seq_type="CODON", taxa_occupancy=0.0, recoding=None,
+        outgroup=None, to_format="fasta",
+        translate_codon=True, exclude_codon3=True,
+        dry_run=False, overwrite=False,
+    )
+
+    orig_p = (output_dir / "matrix.partitions").read_text()
+    assert "DNA, gene1 = 1-6\n" in orig_p
+
+    trans_p = (output_dir / "matrix.translated.partitions").read_text()
+    assert "LG, gene1 = 1-2\n" in trans_p
+
+    cds12_p = (output_dir / "matrix.cds12.partitions").read_text()
+    assert "DNA, gene1 = 1-4\n" in cds12_p

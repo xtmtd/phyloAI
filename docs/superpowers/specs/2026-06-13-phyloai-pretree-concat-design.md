@@ -108,7 +108,7 @@ If `--outgroup TAXON` is given, that taxon's record is moved to position 0
        variant_translated ← translate per-gene → concat → normalize(AA)
        variant_codon12    ← exclude_codon3 per-gene → concat → normalize(NT)
 [8]  Apply --outgroup reordering to each variant
-[9]  Write each variant via core/formats.py (FormatConverter)
+[9]  Write each variant matrix via core/formats.py + corresponding .partitions file
 [10] Compute stats on every variant: gap_ratio, character summary, site patterns
 [11] Rich display: Overview + Character Summary + Site Patterns
 [12] Write result.json + concat.log
@@ -121,9 +121,13 @@ If `--outgroup TAXON` is given, that taxon's record is moved to position 0
 | File | Condition | Content |
 |---|---|---|
 | `<prefix>.<ext>` | Always | Original concatenated matrix |
+| `<prefix>.partitions` | Always | RAxML-style partition file for original matrix |
 | `<prefix>.recoded.<ext>` | `--recoding` | Recoded matrix |
+| `<prefix>.recoded.partitions` | `--recoding` | Partition file for recoded matrix |
 | `<prefix>.translated.<ext>` | `--translate-codon` | CDS→AA matrix |
+| `<prefix>.translated.partitions` | `--translate-codon` | Partition file for translated matrix |
 | `<prefix>.cds12.<ext>` | `--exclude-codon3` | Codon1+2 matrix |
+| `<prefix>.cds12.partitions` | `--exclude-codon3` | Partition file for cds12 matrix |
 | `dropped_alignments.csv` | Any MSA dropped | CSV with columns: `filename,n_taxa,occupancy_ratio,total_taxa` |
 | `result.json` | `not --dry-run` | Structured result |
 | `concat.log` | `not --dry-run` | Step log |
@@ -133,13 +137,57 @@ Output directory structure:
 ```
 runs/pretree/concat/
 ├── matrix.fa                   # (or .phy/.nex)
+├── matrix.partitions           # partition file
 ├── matrix.recoded.fa           # if --recoding
+├── matrix.recoded.partitions   # if --recoding
 ├── matrix.translated.fa        # if --translate-codon
+├── matrix.translated.partitions # if --translate-codon
 ├── matrix.cds12.fa             # if --exclude-codon3
+├── matrix.cds12.partitions     # if --exclude-codon3
 ├── dropped_alignments.csv      # if any dropped
 ├── result.json                # if not --dry-run
 └── concat.log                 # if not --dry-run
 ```
+
+### 4.1 Partition files (RAxML-style)
+
+Each matrix file is accompanied by a `.partitions` file describing gene
+boundaries within the concatenated supermatrix. Format follows the RAxML
+convention as used by IQ-TREE:
+
+```
+DNA, gene1 = 1-654
+DNA, gene2 = 655-1203
+DNA, gene3 = 1204-1980
+```
+
+**Prefix rule** (first column per line):
+
+| Matrix variant | seq_type | Prefix |
+|---|---|---|
+| Original (NT/CODON) | nt / codon | `DNA` |
+| Original (AA) | aa | `LG` |
+| Recoded (any) | other | `AUTO` |
+| Translated (CODON→AA) | aa | `LG` |
+| Codon1+2 (CODON→NT) | nt | `DNA` |
+
+**Partition naming:** Each partition is named after the gene file's basename
+(without extension), e.g., `gene1.fa` → partition name `gene1`.
+
+**File naming:** The partitions file shares the matrix file's stem. For
+`<prefix>.<ext>`, the partitions file is `<prefix>.partitions`. For variant
+matrices, the variant infix is preserved: `<prefix>.recoded.partitions`,
+`<prefix>.translated.partitions`, `<prefix>.cds12.partitions`.
+
+**Position tracking:** Gene start/end positions are tracked during Pass 2
+(streaming concat) as 1-indexed inclusive ranges. For variant matrices
+(recoded, translated, cds12), gene lengths may differ from the original, so
+positions are recomputed from the per-gene variant data before re-concatenation.
+
+**Edge cases:**
+- Single gene kept → partitions file has one line (valid).
+- Zero genes kept (all dropped by occupancy) → no matrix, no partitions.
+- Partitions file only written if the corresponding matrix write succeeds.
 
 ---
 
@@ -276,6 +324,7 @@ No PhyKIT dependency.  Internal helper functions:
 | `_exclude_codon3(seq)` | Drop every 3rd position |
 | `_reorder_outgroup(matrix, outgroup)` | Move taxon to index 0 |
 | `_write_matrix(matrix, path, fmt, seq_type)` | Via `core/formats.py` |
+| `_write_partitions(partitions_path, genes, prefix_type)` | Write RAxML-style `.partitions` file |
 | `_compute_concat_stats(matrix, seq_type)` | Per-variant stats (gap_ratio, site patterns) |
 | `_render_concat_panels(overview, variant_stats)` | Rich panels for terminal display |
 
@@ -400,3 +449,7 @@ validates parameters then delegates to `run_concat()`.
 - [ ] `--quiet` suppresses terminal output but still writes `result.json`
 - [ ] Non-empty output directory without `--overwrite` → exit code 1
 - [ ] `--overwrite` recreates the output directory
+- [ ] Each matrix file has a corresponding `.partitions` file with RAxML-style gene boundaries
+- [ ] NT/CODON matrices use `DNA` prefix; AA matrices use `LG`; recoded matrices use `AUTO`
+- [ ] Partition names use gene file basenames (without extension)
+- [ ] Partitions file not written under `--dry-run`
