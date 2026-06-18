@@ -432,6 +432,111 @@ To implement OR logic, run the command twice with different `--keep` and `--outp
 
 ---
 
+## `filter symtest` — Symmetry Test Filtering
+
+### Purpose
+
+Run IQ-TREE3's tests of symmetry (Naser-Khdour et al., 2019) via `--symtest-only` to detect loci that violate phylogenetic assumptions of stationarity, homogeneity, or reversibility, then filter out loci with p-value below a configurable threshold.
+
+This is locus-level filtering by statistical test: loci that fail symmetry are discarded. This does not compute metrics (use `pretree metrics`) or mask/prune individual sites/taxa (use `filter taper` or `filter treeshrink`).
+
+### Usage
+
+```bash
+phyloai pretree filter symtest \
+  --msa-dir <msa_dir> \
+  [--symtest-type MAR|INT] \
+  [--symtest-pval 0.05] \
+  [--symtest-keep-zero] \
+  [--iqtree-path <path>] \
+  [--threads 4] \
+  [--tree-dir <tree_dir>] \
+  [--output-dir runs/pretree/filter/symtest] \
+  [--table-format csv|tsv] \
+  [--dry-run] [--quiet] [--overwrite]
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--msa-dir` | required | Directory of per-locus MSA files. Every regular non-empty file is scanned. |
+| `--symtest-type` | — | `MAR` (marginal/stationarity test), `INT` (internal/homogeneity test). When omitted, the combined Sym test is used (SymPval column). |
+| `--symtest-pval` | 0.05 | P-value threshold. Loci with p >= threshold are retained; those below are dropped. Must be > 0 and <= 1. |
+| `--symtest-keep-zero` | off | Pass `--symtest-keep-zero` to IQ-TREE (retain NAs in the tests). |
+| `--iqtree-path` | — | Explicit path to iqtree binary. IQ-TREE3 >= 2.3.0 required. |
+| `--threads` / `-t` | 4 | IQ-TREE threads (`-T`). |
+| `--tree-dir` | — | Optional gene tree directory. Trees matching retained loci are copied to `trees/`. |
+| `--output-dir` / `-o` | `runs/pretree/filter/symtest` | Output directory. |
+| `--table-format` | `csv` | Format for auxiliary tables. |
+| `--overwrite` | off | Delete and recreate output directory. |
+| `--dry-run` | off | Show resolved IQ-TREE command and locus count. |
+| `--quiet` / `-q` | off | Suppress terminal output. |
+
+### Inputs
+
+`--msa-dir` is the only required input. The command:
+
+1. Builds a temporary supermatrix + RAxML-style partition file from all MSAs
+2. Runs `iqtree -s <matrix> -p <partitions> --symtest-only`
+3. Parses `<partitions>.symtest.csv` for per-partition p-values
+4. Applies the p-value threshold on the selected test column
+
+The p-value column used depends on `--symtest-type`:
+- (default) -> `SymPval` (combined stationarity + homogeneity)
+- `MAR` -> `MarPval` (marginal / stationarity test)
+- `INT` -> `IntPval` (internal / homogeneity test)
+
+Temporary files are cleaned up after the run.
+
+### Outputs
+
+```
+runs/pretree/filter/symtest/
+├── seqs/                              (retained MSAs)
+├── trees/                             (only when --tree-dir provided)
+├── retained_loci.csv|tsv
+├── dropped_loci.csv|tsv               (locus, reason)
+├── filter_decisions.csv|tsv           (locus, status, p_value, symtest_type,
+│                                       sym_sig, sym_non, mar_sig, mar_non,
+│                                       int_sig, int_non)
+├── filter.log
+└── result.json
+```
+
+Terminal output: Filter Results table (input/retained/dropped/p-value threshold/symtest type) + Retained MSA Statistics table + optionally Trees Copied table.
+
+`result.json.key_results`: `n_input`, `n_retained`, `n_dropped`, `p_value_threshold`, `symtest_type`, `retained_trees_copied`.
+
+### Examples
+
+```bash
+# Default symmetry test (Sym), p < 0.05 dropped
+phyloai pretree filter symtest --msa-dir ./trimmed
+
+# Marginal symmetry (stationarity) test
+phyloai pretree filter symtest --msa-dir ./trimmed --symtest-type MAR
+
+# Stricter threshold
+phyloai pretree filter symtest --msa-dir ./trimmed --symtest-pval 0.01
+
+# With tree directory: retain matching gene trees
+phyloai pretree filter symtest \
+  --msa-dir ./trimmed --tree-dir ./genetrees
+
+# Internal homogeneity test
+phyloai pretree filter symtest --msa-dir ./trimmed --symtest-type INT
+
+# Dry-run to inspect command
+phyloai pretree filter symtest --msa-dir ./trimmed --dry-run
+```
+
+### Notes
+
+Symmetry testing should be run after alignment and trimming but before supermatrix concatenation, since violations of stationarity or homogeneity can bias phylogenetic inference. The `--symtest-type` default (combined Sym test) is the most general and widely applicable.
+
+References: Naser-Khdour et al. (2019) "Assessing the Goodness of Fit of Phylogenetic Models..." doi:10.1093/gbe/evz193.
+
+---
+
 ## `filter cluster` — Cluster-Based Exploration
 
 ### Purpose

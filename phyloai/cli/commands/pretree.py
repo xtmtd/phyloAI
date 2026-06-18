@@ -1363,19 +1363,20 @@ def metrics_correlate_command(
 # filter group
 # ---------------------------------------------------------------------------
 
-from phyloai.pretree.filter import render_filter_summary_table, run_taper, run_treeshrink, run_metrics_filter, run_cluster_filter  # noqa: E402
+from phyloai.pretree.filter import render_filter_summary_table, run_taper, run_treeshrink, run_metrics_filter, run_symtest, run_cluster_filter  # noqa: E402
 
 
 class _FilterGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["taper", "treeshrink", "metrics", "cluster"]
+        return ["taper", "treeshrink", "metrics", "symtest", "cluster"]
 
 
 @click.group(
     "filter",
     cls=_FilterGroup,
     help="TAPER site masking, TreeShrink taxa pruning, "
-    "metric-rule loci filtering, cluster-based exploration.",
+    "metric-rule loci filtering, symmetry test filtering, "
+    "cluster-based exploration.",
 )
 def filter_group() -> None:
     pass
@@ -1790,6 +1791,171 @@ def filter_metrics_command(table_path, keep, input_format, loci_column, msa_dir,
         click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
     if payload["status"] == "error":
         _fail(payload.get("error", "Filtering failed."), 1)
+
+
+# ---- filter symtest ----
+
+_SYMTEST_HELP = (
+    "Test phylogenetic symmetry assumptions per locus using IQ-TREE3's "
+    "--symtest-only, then filter loci by p-value.\n\n"
+    "Workflow:\n"
+    "  1. Scan --msa-dir for per-locus MSA files\n"
+    "  2. Build a temporary supermatrix + partition file\n"
+    "  3. Run 'iqtree -s <matrix> -p <partitions> --symtest-only'\n"
+    "  4. Parse .symtest.csv for per-partition p-values\n"
+    "  5. Retain loci with p >= --symtest-pval, drop those below\n"
+    "  6. Copy retained MSAs to seqs/, optionally trees to trees/\n\n"
+    "The p-value column used depends on --symtest-type:\n"
+    "  (default) -> SymPval (combined stationarity + homogeneity)\n"
+    "  MAR       -> MarPval (marginal / stationarity)\n"
+    "  INT       -> IntPval (internal / homogeneity)\n\n"
+    "References: Naser-Khdour et al. (2019) doi:10.1093/gbe/evz193"
+)
+
+
+def _validate_symtest_pval(ctx, param, value):
+    if value <= 0 or value > 1:
+        raise click.BadParameter("must be > 0 and <= 1")
+    return value
+
+
+@filter_group.command("symtest", help=_SYMTEST_HELP)
+@click.option(
+    "--msa-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    required=True,
+    help="Directory containing per-locus MSA files (any suffix).",
+)
+@click.option(
+    "--symtest-type", type=click.Choice(["MAR", "INT"]),
+    default=None,
+    help="Which symmetry test to use for filtering.  When omitted (default), "
+    "the combined Sym test is used (SymPval column).  MAR uses marginal "
+    "(stationarity) test.  INT uses internal (homogeneity) test.",
+)
+@click.option(
+    "--symtest-pval", type=float, default=0.05, show_default=True,
+    callback=_validate_symtest_pval,
+    help="P-value threshold.  Loci with p >= threshold are retained.",
+)
+@click.option(
+    "--symtest-keep-zero", is_flag=True, default=False,
+    help="Pass --symtest-keep-zero to IQ-TREE (keep NAs in the tests).",
+)
+@click.option(
+    "--iqtree-path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Explicit path to iqtree binary.  When omitted, resolved via "
+    "PATH ('phyloai doctor' for detection status).  IQ-TREE3 >= 2.3.0 "
+    "required.",
+)
+@click.option(
+    "--threads", "-t", type=int, default=4, show_default=True,
+    help="Number of threads for IQ-TREE (-T).",
+)
+@click.option(
+    "--tree-dir", type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Optional directory of gene tree files.  Trees matching retained "
+    "loci (by logical locus name) are copied to trees/.",
+)
+@click.option(
+    "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/pretree/filter/symtest"), show_default=True,
+    help="Directory for retained MSAs, optional trees, decision tables, "
+    "result.json, and filter.log.",
+)
+@click.option(
+    "--table-format", type=click.Choice(["csv", "tsv"]),
+    default="csv", show_default=True,
+    help="Delimiter and file suffix for auxiliary tables.",
+)
+@click.option(
+    "--overwrite", is_flag=True, default=False,
+    help="Delete and recreate --output-dir if it already exists.",
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False,
+    help="Validate inputs and show the planned IQ-TREE command without writing files.",
+)
+@click.option(
+    "--quiet", "-q", is_flag=True, default=False,
+    help="Suppress all terminal output except errors.",
+)
+def filter_symtest_command(msa_dir, symtest_type, symtest_pval, symtest_keep_zero,
+                           iqtree_path, threads, tree_dir, output_dir, table_format,
+                           overwrite, dry_run, quiet):
+    if threads < 1:
+        _fail("--threads must be at least 1.", 1)
+
+    if not quiet and not dry_run:
+        from phyloai.core.file_matching import scan_msa_dir
+        msa_map = scan_msa_dir(msa_dir)
+        with Progress(console=console, transient=True) as progress:
+            progress.add_task("IQ-TREE symmetry test running...", total=None)
+            try:
+                payload = run_symtest(
+                    msa_dir=msa_dir, output_dir=output_dir,
+                    symtest_type=symtest_type, symtest_pval=symtest_pval,
+                    symtest_keep_zero=symtest_keep_zero,
+                    iqtree_path=iqtree_path, threads=threads,
+                    tree_dir=tree_dir, msa_map=msa_map,
+                    table_format=table_format,
+                    dry_run=dry_run, overwrite=overwrite, quiet=quiet,
+                )
+            except (ValueError, FileNotFoundError, RuntimeError) as exc:
+                msg = str(exc)
+                exit_code = 3 if "not found" in msg.lower() else (
+                    2 if "exited with code" in msg.lower() else 1)
+                _fail(msg, exit_code)
+    else:
+        try:
+            payload = run_symtest(
+                msa_dir=msa_dir, output_dir=output_dir,
+                symtest_type=symtest_type, symtest_pval=symtest_pval,
+                symtest_keep_zero=symtest_keep_zero,
+                iqtree_path=iqtree_path, threads=threads,
+                tree_dir=tree_dir, table_format=table_format,
+                dry_run=dry_run, overwrite=overwrite, quiet=quiet,
+            )
+        except (ValueError, FileNotFoundError, RuntimeError) as exc:
+            msg = str(exc)
+            exit_code = 3 if "not found" in msg.lower() else (
+                2 if "exited with code" in msg.lower() else 1)
+            _fail(msg, exit_code)
+
+    if dry_run:
+        click.echo(f"Dry run: {payload['key_results']['n_input']} loci would be processed.")
+        click.echo(payload["data"]["dry_run_cmd"])
+        return
+
+    if not quiet:
+        console.print(render_filter_summary_table({
+            "Input": payload["key_results"]["n_input"],
+            "Retained": payload["key_results"]["n_retained"],
+            "Dropped": payload["key_results"]["n_dropped"],
+            "P-value threshold": payload["key_results"]["p_value_threshold"],
+            "Symtest type": payload["key_results"]["symtest_type"],
+        }))
+        msa_stats = payload["data"].get("retained_msa_stats", {})
+        if msa_stats and msa_stats.get("n_msa", 0) > 0:
+            console.print(render_filter_summary_table({
+                "Retained MSAs": msa_stats["n_msa"],
+                "Total length": msa_stats["total_length"],
+                "Mean length": msa_stats["mean_length"],
+                "Min length": msa_stats["min_length"],
+                "Max length": msa_stats["max_length"],
+                "Mean taxa": msa_stats["mean_taxa"],
+            }))
+        if payload["key_results"].get("retained_trees_copied", 0) > 0:
+            mt = payload["data"].get("missed_tree_count", 0)
+            console.print(render_filter_summary_table({
+                "Trees copied": payload["key_results"]["retained_trees_copied"],
+                "Trees missed": mt,
+            }))
+        click.echo(f"Retained MSAs saved to {output_dir / 'seqs'}", err=True)
+        if payload["key_results"].get("retained_trees_copied", 0) > 0:
+            click.echo(f"Retained trees saved to {output_dir / 'trees'}", err=True)
+        click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
 
 
 # ---- filter cluster ----

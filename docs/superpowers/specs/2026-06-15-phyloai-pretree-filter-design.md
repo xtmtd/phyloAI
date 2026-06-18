@@ -8,12 +8,13 @@
 
 ## 1. Purpose
 
-`phyloai pretree filter` runs after `pretree metrics` and before `pretree concat`. It provides four filtering workflows:
+`phyloai pretree filter` runs after `pretree metrics` and before `pretree concat`. It provides five filtering workflows:
 
 1. **TAPER site masking**: mask erroneous sequence stretches within MSAs.
 2. **TreeShrink taxon pruning**: remove outlier taxa from gene trees and optionally matching MSAs.
 3. **Metric rule filtering**: remove whole loci by explicit conditions on `metrics.csv`-like tables.
 4. **Cluster-based exploration/filtering**: group loci by metric profiles using PCA or UMAP plus hierarchical clustering, then optionally remove small worst outlier clusters.
+5. **Symtest filtering**: run IQ-TREE3's `--symtest-only` to test phylogenetic symmetry assumptions (stationarity, homogeneity, reversibility) per locus, then filter by p-value threshold.
 
 The module keeps metric computation separate from filtering decisions. It reads `pretree metrics` output where appropriate, writes structured decisions, and produces filtered or copied MSA/tree directories only when the selected mode needs them.
 
@@ -56,12 +57,13 @@ docs/commands/pretree-filter.md     # user-facing command documentation
 
 ## 3. Command Structure
 
-`pretree filter` is a Click group with four subcommands:
+`pretree filter` is a Click group with five subcommands:
 
 ```bash
 phyloai pretree filter taper
 phyloai pretree filter treeshrink
 phyloai pretree filter metrics
+phyloai pretree filter symtest
 phyloai pretree filter cluster
 ```
 
@@ -83,6 +85,7 @@ Per-subcommand default output directories:
 - `filter taper`: `runs/pretree/filter/taper`
 - `filter treeshrink`: `runs/pretree/filter/treeshrink`
 - `filter metrics`: `runs/pretree/filter/metrics`
+- `filter symtest`: `runs/pretree/filter/symtest`
 - `filter cluster`: `runs/pretree/filter/cluster`
 
 All successful non-dry-run invocations write `result.json` and `filter.log`. `--dry-run` writes no files.

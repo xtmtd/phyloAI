@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import io
 import json
 import shlex
 import shutil
@@ -1487,4 +1488,375 @@ def run_cluster_filter(
     }
     _write_result_json(payload, output_dir)
     _write_filter_log(output_dir, command, wall_time, {}, True)
+    return payload
+
+
+# --- Symmetry test (symtest) ---
+
+_EXPECTED_SYMTEST_COLUMNS = {"Name", "SymSig", "SymNon", "SymPval",
+                              "MarSig", "MarNon", "MarPval",
+                              "IntSig", "IntNon", "IntPval"}
+
+
+def _parse_symtest_csv(fileobj) -> list[dict[str, Any]]:
+    """Parse IQ-TREE ``.symtest.csv`` output into a list of per-partition dicts.
+
+    Skips comment lines (starting with ``#``).  P-value columns are
+    parsed as float; ``NA`` or unparseable values become None.
+    """
+    lines = [line for line in fileobj if not line.startswith("#")]
+    if not lines:
+        return []
+
+    reader = csv.DictReader(io.StringIO("".join(lines)))
+    if not reader.fieldnames:
+        raise ValueError("Empty CSV header in symtest output")
+    missing = _EXPECTED_SYMTEST_COLUMNS - set(reader.fieldnames)
+    if missing:
+        raise ValueError(
+            f"Symtest CSV missing expected columns: {', '.join(sorted(missing))}"
+        )
+
+    results: list[dict[str, Any]] = []
+    for row in reader:
+        entry: dict[str, Any] = {}
+        for key, value in row.items():
+            if key in ("SymPval", "MarPval", "IntPval"):
+                try:
+                    entry[key] = float(value)
+                except (ValueError, TypeError):
+                    entry[key] = None
+            elif key in ("SymSig", "SymNon", "MarSig", "MarNon", "IntSig", "IntNon"):
+                try:
+                    entry[key] = int(value)
+                except (ValueError, TypeError):
+                    entry[key] = 0
+            else:
+                entry[key] = value
+        results.append(entry)
+    return results
+
+
+def _filter_by_symtest_pval(
+    results: list[dict[str, Any]],
+    symtest_type: str,
+    threshold: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Filter parsed symtest results by the selected p-value column.
+
+    symtest_type is one of ``"Sym"``, ``"MAR"``, ``"INT"``.
+    """
+    pval_col = {"Sym": "SymPval", "MAR": "MarPval", "INT": "IntPval"}[symtest_type]
+
+    retained: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    decisions: list[dict[str, Any]] = []
+
+    for entry in results:
+        locus = entry.get("Name", "")
+        p_value = entry.get(pval_col)
+
+        decision = {
+            "locus": locus,
+            "p_value": p_value,
+            "symtest_type": symtest_type,
+            "sym_sig": entry.get("SymSig", 0),
+            "sym_non": entry.get("SymNon", 0),
+            "mar_sig": entry.get("MarSig", 0),
+            "mar_non": entry.get("MarNon", 0),
+            "int_sig": entry.get("IntSig", 0),
+            "int_non": entry.get("IntNon", 0),
+        }
+
+        if p_value is None:
+            decision["status"] = "dropped"
+            dropped.append({"locus": locus, "reason": "p_value is null"})
+            decisions.append(decision)
+        elif p_value >= threshold:
+            decision["status"] = "retained"
+            retained.append({"locus": locus, "p_value": p_value})
+            decisions.append(decision)
+        else:
+            decision["status"] = "dropped"
+            dropped.append({"locus": locus, "reason": f"{pval_col}={p_value} < {threshold}"})
+            decisions.append(decision)
+
+    return retained, dropped, decisions
+
+
+def _build_symtest_supermatrix(
+    msa_map: dict[str, Path],
+) -> tuple[str, list[tuple[str, int, int]], str]:
+    """Build a supermatrix string and partition list from a dict of MSAs.
+
+    Returns ``(matrix_fasta_str, genes, prefix_type)`` where *genes* is
+    ``[(name, start1, end1), ...]`` with 1-based positions.  Uses
+    ``_read_msa`` from concat.py for format-agnostic reading.
+    """
+    from phyloai.pretree.concat import _read_msa
+
+    if not msa_map:
+        raise ValueError("No valid MSA files found")
+
+    all_taxa: set[str] = set()
+    msa_records: dict[str, tuple[list[str], list[str], int]] = {}
+
+    for locus, path in sorted(msa_map.items()):
+        taxa, seqs, length = _read_msa(path)
+        if not taxa:
+            continue
+        all_taxa.update(taxa)
+        msa_records[locus] = (taxa, seqs, length)
+
+    if not msa_records:
+        raise ValueError("No valid MSA files found")
+
+    # Auto-detect seq_type from first 3 loci
+    sample_seqs: list[str] = []
+    for locus in list(msa_records.keys())[:3]:
+        _, seqs, _ = msa_records[locus]
+        sample_seqs.extend(seqs[:10])
+    from phyloai.core.sequence_normalization import detect_seq_type
+    seq_type = detect_seq_type(sample_seqs)
+
+    if seq_type == "other":
+        raise ValueError(
+            "Could not determine sequence type from MSA files. "
+            "Detected type: 'other'. Ensure input files contain "
+            "valid AA or NT sequences."
+        )
+
+    prefix_type = "DNA" if seq_type in ("NT", "CODON") else "LG"
+
+    # Build supermatrix
+    matrix_parts: dict[str, list[str]] = {taxon: [] for taxon in all_taxa}
+    genes: list[tuple[str, int, int]] = []
+    pos = 1
+
+    for locus, (taxa, seqs, length) in sorted(msa_records.items()):
+        genes.append((locus, pos, pos + length - 1))
+        pos += length
+        taxon_to_seq = dict(zip(taxa, seqs))
+        for taxon in all_taxa:
+            seq = taxon_to_seq.get(taxon, "?" * length)
+            matrix_parts[taxon].append(seq)
+
+    taxon_order = sorted(all_taxa)
+    lines: list[str] = []
+    for taxon in taxon_order:
+        seq = "".join(matrix_parts[taxon])
+        wrapped = "\n".join(seq[i:i + 60] for i in range(0, len(seq), 60))
+        lines.append(f">{taxon}\n{wrapped}")
+
+    matrix_str = "\n".join(lines) + "\n"
+    return matrix_str, genes, prefix_type
+
+
+def run_symtest(
+    msa_dir: Path, output_dir: Path, *,
+    symtest_type: str | None = None,
+    symtest_pval: float = 0.05,
+    symtest_keep_zero: bool = False,
+    iqtree_path: Path | None = None,
+    threads: int = 4,
+    tree_dir: Path | None = None,
+    msa_map: dict[str, Path] | None = None,
+    table_format: str = "csv",
+    dry_run: bool = False,
+    overwrite: bool = False,
+    quiet: bool = False,
+) -> dict[str, Any]:
+    """Run IQ-TREE symmetry test on all MSAs and filter by p-value.
+
+    *msa_map* is an optional pre-scanned ``{locus: path}`` dict; when not
+    provided it is built via :func:`scan_msa_dir`.
+    """
+    start = time.monotonic()
+    env = ToolEnv()
+    iqtree_exe = str(iqtree_path) if iqtree_path else str(env.require("iqtree3"))
+
+    msa_map = scan_msa_dir(msa_dir) if msa_map is None else msa_map
+    if not msa_map:
+        raise ValueError(f"No valid MSA files found in {msa_dir}")
+
+    # Resolve symtest_type: None -> "Sym"
+    resolved_type = symtest_type if symtest_type else "Sym"
+
+    command = f"phyloai pretree filter symtest --msa-dir {msa_dir} --symtest-pval {symtest_pval}"
+    if symtest_type:
+        command += f" --symtest-type {symtest_type}"
+
+    params = {
+        "msa_dir": str(msa_dir), "symtest_type": symtest_type,
+        "symtest_pval": symtest_pval, "symtest_keep_zero": symtest_keep_zero,
+        "threads": threads, "tree_dir": str(tree_dir) if tree_dir else None,
+        "table_format": table_format,
+    }
+
+    if dry_run:
+        sym_extra = f" --symtest-type {symtest_type}" if symtest_type else ""
+        return {
+            "status": "success", "command": command, "wall_time": 0,
+            "tool_versions": {"iqtree3": "unknown"}, "params": params,
+            "key_results": {"n_input": len(msa_map)},
+            "error": None,
+            "data": {"dry_run_cmd": f"{iqtree_exe} -s <matrix> -p <partitions> "
+                     f"--symtest-only{sym_extra} -T {threads}"},
+        }
+
+    _common_output_conflict(output_dir, overwrite)
+
+    # Build supermatrix + partition files in temp dir
+    matrix_str, genes, prefix_type = _build_symtest_supermatrix(msa_map)
+
+    work_dir = Path(tempfile.mkdtemp(prefix="symtest_"))
+    try:
+        matrix_path = work_dir / "symtest_matrix.fa"
+        partitions_path = work_dir / "symtest_partitions.txt"
+        matrix_path.write_text(matrix_str)
+        from phyloai.pretree.concat import _write_partitions
+        _write_partitions(partitions_path, genes, prefix_type)
+
+        # Build IQ-TREE command (--symtest-pval NOT passed; used Python-side only)
+        cmd = [
+            iqtree_exe,
+            "-s", str(matrix_path),
+            "-p", str(partitions_path),
+            "--symtest-only",
+        ]
+        if symtest_type:
+            cmd.extend(["--symtest-type", symtest_type])
+        if symtest_keep_zero:
+            cmd.append("--symtest-keep-zero")
+        if threads > 1:
+            cmd.extend(["-T", str(threads)])
+
+        # Run IQ-TREE
+        runner = Runner()
+        result = runner.run(cmd, tool_name="iqtree3", cwd=work_dir)
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"iqtree3 exited with code {result.returncode}.\n"
+                f"STDERR:\n{result.stderr}"
+            )
+
+        # Parse symtest output
+        symtest_csv = work_dir / "symtest_partitions.txt.symtest.csv"
+        if not symtest_csv.exists():
+            raise RuntimeError(
+                f"Expected symtest output not found: {symtest_csv}\n"
+                f"STDERR:\n{result.stderr}"
+            )
+
+        with open(symtest_csv) as fh:
+            symtest_results = _parse_symtest_csv(fh)
+
+        if not symtest_results:
+            raise RuntimeError("Symtest CSV is empty -- no partitions parsed.")
+
+        # Cross-validate CSV names against MSA map
+        csv_names = {r["Name"] for r in symtest_results}
+        msa_names = set(msa_map.keys())
+        missing_in_csv = msa_names - csv_names
+        extra_in_csv = csv_names - msa_names
+        if missing_in_csv:
+            raise RuntimeError(
+                f"Loci in MSA directory but missing from symtest CSV: "
+                f"{', '.join(sorted(missing_in_csv))}. "
+                f"IQ-TREE may have dropped these partitions."
+            )
+        extra_in_csv_sorted = sorted(extra_in_csv) if extra_in_csv else []
+        if extra_in_csv_sorted:
+            import warnings
+            warnings.warn(
+                f"Partition names in symtest CSV not found in MSA map: "
+                f"{', '.join(extra_in_csv_sorted)}. These will be skipped."
+            )
+            symtest_results = [r for r in symtest_results if r["Name"] in msa_names]
+
+        # Filter
+        retained, dropped, decisions = _filter_by_symtest_pval(
+            symtest_results, resolved_type, symtest_pval,
+        )
+
+        # Copy retained MSAs
+        seqs_out = output_dir / "seqs"
+        seqs_out.mkdir(parents=True, exist_ok=True)
+        for r in retained:
+            locus = r["locus"]
+            if locus in msa_map:
+                shutil.copy2(msa_map[locus], seqs_out / f"{locus}.fa")
+
+        # Copy retained trees (if --tree-dir)
+        retained_tree_count = 0
+        missed_tree_count = 0
+        if tree_dir:
+            tree_map = scan_tree_dir(tree_dir)
+            trees_out = output_dir / "trees"
+            trees_out.mkdir(parents=True, exist_ok=True)
+            retained_loci = {r["locus"] for r in retained}
+            for locus in sorted(retained_loci):
+                if locus in tree_map:
+                    shutil.copy2(tree_map[locus], trees_out / tree_map[locus].name)
+                    retained_tree_count += 1
+                else:
+                    missed_tree_count += 1
+
+        # Write decision tables
+        delimiter = _table_delimiter(table_format)
+        suffix = _table_suffix(table_format)
+
+        _write_csv_table(
+            retained, output_dir / f"retained_loci{suffix}",
+            ["locus"], delimiter,
+        )
+        _write_csv_table(
+            dropped, output_dir / f"dropped_loci{suffix}",
+            ["locus", "reason"], delimiter,
+        )
+        _write_csv_table(
+            decisions, output_dir / f"filter_decisions{suffix}",
+            ["locus", "status", "p_value", "symtest_type",
+             "sym_sig", "sym_non", "mar_sig", "mar_non", "int_sig", "int_non"],
+            delimiter,
+        )
+
+        # MSA stats
+        retained_paths = [seqs_out / f"{r['locus']}.fa" for r in retained]
+        msa_stats = _compute_retained_msa_stats(retained_paths)
+
+        wall_time = time.monotonic() - start
+        payload = {
+            "status": "success",
+            "command": command,
+            "wall_time": round(wall_time, 2),
+            "tool_versions": {"iqtree3": "unknown"},
+            "params": params,
+            "key_results": {
+                "n_input": len(symtest_results),
+                "n_retained": len(retained),
+                "n_dropped": len(dropped),
+                "p_value_threshold": symtest_pval,
+                "symtest_type": resolved_type,
+                "retained_trees_copied": retained_tree_count,
+            },
+            "error": None,
+            "data": {
+                "retained_msa_stats": msa_stats,
+                "retained_loci": [r["locus"] for r in retained],
+                "dropped_loci": dropped,
+                "decisions": decisions,
+                "retained_tree_count": retained_tree_count,
+                "missed_tree_count": missed_tree_count,
+                "skipped": extra_in_csv_sorted,
+            },
+        }
+        _write_result_json(payload, output_dir)
+        _write_filter_log(output_dir, command, wall_time,
+                          payload["tool_versions"], True)
+
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
     return payload
