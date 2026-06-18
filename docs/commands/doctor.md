@@ -54,6 +54,6 @@ If a tool is missing in `doctor`, PhyloAI is seeing the same environment that la
 
 ## Notes
 
-The current registry includes required tools such as `iqtree3`, `mafft`, and `trimal`, plus optional tools such as `astral-hybrid`, `pb_mpi`, `mcmctree`, `run_treeshrink.py`, `magus`, `clipkit`, `phykit`, `java`, and `julia`.
+The current registry includes required tools such as `iqtree3`, `mafft`, and `trimal`, plus optional tools such as `wastral`, `pb_mpi`, `mcmctree`, `run_treeshrink.py`, `magus`, `clipkit`, `java`, `julia`, and `FastTree`.
 
 Bundled tools include `phyloai/bundled/TAPER-1.0.0/correction_multi.jl` and `phyloai/bundled/BMGE-1.12/BMGE.jar`. The bundled directories retain license and source files needed for distribution compliance. `bmge` is displayed as `BMGE.jar` in the table because PhyloAI calls the bundled jar file directly.

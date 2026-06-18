@@ -11,12 +11,10 @@ def _mock_tools():
     return {
         "iqtree3": ToolInfo("iqtree3", ToolStatus.OK,
                             Path("/usr/bin/iqtree3"), "3.0.1"),
-        "astral-hybrid": ToolInfo("astral-hybrid", ToolStatus.OK,
-                            Path("/usr/bin/astral-hybrid"), "5.7.8"),
+        "wastral": ToolInfo("wastral", ToolStatus.OK,
+                            Path("/usr/bin/wastral"), "5.7.8"),
         "mafft":   ToolInfo("mafft",   ToolStatus.OK,
                             Path("/usr/bin/mafft"), "7.520"),
-        "phykit":  ToolInfo("phykit",  ToolStatus.OK,
-                            Path("/usr/bin/phykit"), "2.1.2"),
         "bmge":    ToolInfo("bmge",    ToolStatus.OK,
                             Path("/repo/phyloai/bundled/BMGE-1.12/BMGE.jar"), "1.12", "bundled"),
         "java":    ToolInfo("java",    ToolStatus.OK,
@@ -44,8 +42,7 @@ def test_doctor_shows_ok_tools():
         MockEnv.return_value.check_all.return_value = _mock_tools()
         result = runner.invoke(cli, ["doctor"])
     assert "iqtree3" in result.output
-    assert "astral-hybrid" in result.output
-    assert "phykit" in result.output
+    assert "wastral" in result.output
     assert "mafft" in result.output
 
 
@@ -87,8 +84,7 @@ def test_doctor_json_version_is_plain_number():
 
     data = json.loads(result.output)
     assert data["iqtree3"]["version"] == "3.0.1"
-    assert data["astral-hybrid"]["version"] == "5.7.8"
-    assert data["phykit"]["version"] == "2.1.2"
+    assert data["wastral"]["version"] == "5.7.8"
 
 
 def test_doctor_help_mentions_default_text_output():

@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-17 (tree module reshaped into ml/bi/msc/concordance; progress/resume display unified; FASTA wrapping standardized; sequence-output docs aligned)  
+**Last updated:** 2026-06-18 (doctor module split into separate spec; astral-hybrid → wastral; phykit removed)  
 **Status:** Approved for implementation
 
 ---
@@ -28,7 +28,7 @@ MCP Server + Skill  ←  built on CLI, added after CLI stabilizes
 ```
 
 **Development order:** Library + CLI first → MCP Server + Skill after CLI is stable. `phyloai run` (pipeline orchestration) and `report/` (cross-module aggregation) are separate phases: `run` depends only on the analysis modules it orchestrates (Phases 2–3), while `report` must wait for all analysis phases (2–4) to finalize their JSON output schemas.  
-**MCP pre-requisite:** All non-`doctor` commands write a standard `result.json` file and use standard exit codes from day one, so MCP wrapping reads structured results from files rather than command-specific stdout formats. `phyloai doctor` is the only command with `--output-format text|json` because it is primarily a human-facing environment diagnostic.
+**MCP pre-requisite:** All non-`doctor` commands write a standard `result.json` file and use standard exit codes from day one, so MCP wrapping reads structured results from files rather than command-specific stdout formats. `phyloai doctor` is the only command with `--output-format text|json` because it is primarily a human-facing environment diagnostic. Doctor design details are in `docs/superpowers/specs/2026-06-18-phyloai-doctor-design.md`.
 
 ---
 
@@ -44,23 +44,19 @@ phyloai/
 │   └── logger.py       # per-step log file writer for command output dirs
 │
 ├── pretree/
-│   ├── convert.py      # format conversion between FASTA/Phylip/Nexus/Phylip-PAML;
-│   │                   # wraps core/formats.py, exposes as CLI subcommand
+│   ├── convert.py      # format conversion between FASTA/Phylip/Nexus/Phylip-PAML
 │   ├── stats.py        # sequence/alignment statistics: format, length distribution,
 │   │                   # taxon count, gap ratio, min/max/mean/median length, total length
 │   ├── align.py        # MAFFT (external), MAGUS (pip), batch AA + NT;
 │   │                   # --backtrans: AA-alignment → NT codon alignment via trimAl
 │   ├── trim.py         # trimAl (bundled), BMGE (bundled), ClipKIT (pip)
 │   ├── metrics.py      # MSA + tree attribute extraction, metric distributions,
-│   │                   # and correlation summaries for marker evaluation;
-│   │                   # reference: github.com/xtmtd/MSA-and-tree-metrics-exploration
-│   ├── filter.py       # gene/marker-level filtering; reads metrics output as input;
-│   │                   #   Error-site: TAPER (fast, non-destructive masking option)
-│   │                   #   MSA/alignment-based: PIS, length, GC content, nRCFV,
-│   │                   #               symtest, API, likelihood mapping
-│   │                   #   Tree-based: TreeShrink, ABS, treeness, DVMC,
-│   │                   #               evo_rate, saturation, inconsistent genes
-│   │                   #   UMAP cluster/outlier filtering based on selected metrics
+│   │                   # and correlation summaries for marker evaluation
+│   ├── filter.py       # gene/marker-level filtering; reads metrics output as input
+│   │                   #   Error-site: TAPER; MSA-based: PIS, length, GC, nRCFV,
+│   │                   #   symtest, API, likelihood mapping; Tree-based: TreeShrink,
+│   │                   #   ABS, treeness, DVMC, evo_rate, saturation, inconsistent genes;
+│   │                   #   UMAP cluster/outlier filtering
 │   └── concat.py       # matrix generation at multiple occupancy levels,
 │                       # recoding (Dayhoff6 etc.), format conversion for downstream
 │
@@ -72,20 +68,10 @@ phyloai/
 │
 ├── posttree/
 │   ├── topology.py     # AU / WKH / WSH tests, Four-cluster Likelihood Mapping (FcLM)
-│   ├── dating.py       # MCMCTree (PAML): fossil calibration, convergence diagnostics,
-│   │                   # infinite-sites plots, prior vs posterior comparison
-│   ├── signal.py       # phylogenetic signal distribution:
-│   │                   # site-wise likelihood support, gene-wise likelihood analysis,
-│   │                   # FcLM-based signal, consistent gene detection
-│   ├── syserror.py     # systematic error diagnosis (iterative, atom operations):
-│   │                   #   - branch length heterogeneity (LBA detection, brlen stats)
-│   │                   #   - rates across sites (fast/slow site analysis)
-│   │                   #   - compositional bias (CCA, Keff analysis)
-│   │                   #   - substitution pattern heterogeneity
-│   │                   #   - model fit assessment (LOO-CV/PPC, internal use only)
-│   │                   # note: full diagnosis workflow orchestrated in Skill layer
-│   └── simulate.py     # AliSim (MSA simulation, empirical PDF parameters),
-│                       # gene-jackknife resampling
+│   ├── dating.py       # MCMCTree (PAML): fossil calibration, convergence diagnostics
+│   ├── signal.py       # phylogenetic signal distribution
+│   ├── syserror.py     # systematic error diagnosis (iterative, atom operations)
+│   └── simulate.py     # AliSim (MSA simulation), gene-jackknife resampling
 │
 ├── report/
 │   ├── collector.py    # cross-module JSON aggregation
@@ -110,7 +96,7 @@ phyloai/
 ### 4.1 Command Structure
 
 ```bash
-# Environment check
+# Environment check (separate spec: docs/superpowers/specs/2026-06-18-phyloai-doctor-design.md)
 phyloai doctor
 
 # Pre-tree
@@ -120,28 +106,14 @@ phyloai pretree align    --seq-dir ./raw --method magus [--tool-args "--maxsubse
 phyloai pretree trim     --msa-dir ./aligned --tool bmge [--bmge-matrix BLOSUM90] \
                          [--tool-args "-g 0.5"]
 phyloai pretree metrics  --msa-dir ./trimmed [--tree-dir ./genetrees]
-# filter — four subcommands under a Click group
-phyloai pretree filter taper \
-    --msa-dir ./trimmed [--nt-dir ./trimmed_fna] [--seq-type AA|NT|auto] \
-    [--cutoff 3] [--threads 4] [--resume] [--dry-run] [--overwrite]
-phyloai pretree filter treeshrink \
-    --tree-dir ./genetrees [--msa-dir ./trimmed] [--threshold 0.05] \
-    [--dry-run] [--overwrite] [--keep-work-dir]
-phyloai pretree filter metrics \
-    --table ./metrics/metrics.csv \
-    --keep "dvmc>=0,dvmc<=0.3,average_BS>=0.8" \
-    [--msa-dir ./trimmed] [--tree-dir ./genetrees] [--copy] \
-    [--dry-run] [--overwrite]
-phyloai pretree filter cluster \
-    --table ./metrics/metrics.csv \
-    [--reduction pca|umap] [--drop-outlier-clusters none|auto] \
-    [--msa-dir ./trimmed] [--tree-dir ./genetrees] [--copy] \
-    [--dry-run] [--overwrite]
+phyloai pretree filter taper     --msa-dir ./trimmed ...
+phyloai pretree filter treeshrink --tree-dir ./genetrees ...
+phyloai pretree filter metrics   --table ./metrics/metrics.csv --keep "..."
+phyloai pretree filter cluster   --table ./metrics/metrics.csv ...
 phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 
 # Tree
-phyloai tree ml iqtree    --matrix ./concat/matrix.fa --mode pmsf \
-                          [--guide-tree ./tree.nwk]
+phyloai tree ml iqtree    --matrix ./concat/matrix.fa --mode pmsf
 phyloai tree ml fasttree  --matrix ./concat/matrix.fa
 phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3 --threads 8
 phyloai tree msc wastral  --gene-trees ./genetrees/
@@ -152,9 +124,6 @@ phyloai posttree dating      --tree ./tree.nwk --matrix ./matrix.fa \
                              --calibrations calibrations.txt
 phyloai posttree signal      --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk
 phyloai posttree simulate    --tree ./tree.nwk --replicates 100 --tool alisim
-
-# Systematic error diagnosis: individual atomic operations via CLI,
-# full iterative workflow via Skill (post-CLI-stable)
 phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk
 phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
@@ -174,17 +143,15 @@ Two modes, both include: `align → trim → filter taper → concat → [tree i
 | Mode | Steps | Notes |
 |------|-------|-------|
 | `--mode supermatrix` | align → trim → filter taper → concat → iqtree (unpartitioned) | Fast, single-step ML tree |
-| `--mode coalescent` | align → trim → filter taper → concat → genetree → astral-hybrid | MSC-based species tree |
+| `--mode coalescent` | align → trim → filter taper → concat → genetree → wastral | MSC-based species tree |
 
-The filter step in `phyloai run` uses `phyloai pretree filter taper` (TAPER error-site masking only). Full marker filtering — including TreeShrink taxon pruning, metric-rule filtering, and cluster-based outlier removal — is an explicit manual step via the other `phyloai pretree filter` subcommands.
+The filter step in `phyloai run` uses `phyloai pretree filter taper` (TAPER error-site masking only). Full marker filtering is an explicit manual step via the other `phyloai pretree filter` subcommands.
 
 ### 4.3 Universal CLI Flags
 
-All commands support the shared parameters defined in Section 9.2. Key universal flags:
-
 | Flag | Purpose |
 |------|---------|
-| `--output-format json\|text` | `doctor` only; choose human-readable text or machine-readable JSON diagnostic output |
+| `--output-format json\|text` | `doctor` only; human-readable or JSON diagnostic output |
 | `--dry-run` | Show what would be executed without running |
 | `--threads` / `-t` | Parallelism control |
 | `--run-dir` | Override default run directory |
@@ -192,106 +159,31 @@ All commands support the shared parameters defined in Section 9.2. Key universal
 | `--overwrite` | Overwrite existing output directory |
 | `--resume` | Resume long-running commands from `checkpoint.json` |
 
-Commands that read alignment files also support `--input-format` (auto-detect by default; accepted values match `AlignmentFormat` enum). Commands that invoke external tools also support `--tool-args` for tool strategy parameters only. PhyloAI always manages input, output, work directory, data type, threads, logs, and codon/projection arguments.
+Commands that read alignment files support `--input-format` (auto-detect by default). Commands that invoke external tools support `--tool-args` for tool strategy parameters only. PhyloAI always manages input, output, work directory, data type, threads, logs, and codon/projection arguments.
 
-**Format handling policy:** Each module uses the format required by its underlying tool. `pretree convert` and `core/formats.py` provide conversion as needed. There is no global FASTA-only mandate; modules handle format requirements internally.
+**Format handling policy:** Each module uses the format required by its underlying tool. `pretree convert` and `core/formats.py` provide conversion as needed. There is no global FASTA-only mandate.
 
 Full parameter naming rules and exit code definitions are in **Section 9**.
 
 ### 4.4 Shell Completion
 
-PhyloAI should provide first-party shell completion for the full CLI surface without adding any new Python dependency beyond the existing `click>=8.1` requirement.
-
-The supported scope is:
-
-- command and subcommand completion for the entire `phyloai` CLI tree
-- option-name completion for all commands
-- fixed enumerated parameter values exposed through `click.Choice(...)`
-- path completion delegated to Click and the user's shell integration
-
-PhyloAI should not implement custom runtime-dependent completion values at this stage. In particular, completion should not inspect project configuration, plugin state, or filesystem-derived domain values beyond what Click and the shell already provide automatically.
-
-The public interface should be a top-level command group:
-
-```bash
-phyloai completion bash
-phyloai completion zsh
-phyloai completion fish
-```
-
-Each subcommand should print the shell-specific completion script to standard output and exit successfully without modifying the user's shell configuration files. This command is intentionally a thin, stable wrapper around Click's built-in shell completion support. The wrapper exists to hide Click's internal environment-variable interface from end users and to give PhyloAI a stable, documented command surface.
-
-The recommended installation model is static script generation, not shell-startup-time dynamic evaluation. Users should run the completion export command once from an environment where `phyloai` is installed, save the generated script to a persistent location, and source that static file from their shell configuration. This avoids startup failures when the user's default shell environment is not the Conda environment that contains `phyloai` and `click`.
-
-The documentation must explicitly avoid recommending unconditional shell startup snippets that execute `phyloai` on every new shell session, such as dynamic `eval` patterns. Those patterns are fragile in Conda-based workflows because the default shell may not have access to the `phyloai` executable or its Python dependencies. Static script loading is the default documented path for Bash, Zsh, and Fish.
-
-Example usage pattern:
-
-```bash
-# Generate once from the phyloai environment
-phyloai completion zsh > ~/.config/phyloai/completion/phyloai.zsh
-
-# Then source the static script from shell configuration
-source ~/.config/phyloai/completion/phyloai.zsh
-```
-
-This feature is CLI-only. It does not require changes to the library API, MCP design, or run-record schema.
+Provides first-party shell completion (Bash/Zsh/Fish) via `phyloai completion <shell>`, wrapping Click's built-in support. Users generate a static script once from the phyloai environment and source it from shell config. See `docs/superpowers/plans/2026-06-10-cli-completion.md` for details.
 
 ### 4.5 Documentation Layout
 
-The top-level `README.md` should remain a concise project entry point, not a full command manual. It should contain only the project summary, installation, quick start, command index, shell completion summary, and links to command-specific documentation.
-
-Detailed command documentation lives under `docs/commands/`, one file per user-facing command or subcommand. Examples:
-
-- `docs/commands/doctor.md`
-- `docs/commands/pretree-stats.md`
-- `docs/commands/pretree-convert.md`
-
-Each command document must include these sections:
-
-- Purpose: what the command does and explicitly what it does not do
-- Usage: minimal usage and full parameter table
-- Inputs: supported formats, input modes, and directory scanning rules where applicable
-- Outputs: terminal output, saved files, JSON schema summary, and default output paths
-- Examples: common single-file and batch workflows where applicable
-- Warnings and Errors: skipped inputs, overwrite behavior, format detection failures, and command-specific warnings
-- Notes: relationship to adjacent commands, such as `pretree convert` before `pretree stats`
-
-New or materially changed commands must update both their command document and the top-level README command index. Detailed subcommand designs and implementation plans remain separate under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
+Top-level `README.md` is a concise entry point. Detailed command documentation lives under `docs/commands/`, one file per command (e.g., `docs/commands/doctor.md`). Each command document covers: Purpose, Usage, Inputs, Outputs, Examples, Warnings/Errors, Notes. Detailed subcommand designs and implementation plans remain under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
 
 ---
 
 ## 5. Dependency Management
 
-### 5.1 Strategy
+External tool detection, bundling strategy, and the `phyloai doctor` command are specified in the separate doctor design doc: `docs/superpowers/specs/2026-06-18-phyloai-doctor-design.md`.
 
-- **Bundled in the Python package:** TAPER 1.0.0 (`phyloai/bundled/TAPER-1.0.0/correction_multi.jl`), BMGE 1.12 (`phyloai/bundled/BMGE-1.12/BMGE.jar`) with corresponding license/source files retained in the bundled directories
-- **Bundled or auto-downloaded later:** trimAl — exact packaging strategy to be finalized before `pretree trim`
-- **pip-installable (auto-installed):** MAGUS (`pip install magus-msa`), ClipKIT, PhyKIT
-- **User-installed (detected by `doctor`):** IQ-TREE3, PhyloBayes-MPI, astral-hybrid, MAFFT, MCMCTree (PAML), TreeShrink
-
-### 5.2 `phyloai doctor` Output Format
-
-`phyloai doctor` defaults to `text` output. This is the **only** CLI command that supports `--output-format`; all other commands write structured results to `result.json`. Help text must make this explicit.
-
-```
-PhyloAI Environment Check
-==========================
-[OK]   iqtree3       3.0.1     /usr/local/bin/iqtree3
-[OK]   mafft         7.520     /usr/local/bin/mafft
-[OK]   magus         1.1.0     /usr/local/bin/magus
-[OK]   trimal        1.4.1     bundled
-[OK]   java          21.0.2    /usr/bin/java
-[WARN] PhyloBayes              not found — CAT-GTR module unavailable
-                                install: https://github.com/bayesiancook/pbmpi
-[OK]   correction_multi.jl 1.0.0     bundled
-[WARN] julia                   —         not found
-                                install: https://julialang.org/downloads/
-[WARN] MAGUS                   not found — large-dataset alignment
-                                falls back to MAFFT
-[MISS] MCMCTree                not found — dating module unavailable
-                                install: https://github.com/abacus-gene/paml/releases
-```
+Summary:
+- **Bundled:** TAPER 1.0.0, BMGE 1.12 (jar); IQ-TREE3, trimAl (planned)
+- **pip-installable:** MAGUS, ClipKIT
+- **User-installed:** PhyloBayes-MPI, wASTRAL, MAFFT, MCMCTree (PAML), TreeShrink
+- **Runtime:** Java, Julia
 
 ---
 
@@ -302,7 +194,7 @@ runs/
 ├── pretree/
 │   ├── align/
 │   │   ├── seqs/
-│   │   ├── align.log       # log co-located with outputs
+│   │   ├── align.log
 │   │   └── result.json
 │   ├── trim/
 │   │   ├── seqs/
@@ -313,47 +205,23 @@ runs/
 │   │   └── result.json
 │   ├── filter/
 │   │   ├── taper/
-│   │   │   ├── seqs/          (or seqs/faa/ + seqs/fna/ for AA+CDS)
+│   │   │   ├── seqs/
 │   │   │   ├── filter.log
 │   │   │   └── result.json
 │   │   ├── treeshrink/
-│   │   │   ├── trees/
-│   │   │   ├── seqs/          (only when --msa-dir provided)
-│   │   │   ├── filter.log
-│   │   │   └── result.json
 │   │   ├── metrics/
-│   │   │   ├── filter.log
-│   │   │   └── result.json
 │   │   └── cluster/
-│   │       ├── cluster_2d.pdf ... (diagnostic plots)
-│   │       ├── filter.log
-│   │       └── result.json
 │   └── concat/
 │       ├── concat.log
 │       └── result.json
-│   # note: convert defaults to runs/pretree/convert;
-│   # stats writes reports to caller-specified files; neither writes a log
 ├── tree/
 │   ├── ml/
 │   │   ├── iqtree/
-│   │   │   ├── iqtree.log
-│   │   │   └── result.json
 │   │   └── fasttree/
-│   │       ├── fasttree.log
-│   │       └── result.json
-│   ├── bi/
-│   │   └── phylobayes/
-│   │       ├── phylobayes.log
-│   │       └── result.json
-│   ├── msc/
-│   │   └── wastral/
-│   │       ├── wastral.log
-│   │       └── result.json
+│   ├── bi/phylobayes/
+│   ├── msc/wastral/
 │   └── concordance/
-│       ├── concordance.log
-│       └── result.json
 ├── posttree/
-│   ├── concordance/
 │   ├── topology/
 │   ├── dating/
 │   ├── signal/
@@ -365,72 +233,29 @@ runs/
     └── run_record.yaml
 ```
 
-Log file content per step: tool version, full command, stderr, wall time, exit code, and stdout only when stdout is diagnostic text. Commands must not duplicate large primary data streams in logs when stdout is the primary output and that output is already saved to a dedicated file or subdirectory (e.g., aligned FASTA files under `seqs/`). Commands that produce multiple output files under a subdirectory (e.g., `seqs/`) place the log directly in the output directory root alongside `result.json`, without a separate `logs/` subdirectory.
+Log file content per step: tool version, full command, stderr, wall time, exit code, and stdout only when stdout is diagnostic text. Commands must not duplicate large primary data streams in logs. Pipelines writing multiple outputs under a subdirectory (e.g., `seqs/`) place the log in the output directory root alongside `result.json`.
 
 ---
 
 ## 7. Report Module
 
-### 7.1 Design
-
-- Each module writes a structured JSON result to its output directory on completion. The JSON contains two sections: `params` (all inputs and resolved parameters) and `key_results` (quantitative outputs and conclusions relevant for reporting).
-- `report collector` aggregates all JSON files from a run directory.
-- `report methods` renders a Methods paragraph from the aggregated record using a template engine.
-- `report summary` outputs `run_record.yaml` — a complete, reproducible parameter snapshot plus key results from each step.
-- `report figures` renders tables and plots from `key_results` data into `runs/report/figures/`. Only steps with meaningful visual output produce figures.
-
-### 7.2 `key_results` Examples by Step
-
-| Step | key_results content |
-|------|---------------------|
-| `pretree metrics` | MSA metric distributions, PIS vs length scatter data |
-| `pretree filter` | retained/removed gene counts, removal reason breakdown |
-| `pretree concat` | taxon × gene occupancy matrix, retained/dropped MSA counts, per-variant matrix stats |
-| `pretree align` / `trim` | alignment length distribution before/after |
-| `tree ml` / `bi` / `msc` / `concordance` | model selected, log-likelihood, tree/support file path |
+- Each module writes `result.json` with `params` and `key_results` on completion.
+- `report collector` aggregates all JSON files from a run directory tree.
+- `report methods` renders a Methods paragraph from the aggregated record.
+- `report summary` outputs `run_record.yaml`.
+- `report figures` renders tables and plots from `key_results`.
 
 `pretree stats` and `pretree convert` are utility commands and do not contribute to `report`.
-
-### 7.3 Methods Paragraph Example
-
-> Protein sequences were aligned using MAFFT 7.520 with the L-INS-i strategy. Alignments were trimmed using BMGE 1.12 with stringent parameters (−m BLOSUM90 −h 0.4). Error sites were detected and masked using TAPER. Trimmed alignments were concatenated into supermatrices at 75%, 90%, and 100% occupancy thresholds using PhyKIT. Maximum-likelihood trees were inferred using IQ-TREE3 3.0.1 under the PMSF model (LG+C60+F+R4), Bayesian trees were inferred with PhyloBayes CAT-GTR, and multispecies coalescent species trees were inferred with wASTRAL. Gene concordance factors (gCF) and site concordance factors (sCF) were calculated in the tree module to quantify branch-level topological support.
 
 ---
 
 ## 8. AI Integration (Post-CLI Phase)
 
-### 8.1 MCP Server
+**MCP Server:** Expose all CLI commands as MCP tools with JSON I/O, reading `result.json` for structured results.
 
-Expose all CLI commands as MCP tools with JSON I/O. Any MCP-compatible AI client (Claude Desktop, Cursor, OpenCode) can invoke phyloai operations directly.
+**AI Coding Assistant Skill:** Workflow orchestration on top of MCP tools — parameter recommendation, result interpretation, Methods paragraph generation trigger, dynamic next-step suggestion.
 
-### 8.2 AI Coding Assistant Skill
-
-A generic skill (SKILL.md) compatible with any AI coding assistant that supports the superpowers plugin system (Claude Code, OpenCode, Cursor, Codex, etc.).
-
-Provides workflow orchestration logic on top of MCP tools:
-- parameter recommendation based on data characteristics
-- result interpretation and biological explanation
-- Methods paragraph generation trigger
-- dynamic next-step suggestion
-
-### 8.3 `posttree diagnose` as Skill Sub-workflow
-
-Systematic error diagnosis is an iterative human-in-the-loop process:
-
-```
-observe brlen distribution
-    → suspect LBA?
-        → run CCA
-            → confirm compositional bias?
-                → run simulation to validate model effect
-                    → decide: change model / remove taxa / recode
-```
-
-Each step's outcome determines the next step's strategy. This cannot be encoded as a single CLI command. Implementation plan:
-
-- `syserror.py` exposes all atomic operations individually (each callable from CLI)
-- Skill layer orchestrates them into a guided interactive sub-workflow
-- CLI users can invoke any atomic operation manually
+**Systematic error diagnosis** (`posttree syserror`) exposes atomic operations individually via CLI. The Skill layer orchestrates them into a guided interactive sub-workflow. This cannot be encoded as a single CLI command.
 
 ---
 
@@ -442,11 +267,9 @@ This section defines binding conventions for all subcommand implementations. Per
 
 - All parameter names use **kebab-case**: `--msa-dir`, `--seq-type`, `--output-dir`
 - Directories always use the `--xxx-dir` suffix; single files omit the suffix: `--tree`, `--matrix`, `--calibrations`
-- Short aliases (`-t`, `-o`) are reserved only for the highest-frequency parameters listed in Section 9.2; all other parameters use long form only to avoid cross-command conflicts
+- Short aliases (`-t`, `-o`) are reserved only for the highest-frequency parameters listed in Section 9.2; all other parameters use long form only
 
 ### 9.2 Shared Parameter Registry
-
-Parameters that appear in multiple commands must use exactly these names and types:
 
 | Parameter | Short | Type | Default | Applicable commands |
 |-----------|-------|------|---------|---------------------|
@@ -454,26 +277,21 @@ Parameters that appear in multiple commands must use exactly these names and typ
 | `--tree-dir` | | Path | — | commands requiring a gene tree directory |
 | `--output-dir` | `-o` | Path | auto under `runs/` | all commands producing output files |
 | `--threads` | `-t` | int | 4 | all commands invoking multi-threaded tools |
-| `--seq-type` | | AA \| NT \| CODON \| auto | auto where safe; command-specific otherwise | commands where molecule type affects behavior; `CODON` only valid for commands that support codon-aware processing (currently `pretree concat`) |
+| `--seq-type` | | AA \| NT \| CODON \| auto | auto where safe | commands where molecule type matters |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
-| `--input-format` | | str | auto-detect | commands reading alignment files |
-| `--input-format` | | `csv\|tsv\|auto` | `auto` | commands reading tabular CSV/TSV inputs |
+| `--input-format` | | str | auto-detect | commands reading alignment or tabular files |
 | `--output-format` | | text \| json | text | `doctor` only |
 | `--table-format` | | `csv\|tsv` | `csv` | commands writing auxiliary tabular outputs |
 | `--tool-args` | | str | — | all commands invoking external tools; strategy parameters only |
-| `--run-dir` | | Path | `./runs/` | all commands except `stats` and `convert` (global, inherited from CLI root) |
+| `--run-dir` | | Path | `./runs/` | all commands except `stats` and `convert` (root-level) |
 | `--dry-run` | | flag | False | all commands |
 | `--quiet` | `-q` | flag | False | all commands |
 | `--overwrite` | | flag | False | all commands producing output directories |
-| `--resume` | | flag | False | long-running pipeline commands only; resume from `checkpoint.json` |
+| `--resume` | | flag | False | long-running pipeline commands only |
 
-The `--run-dir` parameter is defined once on the `phyloai` root group and passed via Click context; subcommands do not re-declare it.
-
-`--input-format` intentionally keeps the same flag name across both alignment-reading and table-reading commands, but the value domain is command-specific. No command should expose both meanings simultaneously. Alignment-reading commands use `--input-format` for sequence/alignment format overrides; table-reading commands use `--input-format csv|tsv|auto` for delimiter control.
+`--run-dir` is defined once on the `phyloai` root group and passed via Click context. `--input-format` keeps the same flag name across alignment-reading and table-reading commands, but the value domain is command-specific.
 
 ### 9.3 Exit Codes
-
-All commands must exit with one of these codes:
 
 | Code | Meaning |
 |------|---------|
@@ -484,7 +302,7 @@ All commands must exit with one of these codes:
 
 ### 9.4 JSON Output Schema
 
-Every command writes a JSON result file to its output directory. The top-level structure is:
+Every command writes a JSON result file to its output directory:
 
 ```json
 {
@@ -499,128 +317,52 @@ Every command writes a JSON result file to its output directory. The top-level s
 }
 ```
 
-- `params`: all resolved input parameters (after config merge, after defaults applied)
-- `key_results`: quantitative outputs and conclusions for report integration; empty `{}` for utility commands (stats, convert)
+- `params`: all resolved input parameters
+- `key_results`: quantitative outputs for report integration; empty `{}` for utility commands
 - `tool_versions`: version string for every external tool invoked
 - `error`: null on success; error message string on failure
-- `data`: command-specific detailed results (summary, files, skipped entries, warnings)
-
-#### Unified Output Directory Structure
+- `data`: command-specific detailed results
 
 All commands follow the same output convention:
-
-1. **JSON result** is always written to `result.json` inside the output directory
-2. **Data files** (sequences, alignments, etc.) are written alongside `result.json`, or in a `seqs/` subdirectory for commands that produce sequence files
-3. **Auxiliary files** (per-gene tables, etc.) are written alongside `result.json`
-
-Example directory structure for `pretree convert`:
-```
-runs/pretree/convert/
-├── seqs/                 # converted sequence files
-│   ├── gene1.fa
-│   ├── gene2.fa
-│   └── ...
-└── result.json           # JSON result
-```
-
-Example directory structure for `pretree stats`:
-```
-runs/pretree/stats/
-├── result.json           # JSON result
-└── per-gene.csv          # per-gene table (when --per-gene is used)
-```
-
-Example directory structure for pipeline commands (`tree ml iqtree`, etc.):
-```
-runs/tree/ml/iqtree/
-├── result.json           # JSON result
-└── ...                   # tool output files
-```
-
-Example directory structure for `pretree align` (uses `seqs/` subdirectory, consistent with `pretree convert`):
-```
-runs/pretree/align/
-├── seqs/                 # aligned sequence files (Mode 1/2: flat; Mode 3: faa/ and fna/)
-│   ├── gene1.fa
-│   └── ...
-├── align.log             # per-gene tool log (co-located with outputs, not under runs/logs/)
-└── result.json           # JSON result
-```
-
-This unified structure ensures that:
-- Every output directory is self-contained with `result.json` for report aggregation
-- `report collector` can aggregate results by scanning the run directory tree for `result.json` files
-- Users can easily find all outputs from a command in one directory
+1. `result.json` always at output directory root
+2. Data files alongside `result.json`, or in `seqs/` subdirectory for sequence outputs
+3. Auxiliary files alongside `result.json`
 
 ### 9.5 Output Directory Conflict and Resume Policy
 
-- Default behavior: if the output directory already exists and is non-empty, **exit with code 1** and a clear message
-- `--overwrite`: delete and recreate the output directory before running
-- `--resume`: for long-running pipeline commands, load `checkpoint.json` from the output directory, require exact parameter match, skip verified successful tasks, and rerun failed, interrupted, pending, or invalid-output tasks
+- Default: if output directory exists and is non-empty, exit with code 1
+- `--overwrite`: delete and recreate the output directory
+- `--resume`: for long-running pipeline commands, load `checkpoint.json`, require exact parameter match, skip verified successful tasks
 - `--overwrite` and `--resume` are mutually exclusive
-- Short utility commands such as `pretree convert` and `pretree stats` do not need resume support in the first checkpoint implementation
+- Short utility commands (`pretree convert`, `pretree stats`) do not need resume support
 
-The detailed checkpoint schema and command adoption rules are defined in `docs/superpowers/specs/2026-06-12-checkpoint-resume-design.md`.
+Detailed checkpoint schema: `docs/superpowers/specs/2026-06-12-checkpoint-resume-design.md`.
 
 ### 9.6 Display and Logging
 
-- Terminal output always uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators. Progress bars must use one shared style across commands: a single task label, percentage, completed/total count, elapsed time, and ETA when the total is known.
-- Resume-aware progress bars display remaining work, not historical work. On `--resume`, the command verifies checkpoint tasks first, then sets the progress denominator to the number of runnable tasks only. Already successful verified tasks are reported in the pre-run or final summary, not replayed through the progress bar. If the checkpoint is already complete, the command prints a completion message and does not show a progress bar restarting from 1%.
-- Non-`doctor` commands always write machine-readable structured output to `result.json`; they do not expose a text/json structured stdout switch.
-- `--quiet` suppresses all terminal output except errors; useful for scripting and HPC batch jobs
-- Every pipeline command (align, trim, metrics, filter, concat, tree ml/bi/msc/concordance, and all posttree commands) writes a log file to its own output directory alongside `result.json`, named `<step>.log` (e.g., `runs/pretree/align/align.log`). The log contains: resolved command, tool versions, stderr, wall time, exit code, and stdout only when stdout is diagnostic text rather than the primary data output. Logs are never written to a separate `runs/<run>/logs/` directory. Utility commands (`stats`, `convert`) do not write run logs; `stats` is read-only, while `convert` writes normalized converted files to its `--output-dir` under the standard run layout by default.
-- Log files are appended (not overwritten) on retry or resume, with a timestamp separator between runs. Resumed log entries should include resume context when useful. On `--overwrite` runs the log file is deleted and recreated together with the output directory.
-- Every CLI command must provide **high-readability `--help` text**. Command help should explain what the command is for, when to use it, and what the major output means. Option help should explain practical intent, not just restate the flag name or type. Bare placeholders such as `TEXT`, missing descriptions, or one-line vague summaries are not acceptable for released commands.
-- When a command writes one or more output files, terminal output must explicitly state what was saved and where, using concrete wording such as `Summary saved to <path>` or `Per-gene table saved to <path>`. Users should not need to infer output destinations from arguments alone.
+- Terminal output uses **Rich**: progress bars for batch operations, tables for summary results, colored status indicators
+- Resume-aware progress bars display remaining work, not historical work
+- Non-`doctor` commands always write structured output to `result.json`; no text/json stdout switch
+- `--quiet` suppresses all terminal output except errors
+- Pipeline commands write `<step>.log` to their output directory alongside `result.json`. Logs are appended on retry/resume. On `--overwrite`, the log is recreated
+- Every CLI command provides high-readability `--help` text
+- When a command writes output files, terminal output states what was saved and where
 
 ### 9.7 Shared File Matching Policy
 
-Commands that pair flat MSA and tree directories must match files by **logical locus name**, not by raw filename stem plus a fixed suffix whitelist.
-
-For MSA-like inputs, the logical locus name is the full filename before the final `.`. Examples:
-
-- `gene.fa` -> `gene`
-- `gene.FASTA` -> `gene`
-- `gene.v1.ALI` -> `gene.v1`
-
-For tree-like inputs, matching is suffix-agnostic:
-
-1. First try removing the final `.` suffix segment.
-2. Then try removing the final two `.` suffix segments.
-3. If exactly one of those candidates matches an available MSA logical locus, accept it.
-4. If neither candidate matches, treat the tree as unpaired.
-5. If both candidates match different loci, raise an explicit ambiguity error and require the user to rename files or remove the conflict.
-
-Examples:
-
-- `gene.treefile` -> candidate `gene`
-- `gene.fa.treefile` -> candidates `gene.fa`, `gene`
-- `gene.v1.fa.treefile` -> candidates `gene.v1.fa`, `gene.v1`
-
-This policy deliberately does not depend on a hard-coded list of recognized MSA or tree filename suffixes for locus pairing. File contents and parser-level validation decide whether an input is a valid alignment or tree; filename suffixes are only used as dot-separated naming boundaries for matching.
-
-Command-specific specs may provide illustrative examples, but they must not redefine different pairing semantics.
+Commands pairing flat MSA and tree directories match files by **logical locus name** (filename before the final `.`), not by fixed suffix whitelist. For tree inputs, suffix-agnostic matching attempts removing 1–2 dot segments. Ambiguity raises an explicit error. This policy does not depend on a hard-coded list of recognized suffixes.
 
 ### 9.8 Tabular Input and Output Policy
 
-Commands that read CSV/TSV tables must expose `--input-format csv|tsv|auto`, default `auto`. Commands that write auxiliary tabular outputs must expose `--table-format csv|tsv`, default `csv`. Structured command results always use `result.json`.
-
-Rules:
-
-- `auto` is allowed for table input only, never for table output.
-- Auto-detection should prefer delimiter inspection from file content and may use filename extensions only as a secondary hint.
-- If the delimiter cannot be determined confidently, the command must exit with a clear error rather than guessing silently.
-- Commands producing multiple auxiliary tables in one run must use one consistent `--table-format` setting for all of them.
-- Command-specific flags such as `--per-gene-format` should be avoided in new designs unless there is a concrete command-specific need that cannot be covered by `--table-format`.
+Commands reading CSV/TSV tables expose `--input-format csv|tsv|auto` (default `auto`). Commands writing auxiliary tabular outputs expose `--table-format csv|tsv` (default `csv`). `auto` is input-only. Auto-detection prefers delimiter inspection; if uncertain, exit with an error rather than guessing.
 
 ### 9.9 `--tool-args` Strategy-Only Semantics
 
-1. PhyloAI builds managed input, output, work directory, data type, threads, logs, and codon/projection arguments first.
-2. `--tool-args` is tokenized with standard shell splitting (respects quoted strings).
-3. If `--tool-args` includes a PhyloAI-managed flag, the command exits with code 1 and names the blocked flag.
-4. Non-managed strategy parameters are appended unchanged to the command and logged before execution.
-5. Format of `--tool-args` must match the target tool's own CLI conventions; PhyloAI validates managed-flag conflicts but does not reimplement each tool's full parser.
-6. Only `--tool-args` is supported for user-supplied external-tool strategy parameters.
+1. PhyloAI builds managed arguments first (input, output, work dir, data type, threads, logs, codon/projection)
+2. `--tool-args` is tokenized with standard shell splitting
+3. If `--tool-args` includes a PhyloAI-managed flag, exit code 1 with blocked flag name
+4. Non-managed strategy parameters are appended unchanged
+5. No per-tool parser reimplementation; managed-flag conflict check only
 
 ### 9.10 Generated Sequence and Alignment Validation
 
@@ -631,10 +373,7 @@ Rules:
 
 ### 9.11 FASTA Line Wrapping Policy
 
-- All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 characters.
-- The policy applies to plain FASTA outputs and FASTA-like files inside `seqs/` directories, including outputs from `pretree convert`, `pretree align`, `pretree trim`, and `pretree concat`.
-- If a downstream tool requires a different native format, PhyloAI may preserve that tool's serialization, but any PhyloAI-written FASTA serialization must use the shared writer helper and the same width.
-- PHYLIP and NEXUS outputs keep their format-specific serialization rules; this policy only standardizes FASTA-family line wrapping.
+All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 characters. Applies to `pretree convert`, `pretree align`, `pretree trim`, and `pretree concat` outputs. PHYLIP and NEXUS outputs keep their format-specific serialization rules.
 
 ---
 
@@ -643,7 +382,7 @@ Rules:
 - **Primary:** Linux, macOS
 - **Secondary:** WSL (Windows Subsystem for Linux)
 - **Not supported:** Native Windows
-- Tool-specific exceptions are allowed when upstream binaries are not cross-platform. In Phase 2, `pretree align --method magus` is Linux-only because the pip-distributed MAGUS dependency bundle includes Linux binaries.
+- Tool-specific exceptions allowed when upstream binaries are not cross-platform (e.g., `pretree align --method magus` is Linux-only in Phase 2)
 
 ---
 
@@ -655,30 +394,20 @@ Rules:
 | 2 | `pretree/` modules | stats, convert, align, trim, metrics, filter, concat | Phase 1 |
 | 3 | `tree/` modules | ml, bi, msc, concordance | Phase 1 |
 | 4 | `posttree/` modules | topology, dating, signal, syserror, simulate | Phases 2–3 |
-| 5 | `phyloai run` | one-click supermatrix and coalescent pipelines | Phases 2–3 (align, trim, filter/TAPER, concat, tree ml/msc) |
-| 6 | `report/` module | collector, methods generation, figures rendering, run_record.yaml | Phases 2–4 |
-| 7 | MCP Server | JSON tool interface | Phases 2–6 (full CLI stable) |
-| 8 | AI Coding Assistant Skill | workflow orchestration, syserror guided sub-workflow | Phase 7 |
+| 5 | `phyloai run` | one-click supermatrix and coalescent pipelines | Phases 2–3 |
+| 6 | `report/` module | collector, methods, figures, run_record.yaml | Phases 2–4 |
+| 7 | MCP Server | JSON tool interface | Phases 2–6 |
+| 8 | AI Coding Assistant Skill | workflow orchestration, syserror sub-workflow | Phase 7 |
 
-**Spec and plan granularity by phase:**
+**Spec granularity:** Phase 1 has one spec+plan. Phases 2–4 have one spec+plan per subcommand under `docs/superpowers/specs/` and `docs/superpowers/plans/`. Phases 5–8 have one spec+plan each. Every subcommand spec must be consistent with Section 9 conventions.
 
-- **Phase 1** — one spec + plan covering the entire `core/` infrastructure (already complete).
-- **Phases 2–4** — every subcommand (`pretree stats`, `pretree align`, `tree ml iqtree`, `tree bi phylobayes`, `tree msc wastral`, `tree concordance`, etc.) has its own design spec and implementation plan under `docs/superpowers/specs/` and `docs/superpowers/plans/` respectively. Subcommands are designed and implemented one at a time in pipeline order within each phase.
-- **Phase 5** — one spec + plan for `phyloai run` (pipeline orchestration only; does not include report).
-- **Phase 6** — one spec + plan for the `report/` module (collector, methods, figures, run_record); depends on Phases 2–4 being stable so JSON output schemas are finalized.
-- **Phase 7** — one spec + plan for the MCP Server.
-- **Phase 8** — one spec + plan for the AI Coding Assistant Skill.
-
-Each subcommand spec and plan must be consistent with the conventions in Section 9; any deviation requires explicit justification in the subcommand spec.
-
-Every subcommand implementation must comply with the following binding requirements from the main design before it can be considered complete:
-
-1. **Structured output** for all non-`doctor` commands is always saved as `result.json`; terminal Rich display is always on unless `--quiet` is set.
-2. **Output directory structure** follows Section 6; commands with an `--output-dir` parameter default to the appropriate subdirectory under `runs/`.
-3. **Conflict policy** follows Section 9.5: non-empty output directory → exit 1 by default; `--overwrite` replaces; supported long-running commands may use `--resume` with a valid `checkpoint.json`.
-4. **Log file** written to the command output directory as `<step>.log` for all pipeline commands (Section 9.6).
-5. **JSON output schema** follows Section 9.4; `result.json` written to the output directory on success.
-6. **Exit codes** follow Section 9.3.
+**Completion requirements for every subcommand:**
+1. `result.json` output for all non-`doctor` commands
+2. Output directory follows Section 6
+3. Conflict policy follows Section 9.5
+4. Log file written as `<step>.log` for pipeline commands
+5. JSON schema follows Section 9.4
+6. Exit codes follow Section 9.3
 
 Modules within each phase can be developed in parallel. Phases are strictly sequential.
 
@@ -688,23 +417,20 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 
 | Decision | Rationale |
 |----------|-----------|
-| No GUI | CLI + AI interaction covers all use cases; GUI adds maintenance cost without proportional benefit in this era |
-| stats/convert as pretree subcommands | Semantically these are pre-analysis utilities, consistent with concat being a data preparation step; keeps top-level CLI clean |
-| filter uses subcommands for distinct workflows | TAPER, TreeShrink, metric-rule, and cluster filtering each have different required inputs and tool dependencies; subcommands avoid one command with many invalid option combinations |
-| metrics is prerequisite for filter | Decouples metric computation from filtering decisions; users can inspect metrics before committing to a filter strategy |
-| Filtering split by evidence source | Four subcommands: `filter taper` (error-site masking), `filter treeshrink` (outlier taxon pruning), `filter metrics` (rule-based locus removal), `filter cluster` (PCA/UMAP dimensionality reduction + hierarchical clustering + optional outlier cluster removal) |
-| Metrics limited to measurement + visualization | `pretree metrics` computes metrics, distributions, and correlation summaries; marker removal decisions and cluster-based filtering belong in `pretree filter` |
-| --tool-args strategy-only model | Keeps batch input/output and result schemas deterministic while still exposing tool-specific strategy knobs |
-| Format handling per-module, not global | Different tools require different formats; per-module handling via core/formats.py is more correct than forcing a global FASTA mandate |
-| backtrans in align, not a separate command | It is a direct post-processing of the alignment step and uses trimAl which is already a dependency |
-| syserror.py exposed as atomic ops only | Full diagnosis requires iterative human decisions; CLI atomics + Skill orchestration is the correct separation |
-| genetree.py in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
-| model_eval not exposed as standalone | Model evaluation logic is internal to syserror; exposing it separately creates redundant interface surface |
-| JSON result files for non-`doctor` commands | Ensures MCP wrapping has one stable machine-readable result path without maintaining parallel text/json command outputs; `doctor` is the sole command with `--output-format` because it is a human-oriented diagnostic |
-| JSON key_results in all pipeline modules | Enables report figures and summary without post-hoc data extraction; schema defined at design time |
-| JSON for output | JSON is strict and machine-parseable; structured `result.json` from each command provides sufficient reproducibility without a separate config file |
-| `--input-format` on alignment-reading commands | Real datasets often use inconsistent suffixes; explicit user intent must override guessing |
-| Logical locus matching ignores suffix vocabularies | Real datasets use inconsistent, uppercase, and ad hoc filename suffixes; matching should rely on dot-delimited naming boundaries and explicit ambiguity errors, not guessed suffix catalogs |
-| Table I/O uses `--input-format csv\|tsv\|auto` and `--table-format csv\|tsv` | CSV/TSV behavior should be uniform across the full workflow so users do not relearn different table flags per command |
-| Per-subcommand design + plan docs | Each pretree subcommand is complex enough to warrant its own spec; keeps main design doc stable while allowing detailed iteration |
-| Lightweight top-level README + command docs | Keeps `README.md` maintainable as the CLI grows; detailed command behavior belongs in `docs/commands/*.md` with a consistent section structure |
+| No GUI | CLI + AI interaction covers all use cases |
+| stats/convert as pretree subcommands | Pre-analysis utilities, keeps top-level CLI clean |
+| filter uses subcommands | TAPER, TreeShrink, metric-rule, and cluster filtering have different inputs and tool dependencies |
+| metrics is prerequisite for filter | Decouples computation from filtering decisions |
+| Filtering split by evidence source | Error-site, taxon-pruning, rule-based, and cluster-based each separate |
+| --tool-args strategy-only model | Deterministic batch I/O while exposing tool-specific knobs |
+| Format handling per-module | Different tools need different formats; per-module via core/formats.py |
+| backtrans in align | Direct post-processing of alignment, uses trimAl already a dependency |
+| syserror exposed as atomic ops only | Full diagnosis needs iterative human decisions; CLI atomics + Skill orchestration |
+| genetree in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
+| JSON result.json for non-doctor commands | One stable machine-readable result path for MCP wrapping |
+| JSON key_results in all pipeline modules | Enables report figures/summary without post-hoc data extraction |
+| Logical locus matching ignores suffix vocabularies | Real datasets use inconsistent suffixes |
+| Table I/O uniform flags | Users don't relearn different table flags per command |
+| Per-subcommand design + plan docs | Each subcommand complex enough to warrant own spec; main doc stays stable |
+| Lightweight README + command docs | README maintainable; detailed behavior in `docs/commands/*.md` |
+| Doctor in separate spec | Doctor is a standalone diagnostic concerned with tool detection, bundling, and registry; separate spec reduces main doc weight |

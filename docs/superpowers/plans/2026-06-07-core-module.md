@@ -425,7 +425,7 @@ TOOL_REGISTRY: dict[str, dict] = {
                     "install": "https://github.com/iqtree/iqtree3/releases"},
     "mafft":       {"required": True,  "version_flag": "--version",
                     "install": "https://mafft.cbrc.jp/alignment/software/"},
-    "astral-hybrid": {"required": False, "version_flag": "-v",
+    "wastral":     {"required": False, "version_flag": "-v",
                     "install": "https://github.com/chaoszhang/ASTER"},
     "pb_mpi":      {"required": False, "version_flag": "",
                     "install": "https://github.com/bayesiancook/pbmpi"},
@@ -438,8 +438,7 @@ TOOL_REGISTRY: dict[str, dict] = {
                     "install": "pip install magus-msa"},
     "clipkit":     {"required": False, "version_flag": "--version",
                     "install": "pip install clipkit"},
-    "phykit":      {"required": False, "version_flag": "version",
-                    "install": "pip install phykit"},
+
     # bundled tools (path resolved relative to package)
     "trimal":      {"required": True,  "version_flag": "--version",
                     "bundled": True,

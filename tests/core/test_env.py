@@ -107,7 +107,7 @@ def test_taper_bundled_tool_uses_correction_multi_script(tmp_path):
 
 
 def test_get_version_uses_alternative_args_when_needed(tmp_path):
-    tool = tmp_path / "astral-hybrid"
+    tool = tmp_path / "wastral"
     tool.write_text("#!/bin/sh\n")
 
     env = ToolEnv()

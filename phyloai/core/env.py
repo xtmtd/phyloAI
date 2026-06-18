@@ -27,11 +27,12 @@ class ToolInfo:
 
 TOOL_REGISTRY: dict[str, dict] = {
     "iqtree3":    {"required": True,  "version_flag": "--version",
-                   "install": "https://github.com/iqtree/iqtree3/releases"},
+                    "bundled": True,
+                    "install": "https://github.com/iqtree/iqtree3/releases"},
     "mafft":      {"required": True,  "version_flag": "--version",
                    "install": "https://mafft.cbrc.jp/alignment/software/"},
-    "astral-hybrid": {"required": False, "version_args": [["-v"], ["-h"]],
-                   "install": "https://github.com/chaoszhang/ASTER"},
+    "wastral":    {"required": False, "version_args": [["-v"], ["-h"]],
+                    "install": "https://github.com/chaoszhang/ASTER"},
     "pb_mpi":     {"required": False, "version_flag": "",
                    "install": "https://github.com/bayesiancook/pbmpi"},
     "mcmctree":   {"required": False, "version_flag": "",
@@ -47,8 +48,7 @@ TOOL_REGISTRY: dict[str, dict] = {
                    "install": "pip install magus-msa"},
     "clipkit":    {"required": False, "version_flag": "--version",
                    "install": "pip install clipkit"},
-    "phykit":     {"required": False, "version_args": [["-h"], ["version"]],
-                   "install": "pip install phykit"},
+
     "java":       {"required": False, "version_args": [["-version"]],
                    "install": "https://www.java.com/download/"},
     "julia":      {"required": False, "version_args": [["--version"]],
