@@ -1676,9 +1676,11 @@ def run_symtest(
     provided it is built via :func:`scan_msa_dir`.
     """
     start = time.monotonic()
-    env = ToolEnv()
-    iqtree_exe = str(iqtree_path) if iqtree_path else str(env.require("iqtree3"))
-    iqtree_version = env._tools.get("iqtree3") and env._tools["iqtree3"].version or "unknown"
+    tool_paths = {"iqtree3": iqtree_path} if iqtree_path else {}
+    env = ToolEnv(tool_paths=tool_paths)
+    iqtree_exe = str(env.require("iqtree3"))
+    info = env._detect_tool("iqtree3", version_flag="--version")
+    iqtree_version = info.version or "unknown"
 
     msa_map = scan_msa_dir(msa_dir) if msa_map is None else msa_map
     if not msa_map:
