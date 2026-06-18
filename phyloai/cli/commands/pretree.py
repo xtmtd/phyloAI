@@ -1798,17 +1798,10 @@ def filter_metrics_command(table_path, keep, input_format, loci_column, msa_dir,
 _SYMTEST_HELP = (
     "Test phylogenetic symmetry assumptions per locus using IQ-TREE3's "
     "--symtest-only, then filter loci by p-value.\n\n"
-    "Workflow:\n"
-    "  1. Scan --msa-dir for per-locus MSA files\n"
-    "  2. Build a temporary supermatrix + partition file\n"
-    "  3. Run 'iqtree -s <matrix> -p <partitions> --symtest-only'\n"
-    "  4. Parse .symtest.csv for per-partition p-values\n"
-    "  5. Retain loci with p >= --symtest-pval, drop those below\n"
-    "  6. Copy retained MSAs to seqs/, optionally trees to trees/\n\n"
     "The p-value column used depends on --symtest-type:\n"
-    "  (default) -> SymPval (combined stationarity + homogeneity)\n"
-    "  MAR       -> MarPval (marginal / stationarity)\n"
-    "  INT       -> IntPval (internal / homogeneity)\n\n"
+    "  (default)  SymPval  combined stationarity + homogeneity\n"
+    "  MAR        MarPval  marginal / stationarity\n"
+    "  INT        IntPval  internal / homogeneity\n\n"
     "References: Naser-Khdour et al. (2019) doi:10.1093/gbe/evz193"
 )
 
@@ -1845,8 +1838,7 @@ def _validate_symtest_pval(ctx, param, value):
     "--iqtree-path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
     help="Explicit path to iqtree binary.  When omitted, resolved via "
-    "PATH ('phyloai doctor' for detection status).  IQ-TREE3 >= 2.3.0 "
-    "required.",
+    "PATH ('phyloai doctor' for detection status).",
 )
 @click.option(
     "--threads", "-t", type=int, default=4, show_default=True,
