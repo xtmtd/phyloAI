@@ -229,3 +229,57 @@ def _run_one_fasttree(
             "wall_time": _time.monotonic() - start,
             "warnings": warnings,
         }
+
+
+from Bio import SeqIO
+
+from phyloai.core.sequence_normalization import detect_seq_type
+
+
+def _validate_seq_types(
+    files: list[Path],
+    *,
+    declared_type: str | None,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    if not files:
+        return (declared_type or "AA"), []
+
+    all_types: dict[str, str] = {}
+    offending: list[dict[str, Any]] = []
+
+    for f in files:
+        try:
+            ext = f.suffix.lower()
+            if ext in {".phy", ".phylip"}:
+                seqs = [str(r.seq) for r in SeqIO.parse(str(f), "phylip-relaxed")]
+            else:
+                seqs = [str(r.seq) for r in SeqIO.parse(str(f), "fasta")]
+            if not seqs:
+                offending.append({"file": str(f), "reason": "no sequences found"})
+                continue
+            dt = detect_seq_type(seqs)
+            all_types[str(f)] = dt
+        except Exception:
+            offending.append({"file": str(f), "reason": "failed to parse input file"})
+            continue
+
+    if declared_type:
+        for f_str, dt in all_types.items():
+            if dt != declared_type:
+                offending.append({"file": f_str, "expected": declared_type, "detected": dt})
+        return declared_type, offending
+
+    type_counts: dict[str, int] = {}
+    for dt in all_types.values():
+        type_counts[dt] = type_counts.get(dt, 0) + 1
+
+    if len(type_counts) == 1:
+        resolved = next(iter(type_counts))
+        return resolved, []
+
+    majority = max(type_counts, key=type_counts.get)
+    for f_str, dt in all_types.items():
+        if dt != majority:
+            offending.append({"file": f_str, "expected": majority, "detected": dt})
+
+    return None, offending

@@ -197,3 +197,50 @@ def test_run_one_fasttree_missing_input(tmp_path: Path) -> None:
 
     assert result["status"] == "failed"
     assert "reason" in result
+
+
+def test_validate_seq_types_homogeneous_aa(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _validate_seq_types
+
+    (tmp_path / "g1.fa").write_text(">a\nMKTLLL\n")
+    (tmp_path / "g2.fa").write_text(">b\nMKTLLL\n")
+    files = sorted(tmp_path.glob("*.fa"))
+
+    resolved, offending = _validate_seq_types(files, declared_type=None)
+
+    assert resolved == "AA"
+    assert len(offending) == 0
+
+
+def test_validate_seq_types_mixed_raises(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _validate_seq_types
+
+    (tmp_path / "g1.fa").write_text(">a\nMKTLLL\n")
+    (tmp_path / "g2.fa").write_text(">b\nACGTAC\n")
+    files = sorted(tmp_path.glob("*.fa"))
+
+    resolved, offending = _validate_seq_types(files, declared_type=None)
+
+    assert resolved is None
+    assert len(offending) >= 1
+
+
+def test_validate_seq_types_explicit_mismatch(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _validate_seq_types
+
+    (tmp_path / "g1.fa").write_text(">a\nMKTLLL\n")
+    files = sorted(tmp_path.glob("*.fa"))
+
+    resolved, offending = _validate_seq_types(files, declared_type="NT")
+
+    assert resolved == "NT"
+    assert len(offending) == 1
+
+
+def test_validate_seq_types_no_files(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _validate_seq_types
+
+    resolved, offending = _validate_seq_types([], declared_type=None)
+
+    assert resolved == "AA"
+    assert len(offending) == 0
