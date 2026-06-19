@@ -244,3 +244,93 @@ def test_validate_seq_types_no_files(tmp_path: Path) -> None:
 
     assert resolved == "AA"
     assert len(offending) == 0
+
+
+def test_run_fasttree_batch_dry_run(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "g1.fa").write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+    (msa_dir / "g2.fa").write_text(">c\nMKTLLL\n>d\nMKTLLL\n")
+
+    out_dir = tmp_path / "out"
+
+    payload = run_fasttree(
+        msa_dir=msa_dir, output_dir=out_dir,
+        seq_type="AA", model="lg", dry_run=True, quiet=True,
+    )
+
+    assert payload["status"] == "success"
+    assert payload["data"]["summary"]["n_input_files"] >= 2
+    assert "files" in payload["data"]
+    for f in payload["data"]["files"]:
+        assert "cmd" in f
+
+
+def test_run_fasttree_single_dry_run(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    mat = tmp_path / "matrix.fa"
+    mat.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+
+    out_dir = tmp_path / "out"
+
+    payload = run_fasttree(
+        matrix=mat, output_dir=out_dir,
+        seq_type="AA", model="lg", dry_run=True, quiet=True,
+    )
+
+    assert payload["data"]["summary"]["mode"] == "--matrix"
+    assert len(payload["data"]["files"]) >= 1
+    if payload["data"]["files"]:
+        assert "cmd" in payload["data"]["files"][0]
+
+
+def test_run_fasttree_batch_auto_detects_mixed_and_fails(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    msa_dir = tmp_path / "mixed"
+    msa_dir.mkdir()
+    (msa_dir / "aa.fa").write_text(">a\nMKTLLL\n")
+    (msa_dir / "nt.fa").write_text(">b\nACGTAC\n")
+
+    out_dir = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="Mixed sequence types"):
+        run_fasttree(msa_dir=msa_dir, output_dir=out_dir, seq_type="auto", quiet=True)
+
+
+def test_run_fasttree_batch_explicit_mismatch_fails(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    msa_dir = tmp_path / "dir"
+    msa_dir.mkdir()
+    (msa_dir / "aa.fa").write_text(">a\nMKTLLL\n")
+
+    out_dir = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="Files with wrong --seq-type"):
+        run_fasttree(msa_dir=msa_dir, output_dir=out_dir, seq_type="NT", quiet=True)
+
+
+def test_run_fasttree_invalid_model_for_aa(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    msa_dir = tmp_path / "dir"
+    msa_dir.mkdir()
+    (msa_dir / "g1.fa").write_text(">a\nMKTLLL\n")
+
+    out_dir = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="Invalid model for AA.*gtr"):
+        run_fasttree(msa_dir=msa_dir, output_dir=out_dir, seq_type="AA", model="gtr", quiet=True)
+
+
+def test_run_fasttree_neither_input_raises() -> None:
+    from phyloai.tree.ml import run_fasttree
+    from pathlib import Path
+
+    out_dir = Path("/tmp/out")
+    with pytest.raises(ValueError, match="Either --msa-dir or --matrix"):
+        run_fasttree(output_dir=out_dir, seq_type="AA", model="lg", quiet=True)
