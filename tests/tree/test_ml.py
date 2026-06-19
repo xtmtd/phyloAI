@@ -142,3 +142,58 @@ def test_build_fasttree_cmd_with_explicit_executable(tmp_path: Path) -> None:
     cmd = _build_fasttree_cmd(inp, out, executable="/opt/bin/FastTree")
 
     assert cmd[0] == "/opt/bin/FastTree"
+
+
+def test_run_one_fasttree_success(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _run_one_fasttree
+
+    inp = tmp_path / "gene.fa"
+    inp.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+
+    result = _run_one_fasttree(
+        gene_path=inp, seq_type="AA", model="lg", mode="normal",
+        boot=1000, cat=20, gamma=True, tool_args=None,
+        log_dir=log_dir, fasttree_executable="FastTree",
+    )
+
+    assert result["status"] == "success"
+    assert "output_tree" in result
+    assert "log_file" in result
+
+
+def test_run_one_fasttree_dry_run(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _run_one_fasttree
+
+    inp = tmp_path / "gene.fa"
+    inp.write_text(">a\nMKT\n")
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+
+    result = _run_one_fasttree(
+        gene_path=inp, seq_type="AA", model="lg", mode="normal",
+        boot=1000, cat=20, gamma=True, tool_args=None,
+        log_dir=log_dir, fasttree_executable="FastTree",
+        dry_run=True,
+    )
+
+    assert result["status"] == "dry_run"
+    assert "cmd" in result
+
+
+def test_run_one_fasttree_missing_input(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _run_one_fasttree
+
+    inp = tmp_path / "missing.fa"
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+
+    result = _run_one_fasttree(
+        gene_path=inp, seq_type="AA", model="lg", mode="normal",
+        boot=1000, cat=20, gamma=True, tool_args=None,
+        log_dir=log_dir, fasttree_executable="FastTree",
+    )
+
+    assert result["status"] == "failed"
+    assert "reason" in result
