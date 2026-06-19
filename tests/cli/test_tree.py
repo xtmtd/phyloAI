@@ -124,7 +124,7 @@ def test_tree_ml_fasttree_blocked_tool_args(tmp_path: Path) -> None:
         "tree", "ml", "fasttree",
         "--matrix", str(mat),
         "--output-dir", str(out_dir),
-        "--tool-args", "-lg",
+        "--tool-args", "-nt",
         "--quiet",
     ])
 

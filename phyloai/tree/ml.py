@@ -27,10 +27,7 @@ FASTTREE_COMPATIBLE_EXTENSIONS = frozenset({
 })
 
 FASTTREE_MANAGED_FLAGS = frozenset({
-    "-nt", "-gtr", "-lg", "-wag",
-    "-cat", "-gamma", "-boot", "-nosupport",
-    "-fastest", "-slow",
-    "-expert", "-help",
+    "-nt", "-expert", "-help",
 })
 
 CHECKPOINT_FLUSH_INTERVAL = 2.0
@@ -346,6 +343,7 @@ def run_fasttree(
     fasttree_exe = _resolve_fasttree(fasttree_path, dry_run)
 
     batch_mode = msa_dir is not None
+    n_resume_skipped = 0
 
     trees_dir = output_dir / "trees"
     logs_dir = output_dir / "logs"
@@ -421,7 +419,8 @@ def run_fasttree(
             if checkpoint.status == "success":
                 return _reconstruct_result(output_dir, run_start)
 
-            to_run_ids, _skipped_ids = plan_resume(checkpoint)
+            to_run_ids, skipped_ids = plan_resume(checkpoint)
+            n_resume_skipped = len(skipped_ids)
             if not to_run_ids:
                 checkpoint.status = "success"
                 save_checkpoint_atomic(checkpoint, ckpt_path)
@@ -577,6 +576,7 @@ def run_fasttree(
         fasttree_path=fasttree_path, tool_args=tool_args,
         overwrite=overwrite, threads=threads,
         skipped_input=skipped_input,
+        n_resume_skipped=n_resume_skipped,
     )
 
 
@@ -618,12 +618,13 @@ def _assemble_result(
     overwrite: bool,
     threads: int,
     skipped_input: list[dict[str, str]],
+    n_resume_skipped: int = 0,
 ) -> dict[str, Any]:
     if failed_results is None:
         failed_results = []
 
     all_ok = [r for r in results if r["status"] in {"success", "dry_run"}]
-    n_trees = len(all_ok)
+    n_trees = len(all_ok) + n_resume_skipped
     n_failed = len(failed_results)
     n_skipped = len(skipped_input)
 
@@ -681,7 +682,7 @@ def _assemble_result(
             "tool_args": tool_args,
         },
         "key_results": {
-            "n_input": len(results) + n_failed + n_skipped,
+            "n_input": len(results) + n_failed + n_skipped + n_resume_skipped,
             "n_trees": n_trees,
             "n_failed": n_failed,
             "n_skipped": n_skipped,
@@ -693,10 +694,11 @@ def _assemble_result(
         "error": error_msg,
         "data": {
             "summary": {
-                "n_input_files": len(results) + n_failed + n_skipped,
+                "n_input_files": len(results) + n_failed + n_skipped + n_resume_skipped,
                 "n_trees": n_trees,
                 "n_failed": n_failed,
                 "n_skipped": n_skipped,
+                "n_resume_skipped": n_resume_skipped,
                 "mean_n_taxa": mean_n_taxa,
                 "mean_wall_time": mean_wall_time,
                 "mode": "--msa-dir" if batch_mode else "--matrix",

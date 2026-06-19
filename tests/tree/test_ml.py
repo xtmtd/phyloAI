@@ -114,24 +114,30 @@ def test_build_fasttree_cmd_with_tool_args(tmp_path: Path) -> None:
     assert "2" in cmd
 
 
-def test_check_managed_flag_conflict_blocks_lg() -> None:
+def test_check_managed_flag_conflict_blocks_nt() -> None:
     from phyloai.tree.ml import _check_managed_flag_conflict
 
-    with pytest.raises(ValueError, match="Blocked managed flag.*-lg"):
-        _check_managed_flag_conflict("-lg")
+    with pytest.raises(ValueError, match="Blocked managed flag.*-nt"):
+        _check_managed_flag_conflict("-nt")
 
 
-def test_check_managed_flag_conflict_blocks_boot() -> None:
+def test_check_managed_flag_conflict_blocks_expert() -> None:
     from phyloai.tree.ml import _check_managed_flag_conflict
 
-    with pytest.raises(ValueError, match="Blocked managed flag.*-boot"):
-        _check_managed_flag_conflict("-boot 500")
+    with pytest.raises(ValueError, match="Blocked managed flag.*-expert"):
+        _check_managed_flag_conflict("-expert")
 
 
 def test_check_managed_flag_conflict_allows_strategy_args() -> None:
     from phyloai.tree.ml import _check_managed_flag_conflict
 
     _check_managed_flag_conflict("-spr 4 -mlacc 2 -slownni")
+
+
+def test_check_managed_flag_conflict_allows_model_and_boot() -> None:
+    from phyloai.tree.ml import _check_managed_flag_conflict
+
+    _check_managed_flag_conflict("-lg -wag -gtr -cat 20 -gamma -boot 500 -nosupport -fastest -slow -noml")
 
 
 def test_build_fasttree_cmd_with_explicit_executable(tmp_path: Path) -> None:

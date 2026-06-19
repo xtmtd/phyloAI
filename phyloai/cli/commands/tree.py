@@ -44,9 +44,8 @@ def ml() -> None:
     "fasttree",
     help=(
         "Infer ML trees using FastTree.\n\n"
-        "Two modes:\n"
-        "  --msa-dir  : batch gene tree inference from a directory of MSA files\n"
-        "  --matrix   : single supermatrix tree inference from one concatenated matrix\n\n"
+        "  --msa-dir : batch gene trees from an MSA directory\n"
+        "  --matrix  : single supermatrix tree from one file\n\n"
         "FastTree natively reads FASTA and phylip-relaxed formats.\n"
         "NEXUS files must be converted first via 'phyloai pretree convert'."
     ),
@@ -74,7 +73,7 @@ def ml() -> None:
     "--model",
     type=click.Choice(["jtt", "lg", "wag", "jc", "gtr"]),
     default=None,
-    help="Substitution model. AA default: lg. NT default: gtr.",
+    help="Substitution model. AA: jtt/lg/wag. NT: jc/gtr. AA default: lg. NT default: gtr.",
 )
 @click.option(
     "--mode",
@@ -98,10 +97,10 @@ def ml() -> None:
     help="Number of rate categories for FastTree (-cat N).",
 )
 @click.option(
-    "--gamma/--no-gamma",
+    "--gamma",
+    is_flag=True,
     default=True,
-    show_default=True,
-    help="Enable gamma-distributed rate heterogeneity.",
+    help="Enable gamma-distributed rate heterogeneity (default: on).",
 )
 @click.option(
     "--output-dir", "-o",
@@ -127,7 +126,9 @@ def ml() -> None:
     "--tool-args",
     type=str,
     default=None,
-    help="Extra strategy flags passed verbatim to FastTree. Managed flags are blocked.",
+    help="Extra FastTree flags appended verbatim (e.g. '-spr 4 -mlacc 2 -slownni'). "
+    "Managed I/O and data-type flags (-nt) are blocked. "
+    "Strategy flags like -lg/-wag/-cat/-gamma/-boot may override PhyloAI defaults.",
 )
 @click.option("--overwrite", is_flag=True, default=False, help="Overwrite existing output directory.")
 @click.option("--resume", is_flag=True, default=False, help="Resume from checkpoint (--msa-dir only).")
@@ -230,6 +231,9 @@ def fasttree_command(
                     payload = _invoke(
                         progress_callback=lambda _: progress.advance(task)
                     )
+                    n_resume = payload["data"]["summary"].get("n_resume_skipped", 0)
+                    if n_resume > 0:
+                        progress.advance(task, advance=n_resume)
                 except (ValueError, FileNotFoundError) as exc:
                     error_msg = str(exc)
         else:
