@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import json
+import os
 import shlex
+import shutil
+import subprocess
 import time
+import time as _time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Callable
 
+from Bio import SeqIO
+
+from phyloai.core.checkpoint import load_checkpoint, save_checkpoint_atomic, validate_resume_params
+from phyloai.core.env import ToolEnv
 from phyloai.core.schema import COMMON_ALIGNMENT_EXTENSIONS
+from phyloai.core.sequence_normalization import detect_seq_type
+from phyloai.tree.checkpoint_helpers import build_initial_checkpoint, mark_task, plan_resume
 
 FASTTREE_COMPATIBLE_EXTENSIONS = frozenset({
     ".fa", ".fas", ".fasta", ".faa", ".fna",
@@ -114,10 +126,6 @@ def _check_managed_flag_conflict(tool_args: str) -> None:
             raise ValueError(f"Blocked managed flag in --tool-args: {token}")
         if "/" in token or ">" in token:
             raise ValueError(f"Blocked I/O override in --tool-args: {token}")
-
-
-import subprocess
-import time as _time
 
 
 def _run_one_fasttree(
@@ -231,11 +239,6 @@ def _run_one_fasttree(
         }
 
 
-from Bio import SeqIO
-
-from phyloai.core.sequence_normalization import detect_seq_type
-
-
 def _validate_seq_types(
     files: list[Path],
     *,
@@ -283,16 +286,6 @@ def _validate_seq_types(
             offending.append({"file": f_str, "expected": majority, "detected": dt})
 
     return None, offending
-
-
-import json
-import os
-import shutil
-from concurrent.futures import ProcessPoolExecutor, as_completed
-
-from phyloai.core.env import ToolEnv
-from phyloai.core.checkpoint import load_checkpoint, save_checkpoint_atomic, validate_resume_params
-from phyloai.tree.checkpoint_helpers import build_initial_checkpoint, mark_task, plan_resume
 
 
 def _resolved_fasttree_params(
@@ -353,7 +346,6 @@ def run_fasttree(
     fasttree_exe = _resolve_fasttree(fasttree_path, dry_run)
 
     batch_mode = msa_dir is not None
-    input_label = "--msa-dir" if batch_mode else "--matrix"
 
     trees_dir = output_dir / "trees"
     logs_dir = output_dir / "logs"
@@ -389,7 +381,7 @@ def run_fasttree(
         resolved_seq_type, offending = _validate_seq_types(found, declared_type=declared)
         if resolved_seq_type is None:
             offending_strs = [f"{o['file']}: {o['detected']} (expected homogeneous)" for o in offending[:10]]
-            raise ValueError(f"Mixed sequence types in --msa-dir:\n" + "\n".join(offending_strs))
+            raise ValueError("Mixed sequence types in --msa-dir:\n" + "\n".join(offending_strs))
         if offending:
             offending_strs = [f"{o['file']}: {o['detected']} (expected {o['expected']})" for o in offending[:10]]
             raise ValueError(
@@ -429,7 +421,6 @@ def run_fasttree(
             if checkpoint.status == "success":
                 return _reconstruct_result(output_dir, run_start)
 
-            tree_verifier = __import__("phyloai.tree.checkpoint_helpers", fromlist=["resume_verifier"]).resume_verifier()
             to_run_ids, _skipped_ids = plan_resume(checkpoint)
             if not to_run_ids:
                 checkpoint.status = "success"

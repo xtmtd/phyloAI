@@ -1,0 +1,19 @@
+phyloai tree ml fasttree module overall re-review — responses
+
+1. [High] --msa-dir / --matrix still use Click exists=True, missing-path errors bypass exit code 1.
+   → ACCEPT. Removed exists=True from both --msa-dir and --matrix click options. Added manual existence validation in fasttree_command with explicit exit code 1. Updated test_tree_ml_fasttree_mutual_exclusivity to use real tmp_path dirs instead of /tmp.
+
+2. [High] Single-file --matrix seq_type detection only parses FASTA, ignoring PHYLIP.
+   → ACCEPT. Fixed single-matrix seq_type resolution in run_fasttree to branch by suffix: .phy/.phylip → "phylip-relaxed" format, else → "fasta".
+
+3. [Medium] Test cli_msa_dir_nonexistent_exits_1 referenced from wrong file path.
+   → ACCEPT. Moved test from tests/tree/test_ml.py to tests/cli/test_tree.py (where it belongs — it uses CliRunner). Updated verification command accordingly.
+
+4. [Medium] Newick validation placed before returncode check, misclassifying failure reason.
+   → ACCEPT. Reordered: returncode check block now comes before Phylo.read Newick validation. Non-zero exit returns tool-failure reason, not parse error.
+
+5. [Medium] result.json.status = "success" even when all trees failed (exit code 2).
+   → ACCEPT. _assemble_result now sets status = "error" (with non-null error message) when n_trees == 0 and (n_failed > 0 or n_skipped > 0). Matches parent spec schema contract: success | error.
+
+6. [Low] PHYLIP wording inconsistent: "PHYLIP relaxed interleaved" vs "phylip-relaxed".
+   → ACCEPT. Normalized to "phylip-relaxed (.phy, .phylip)" in tree-design.md §4 and fasttree-design.md §5.2. Kept descriptive text about FastTree's format support but used the standard identifier.

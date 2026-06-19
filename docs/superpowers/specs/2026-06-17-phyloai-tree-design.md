@@ -1,7 +1,8 @@
 # PhyloAI Tree Module Design Specification
 
 **Date:** 2026-06-17  
-**Status:** Draft for user review  
+**Last updated:** 2026-06-18 (detailed ml/fasttree spec)  
+**Status:** Approved  
 **Parent spec:** `2026-06-07-phyloai-design.md`
 
 ---
@@ -28,11 +29,35 @@ The module boundary is deliberate:
 ## 2. CLI Surface
 
 ```bash
-phyloai tree ml iqtree --matrix ./concat/matrix.fa --mode pmsf
-phyloai tree ml fasttree --matrix ./concat/matrix.fa
+# ML: batch gene trees
+phyloai tree ml fasttree --msa-dir ./trimmed/seqs --seq-type AA --model lg \
+    --mode normal --boot 1000 --cat 20 --gamma --threads 8 -o runs/tree/ml/fasttree
+# ML: single supermatrix
+phyloai tree ml fasttree --matrix ./concat/matrix.fa --seq-type NT --model gtr \
+    --mode slow --boot 1000 -o runs/tree/ml/fasttree
+# ML: IQ-TREE3 (future)
+phyloai tree ml iqtree --matrix ./concat/matrix.fa --model LG+G4
+
+# Bayesian
 phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3
+
+# MSC
 phyloai tree msc wastral --gene-trees ./genetrees/
+
+# Concordance factors
 phyloai tree concordance --tree ./tree.nwk --gene-trees ./genetrees/
+```
+
+### CLI Hierarchy
+
+```
+phyloai tree (click.Group)
+├── ml (click.Group)          # Maximum-likelihood tree inference
+│   ├── fasttree              # FastTree backend
+│   └── iqtree                # IQ-TREE3 backend (future)
+├── bi                        # Bayesian inference (PhyloBayes)
+├── msc                       # Multispecies coalescent (wASTRAL)
+└── concordance               # Concordance factors (gCF/sCF)
 ```
 
 Each subcommand is a distinct inference or support workflow. The top-level `tree` group exists to keep the CLI organized; it does not imply a shared execution model beyond shared output conventions from the main design.
@@ -43,12 +68,19 @@ Each subcommand is a distinct inference or support workflow. The top-level `tree
 
 ### 3.1 `tree ml`
 
-`tree ml` owns maximum-likelihood inference from a single matrix. It provides two backends:
+`tree ml` owns maximum-likelihood inference. It provides two backends:
 
+- `fasttree` for quick approximate tree inference (batch gene trees or single supermatrix)
 - `iqtree` for partitioned, unpartitioned, mixture, and model-rich ML analyses
-- `fasttree` for quick approximate tree inference and lightweight pseudo-tree use cases
 
-The submodule is responsible for tool selection, matrix input validation, output verification, and result reporting. It is not responsible for building the matrix itself.
+**Two input modes:**
+- `--msa-dir`: directory of MSA files → batch parallel gene tree inference via `ProcessPoolExecutor`
+- `--matrix`: single concatenated matrix file → single-tree supermatrix inference
+- `--msa-dir` and `--matrix` are mutually exclusive
+
+**Shared parameters** (applicable to both `fasttree` and `iqtree`): `--msa-dir`, `--matrix`, `--seq-type` (AA|NT|auto), `--model` (domain varies by seq-type), `--mode` (normal|fastest|slow), `--boot` (int, 0 = no support), `--output-dir` / `-o` (default `runs/tree/ml/<backend>`), `--threads` / `-t` (only `--msa-dir` mode), `--overwrite`, `--resume`, `--dry-run`, `--quiet` / `-q`, `--tool-args`.
+
+Detailed specification for FastTree: `docs/superpowers/specs/2026-06-18-phyloai-tree-ml-fasttree-design.md`.
 
 ### 3.2 `tree bi`
 
@@ -64,7 +96,17 @@ The submodule is responsible for tool selection, matrix input validation, output
 
 ---
 
-## 4. Output Conventions
+## 4. Input Format Policy
+
+All tree subcommands that consume alignment or matrix files should support both **FASTA** (`.fa`, `.fas`, `.fasta`, `.faa`, `.fna`) and **phylip-relaxed** (`.phy`, `.phylip`) input formats wherever the underlying tool can consume them natively.
+
+- **NEXUS** (`.nex`, `.nxs`, `.nexus`) is not required at the tree layer. Subcommands that need it must document the requirement individually and refer users to `phyloai pretree convert` for pre-conversion.
+- If a tool cannot read a supported format natively, the subcommand spec must document the limitation and may either auto-convert via `core/formats.py` or reject the input with a clear message.
+- Specific tools may impose additional constraints (e.g., IQ-TREE expects PHYLIP with a specific header form). Those constraints are documented in the tool-specific subcommand spec, not here.
+
+---
+
+## 5. Output Conventions
 
 All tree subcommands follow the shared PhyloAI output conventions:
 
@@ -77,7 +119,7 @@ Tree commands do not define a separate FASTA-writing policy unless they themselv
 
 ---
 
-## 5. Documentation Requirements
+## 6. Documentation Requirements
 
 Implementation must update or add:
 
@@ -89,7 +131,7 @@ Implementation must update or add:
 
 ---
 
-## 6. Relationship to Posttree
+## 7. Relationship to Posttree
 
 `posttree` keeps topology tests, dating, signal analysis, systematic error diagnostics, and simulation.
 
