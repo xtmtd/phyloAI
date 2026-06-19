@@ -122,10 +122,7 @@ FASTTREE_COMPATIBLE_EXTENSIONS = frozenset({
 })
 
 FASTTREE_MANAGED_FLAGS = frozenset({
-    "-nt", "-gtr", "-lg", "-wag",
-    "-cat", "-gamma", "-boot", "-nosupport",
-    "-fastest", "-slow",
-    "-expert", "-help",
+    "-nt", "-expert", "-help",
 })
 
 CHECKPOINT_FLUSH_INTERVAL = 2.0
@@ -180,30 +177,41 @@ def _build_fasttree_cmd(
 ) -> list[str]:
     cmd = [executable]
 
+    tool_tokens = set(shlex.split(tool_args)) if tool_args else set()
+    has_model_override = bool({"-lg", "-wag", "-gtr"} & tool_tokens)
+    has_mode_override = bool({"-fastest", "-slow"} & tool_tokens)
+    has_gamma_override = "-gamma" in tool_tokens
+    has_cat_override = "-cat" in tool_tokens
+    has_boot_override = bool({"-boot", "-nosupport"} & tool_tokens)
+
     if seq_type == "NT":
         cmd.append("-nt")
-        if model == "gtr":
+        if model == "gtr" and not has_model_override:
             cmd.append("-gtr")
     else:
-        if model == "lg":
-            cmd.append("-lg")
-        elif model == "wag":
-            cmd.append("-wag")
+        if not has_model_override:
+            if model == "lg":
+                cmd.append("-lg")
+            elif model == "wag":
+                cmd.append("-wag")
 
-    if mode == "fastest":
-        cmd.append("-fastest")
-    elif mode == "slow":
-        cmd.append("-slow")
+    if not has_mode_override:
+        if mode == "fastest":
+            cmd.append("-fastest")
+        elif mode == "slow":
+            cmd.append("-slow")
 
-    if gamma:
+    if gamma and not has_gamma_override:
         cmd.append("-gamma")
 
-    cmd.extend(["-cat", str(cat)])
+    if not has_cat_override:
+        cmd.extend(["-cat", str(cat)])
 
-    if boot > 0:
-        cmd.extend(["-boot", str(boot)])
-    else:
-        cmd.append("-nosupport")
+    if not has_boot_override:
+        if boot > 0:
+            cmd.extend(["-boot", str(boot)])
+        else:
+            cmd.append("-nosupport")
 
     if tool_args:
         _check_managed_flag_conflict(tool_args)
@@ -324,24 +332,54 @@ def test_build_fasttree_cmd_with_tool_args(tmp_path: Path) -> None:
     assert "2" in cmd
 
 
-def test_check_managed_flag_conflict_blocks_lg() -> None:
+def test_check_managed_flag_conflict_blocks_nt() -> None:
     from phyloai.tree.ml import _check_managed_flag_conflict
 
-    with pytest.raises(ValueError, match="Blocked managed flag.*-lg"):
-        _check_managed_flag_conflict("-lg")
+    with pytest.raises(ValueError, match="Blocked managed flag.*-nt"):
+        _check_managed_flag_conflict("-nt")
 
 
-def test_check_managed_flag_conflict_blocks_boot() -> None:
+def test_check_managed_flag_conflict_blocks_expert() -> None:
     from phyloai.tree.ml import _check_managed_flag_conflict
 
-    with pytest.raises(ValueError, match="Blocked managed flag.*-boot"):
-        _check_managed_flag_conflict("-boot 500")
+    with pytest.raises(ValueError, match="Blocked managed flag.*-expert"):
+        _check_managed_flag_conflict("-expert")
 
 
 def test_check_managed_flag_conflict_allows_strategy_args() -> None:
     from phyloai.tree.ml import _check_managed_flag_conflict
 
     _check_managed_flag_conflict("-spr 4 -mlacc 2 -slownni")
+
+
+def test_check_managed_flag_conflict_allows_model_and_boot() -> None:
+    from phyloai.tree.ml import _check_managed_flag_conflict
+
+    _check_managed_flag_conflict("-lg -wag -gtr -cat 20 -gamma -boot 500 -nosupport -fastest -slow -noml")
+
+
+def test_build_fasttree_cmd_tool_args_overrides_model(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, seq_type="AA", model="lg", tool_args="-wag -noml")
+
+    assert "-lg" not in cmd
+    assert "-wag" in cmd
+    assert "-noml" in cmd
+
+
+def test_build_fasttree_cmd_tool_args_overrides_cat(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, cat=20, tool_args="-cat 30")
+
+    assert cmd.count("-cat") == 1
+    assert cmd.count("20") == 0
+    assert cmd.count("30") == 1
 
 
 def test_build_fasttree_cmd_with_explicit_executable(tmp_path: Path) -> None:
@@ -1400,6 +1438,17 @@ def _assemble_result(
     if not gamma:
         cmd_parts.append("--no-gamma")
     cmd_parts.extend(["-o", str(output_dir)])
+    if threads != 4:
+        cmd_parts.extend(["-t", str(threads)])
+    if fasttree_path:
+        cmd_parts.extend(["--fasttree-path", fasttree_path])
+    if tool_args:
+        if " " in tool_args:
+            cmd_parts.append(f"--tool-args '{tool_args}'")
+        else:
+            cmd_parts.extend(["--tool-args", tool_args])
+    if overwrite:
+        cmd_parts.append("--overwrite")
     cmd_str = " ".join(cmd_parts)
 
     payload: dict[str, Any] = {
@@ -1757,7 +1806,7 @@ def test_tree_ml_fasttree_blocked_tool_args(tmp_path: Path) -> None:
         "tree", "ml", "fasttree",
         "--matrix", str(mat),
         "--output-dir", str(out_dir),
-        "--tool-args", "-lg",
+        "--tool-args", "-nt",
         "--quiet",
     ])
 
@@ -1915,10 +1964,10 @@ def ml() -> None:
     help="Number of rate categories for FastTree (-cat N).",
 )
 @click.option(
-    "--gamma/--no-gamma",
+    "--gamma",
+    is_flag=True,
     default=True,
-    show_default=True,
-    help="Enable gamma-distributed rate heterogeneity.",
+    help="Enable gamma-distributed rate heterogeneity (default: on).",
 )
 @click.option(
     "--output-dir", "-o",
@@ -2175,8 +2224,8 @@ phyloai tree ml fasttree --matrix ./concat/matrix.fa \
 # Disable bootstrap (no node support)
 phyloai tree ml fasttree --msa-dir ./trimmed --boot 0
 
-# Fast mode, JTT model (AA default), no gamma
-phyloai tree ml fasttree --msa-dir ./trimmed --mode fastest --model jtt --no-gamma
+# Fast mode, JTT model (AA default)
+phyloai tree ml fasttree --msa-dir ./trimmed --mode fastest --model jtt
 ```
 
 ## Parameters
@@ -2190,7 +2239,7 @@ phyloai tree ml fasttree --msa-dir ./trimmed --mode fastest --model jtt --no-gam
 | `--mode` | normal | Speed/accuracy: normal, fastest, slow. |
 | `--boot` | 1000 | Bootstrap replicates. 0 = no support (-nosupport). |
 | `--cat` | 20 | Number of rate categories. |
-| `--gamma` / `--no-gamma` | enabled | Gamma-distributed rate heterogeneity. |
+| `--gamma` | on (default) | Gamma-distributed rate heterogeneity. Always on; use --tool-args to override. |
 | `--output-dir` / `-o` | runs/tree/ml/fasttree | Output directory. |
 | `--threads` / `-t` | 4 | Parallel workers (--msa-dir only). |
 | `--fasttree-path` | — | Explicit path to FastTree. |

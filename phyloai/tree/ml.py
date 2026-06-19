@@ -670,6 +670,17 @@ def _assemble_result(
     if not gamma:
         cmd_parts.append("--no-gamma")
     cmd_parts.extend(["-o", str(output_dir)])
+    if threads != 4:
+        cmd_parts.extend(["-t", str(threads)])
+    if fasttree_path:
+        cmd_parts.extend(["--fasttree-path", fasttree_path])
+    if tool_args:
+        if " " in tool_args:
+            cmd_parts.append(f"--tool-args '{tool_args}'")
+        else:
+            cmd_parts.extend(["--tool-args", tool_args])
+    if overwrite:
+        cmd_parts.append("--overwrite")
     cmd_str = " ".join(cmd_parts)
 
     payload: dict[str, Any] = {

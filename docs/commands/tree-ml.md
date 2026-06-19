@@ -20,8 +20,8 @@ phyloai tree ml fasttree --matrix ./concat/matrix.fa \
 # Disable bootstrap (no node support)
 phyloai tree ml fasttree --msa-dir ./trimmed --boot 0
 
-# Fast mode, JTT model (AA default), no gamma
-phyloai tree ml fasttree --msa-dir ./trimmed --mode fastest --model jtt --no-gamma
+# Fast mode, JTT model (AA default)
+phyloai tree ml fasttree --msa-dir ./trimmed --mode fastest --model jtt
 ```
 
 ## Parameters
@@ -35,7 +35,7 @@ phyloai tree ml fasttree --msa-dir ./trimmed --mode fastest --model jtt --no-gam
 | `--mode` | normal | Speed/accuracy: normal, fastest, slow. |
 | `--boot` | 1000 | Bootstrap replicates. 0 = no support (-nosupport). |
 | `--cat` | 20 | Number of rate categories. |
-| `--gamma` / `--no-gamma` | enabled | Gamma-distributed rate heterogeneity. |
+| `--gamma` | on | Gamma-distributed rate heterogeneity. Always on by default; use --tool-args to disable. |
 | `--output-dir` / `-o` | runs/tree/ml/fasttree | Output directory. |
 | `--threads` / `-t` | 4 | Parallel workers (--msa-dir only). |
 | `--fasttree-path` | — | Explicit path to FastTree. |

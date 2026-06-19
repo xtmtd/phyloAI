@@ -123,21 +123,21 @@ The tree output (stdout from FastTree) is captured and written to `<output_dir>/
 
 ### 4.5 Managed Flags Blocklist for `--tool-args`
 
-The following FastTree flags are managed by phyloai and BLOCKED in `--tool-args` (per main design §9.9):
+Per main design §9.9, PhyloAI manages input, output, work directory, data type, threads, logs, and codon/projection — all other parameters are **strategy parameters** free for `--tool-args` to control.
 
-| Managed flag | Controlled by |
-|-------------|---------------|
-| `-nt` | `--seq-type NT` |
-| `-lg`, `-wag`, `-gtr` | `--model` |
-| `-cat N` | `--cat` |
-| `-gamma` | `--gamma` |
-| `-boot N` | `--boot` (N > 0) |
-| `-nosupport` | `--boot 0` |
-| `-fastest`, `-slow` | `--mode` |
-| `-expert`, `-help` | (always blocked) |
-| input file path, `>` redirect | phyloai-managed I/O |
+The following FastTree flags are managed by phyloai and BLOCKED in `--tool-args`:
 
-Additionally, any positional argument that begins with a recognized alignment extension is treated as a managed input/output override and blocked. If `--tool-args` contains any blocked flag, exit code 1 with the blocked flag name.
+| Managed flag | Reason |
+|-------------|--------|
+| `-nt` | Controlled by `--seq-type NT` |
+| `-expert`, `-help` | Change interaction mode (always blocked) |
+| `/` or `>` in any token | phyloai-managed I/O override |
+
+All other FastTree flags (`-lg`, `-wag`, `-gtr`, `-jc`, `-cat`, `-gamma`, `-boot`, `-nosupport`, `-fastest`, `-slow`, `-noml`, `-spr`, `-mlacc`, `-slownni`, etc.) are **strategy parameters** and pass freely through `--tool-args`.
+
+**Override semantics:** When `--tool-args` contains a flag for a category (model, mode, gamma, cat, boot), phyloai does NOT generate its own version of that flag — `--tool-args` fully takes over that category. For categories NOT mentioned in `--tool-args`, phyloai's defaults apply. This avoids duplicate/conflicting flags in the final FastTree command.
+
+If `--tool-args` contains a blocked flag, exit code 1 with the blocked flag name.
 
 ---
 
@@ -438,10 +438,11 @@ Before merging, verify the following:
 - [ ] `--matrix` with nonexistent file → exit 1
 
 ### 14.3 `--tool-args` Blocking
-- [ ] `--tool-args "-lg"` → exit 1, blocked flag `-lg`
-- [ ] `--tool-args "-boot 500"` → exit 1, blocked flag `-boot`
-- [ ] `--tool-args "-fastest"` → exit 1, blocked flag `-fastest`
+- [ ] `--tool-args "-nt"` → exit 1, blocked managed data-type flag `-nt`
 - [ ] `--tool-args "-expert"` → exit 1
+- [ ] `--tool-args "-lg"` → accepted (strategy parameter, overrides `--model` default)
+- [ ] `--tool-args "-boot 500"` → accepted (strategy parameter, overrides `--boot` default)
+- [ ] `--tool-args "-fastest"` → accepted (strategy parameter, overrides `--mode` default)
 - [ ] Valid strategy arg (e.g., `--tool-args "-spr 4"`) → appended to command
 
 ### 14.4 Batch Execution
