@@ -116,3 +116,30 @@ def test_plan_resume_splits_tasks(tmp_path: Path) -> None:
     assert "g2" in to_run
     assert "g3" in to_run
     assert "g1" in skipped
+
+
+def test_plan_resume_all_succeeded_skips_all(tmp_path: Path) -> None:
+    from phyloai.tree.checkpoint_helpers import build_initial_checkpoint, mark_task, plan_resume
+
+    inputs = [Path("/data/g1.fa"), Path("/data/g2.fa")]
+    ck = build_initial_checkpoint(
+        step="tree.ml.fasttree",
+        command="cmd",
+        params={},
+        inputs=inputs,
+        trees_dir=tmp_path / "trees",
+        logs_dir=tmp_path / "logs",
+    )
+
+    (tmp_path / "trees").mkdir(parents=True)
+    (tmp_path / "trees" / "g1.tre").write_text("(a:0.1,b:0.2);\n")
+    (tmp_path / "trees" / "g2.tre").write_text("(c:0.3,d:0.4);\n")
+
+    mark_task(ck, "g1", status="success")
+    mark_task(ck, "g2", status="success")
+
+    to_run, skipped = plan_resume(ck)
+
+    assert to_run == []
+    assert "g1" in skipped
+    assert "g2" in skipped

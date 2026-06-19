@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
+
+import pytest
 
 
 def test_scan_input_finds_fasta_phylip_files(tmp_path: Path) -> None:
@@ -24,9 +27,6 @@ def test_scan_input_finds_fasta_phylip_files(tmp_path: Path) -> None:
     assert "empty file" in skip_reasons
     assert "directory" in skip_reasons
     assert "unrecognized extension: .txt" in skip_reasons
-
-
-import pytest
 
 
 def test_build_fasttree_cmd_aa_lg_full(tmp_path: Path) -> None:
@@ -215,6 +215,7 @@ def test_build_fasttree_cmd_tool_args_overrides_mode(tmp_path: Path) -> None:
     assert cmd[0] == "/opt/bin/FastTree"
 
 
+@pytest.mark.skipif(not shutil.which("FastTree"), reason="FastTree not found in PATH")
 def test_run_one_fasttree_success(tmp_path: Path) -> None:
     from phyloai.tree.ml import _run_one_fasttree
 
@@ -405,3 +406,70 @@ def test_run_fasttree_neither_input_raises() -> None:
     out_dir = Path("/tmp/out")
     with pytest.raises(ValueError, match="Either --msa-dir or --matrix"):
         run_fasttree(output_dir=out_dir, seq_type="AA", model="lg", quiet=True)
+
+
+def test_build_fasttree_cmd_tool_args_blocked_expert() -> None:
+    from phyloai.tree.ml import _check_managed_flag_conflict
+
+    with pytest.raises(ValueError, match="-expert"):
+        _check_managed_flag_conflict("-expert")
+
+
+def test_build_fasttree_cmd_tool_args_blocked_help() -> None:
+    from phyloai.tree.ml import _check_managed_flag_conflict
+
+    with pytest.raises(ValueError, match="-help"):
+        _check_managed_flag_conflict("-help")
+
+
+def test_matrix_unsupported_extension(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    bad = tmp_path / "matrix.nex"
+    bad.write_text("anything\n")
+
+    with pytest.raises(ValueError, match="unsupported extension"):
+        run_fasttree(matrix=bad, output_dir=tmp_path / "out", quiet=True)
+
+
+def test_matrix_unparsable_content(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    bad = tmp_path / "matrix.fa"
+    bad.write_text("not a valid fasta file at all\n")
+
+    with pytest.raises(ValueError, match="Cannot parse"):
+        run_fasttree(matrix=bad, output_dir=tmp_path / "out", quiet=True)
+
+
+def test_run_fasttree_dry_run_no_artifacts(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    mat = tmp_path / "matrix.fa"
+    mat.write_text(">a\nMKTLLL\n")
+
+    out_dir = tmp_path / "out"
+
+    result = run_fasttree(
+        matrix=mat, output_dir=out_dir, quiet=True, dry_run=True,
+    )
+
+    assert not (out_dir / "fasttree.log").exists()
+    assert result["status"] == "success"
+
+
+def test_run_one_fasttree_n_taxa(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _run_one_fasttree
+
+    inp = tmp_path / "gene.fa"
+    inp.write_text(">a\nMKTLLL\n>b\nMKTLLL\n>c\nMKTLLL\n")
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+
+    result = _run_one_fasttree(
+        gene_path=inp, seq_type="AA", model="lg", mode="normal",
+        boot=1000, cat=20, gamma=True, tool_args=None,
+        log_dir=log_dir, dry_run=True,
+    )
+
+    assert result["n_taxa"] == 3

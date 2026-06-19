@@ -97,10 +97,10 @@ def ml() -> None:
     help="Number of rate categories for FastTree (-cat N).",
 )
 @click.option(
-    "--gamma",
-    is_flag=True,
+    "--gamma/--no-gamma",
     default=True,
-    help="Enable gamma-distributed rate heterogeneity (default: on).",
+    show_default=True,
+    help="Enable gamma-distributed rate heterogeneity.",
 )
 @click.option(
     "--output-dir", "-o",
@@ -247,7 +247,7 @@ def fasttree_command(
         error_msg = str(exc)
 
     if error_msg is not None:
-        exit_code = 3 if "not found" in error_msg.lower() else 1
+        exit_code = 3 if "fasttree not found" in error_msg.lower() else 1
         _fail(error_msg, exit_code)
 
     if dry_run:

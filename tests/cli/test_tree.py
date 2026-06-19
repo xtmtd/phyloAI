@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -168,3 +167,40 @@ def test_tree_ml_fasttree_writes_result_json_and_log(tmp_path: Path) -> None:
     elif result.exit_code == 3:
         import pytest
         pytest.skip("FastTree not installed")
+
+
+def test_tree_ml_fasttree_no_gamma_cli(tmp_path: Path) -> None:
+    mat = tmp_path / "matrix.fa"
+    mat.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+
+    out_dir = tmp_path / "out"
+
+    result = CliRunner().invoke(cli, [
+        "tree", "ml", "fasttree",
+        "--matrix", str(mat),
+        "--output-dir", str(out_dir),
+        "--seq-type", "AA",
+        "--model", "lg",
+        "--no-gamma",
+        "--quiet",
+        "--dry-run",
+    ])
+
+    assert result.exit_code == 0
+
+
+def test_tree_ml_fasttree_quiet_dry_run_zero_inputs_exits_1(tmp_path: Path) -> None:
+    msa_dir = tmp_path / "empty"
+    msa_dir.mkdir()
+
+    out_dir = tmp_path / "out"
+
+    result = CliRunner().invoke(cli, [
+        "tree", "ml", "fasttree",
+        "--msa-dir", str(msa_dir),
+        "--output-dir", str(out_dir),
+        "--quiet",
+        "--dry-run",
+    ])
+
+    assert result.exit_code == 1

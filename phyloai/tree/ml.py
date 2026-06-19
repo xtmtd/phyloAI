@@ -158,6 +158,7 @@ def _run_one_fasttree(
         "input": str(gene_path),
         "output_tree": None,
         "log_file": None,
+        "n_taxa": 0,
     }
 
     if not gene_path.exists():
@@ -172,6 +173,12 @@ def _run_one_fasttree(
     stem = gene_path.stem
     out_tree = output_dir / f"{stem}.tre"
     out_log = log_dir / f"{stem}.log"
+
+    try:
+        n_taxa = sum(1 for _ in SeqIO.parse(str(gene_path), "fasta"))
+        result["n_taxa"] = n_taxa
+    except Exception:
+        pass
 
     cmd = _build_fasttree_cmd(
         gene_path, out_tree,
@@ -363,13 +370,22 @@ def run_fasttree(
     if not batch_mode:
         assert matrix is not None
         matrix_ext = matrix.suffix.lower()
+        if matrix_ext not in FASTTREE_COMPATIBLE_EXTENSIONS:
+            raise ValueError(
+                f"--matrix has unsupported extension: {matrix.suffix}. "
+                f"Supported: {sorted(FASTTREE_COMPATIBLE_EXTENSIONS)}"
+            )
         matrix_format = "phylip-relaxed" if matrix_ext in {".phy", ".phylip"} else "fasta"
         try:
             recs = list(SeqIO.parse(str(matrix), matrix_format))
         except Exception:
             recs = []
+        if not recs:
+            raise ValueError(
+                f"Cannot parse --matrix as {matrix_format}: {matrix}"
+            )
         if seq_type == "auto":
-            resolved_seq_type = detect_seq_type([str(r.seq) for r in recs]) if recs else "AA"
+            resolved_seq_type = detect_seq_type([str(r.seq) for r in recs])
         else:
             sample = [str(r.seq) for r in recs[:10]]
             if sample:
@@ -384,7 +400,7 @@ def run_fasttree(
     if batch_mode:
         assert msa_dir is not None
         found, skipped_input = _scan_input(msa_dir)
-        if not found and not dry_run:
+        if not found:
             raise ValueError("No valid input files found in --msa-dir")
         declared = None if seq_type == "auto" else seq_type
         resolved_seq_type, offending = _validate_seq_types(found, declared_type=declared)
@@ -476,6 +492,7 @@ def run_fasttree(
             fasttree_path=fasttree_path, tool_args=tool_args,
             overwrite=overwrite, threads=threads,
             skipped_input=[],
+            dry_run=dry_run,
         )
 
     if not resume and not dry_run:
@@ -570,6 +587,8 @@ def run_fasttree(
     if _ckpt_write:
         if interrupted:
             checkpoint.status = "interrupted"
+        elif failed_results:
+            checkpoint.status = "running"
         else:
             checkpoint.status = "success"
             checkpoint.completed_at = _dt_cls.now(_tz.utc).isoformat(timespec="seconds")
@@ -588,6 +607,7 @@ def run_fasttree(
         overwrite=overwrite, threads=threads,
         skipped_input=skipped_input,
         n_resume_skipped=n_resume_skipped,
+        dry_run=dry_run,
     )
 
 
@@ -630,6 +650,7 @@ def _assemble_result(
     threads: int,
     skipped_input: list[dict[str, str]],
     n_resume_skipped: int = 0,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     if failed_results is None:
         failed_results = []
@@ -732,17 +753,18 @@ def _assemble_result(
         },
     }
 
-    import datetime as _dt
-    output_dir.mkdir(parents=True, exist_ok=True)
-    log_path = output_dir / "fasttree.log"
-    now_local = _dt.datetime.now().isoformat(timespec="seconds")
-    with open(log_path, "a") as lf:
-        lf.write(f"{now_local} | phyloai tree ml fasttree | exit={0 if n_trees > 0 else 2}\n")
-        lf.write(f"command: {cmd_str}\n")
-        for tool, ver in versions.items():
-            lf.write(f"{tool}: {ver}\n")
-        lf.write(f"wall_time: {payload['wall_time']:.2f}s\n")
-        lf.write(f"trees: {n_trees}, failed: {n_failed}, skipped: {n_skipped}\n")
+    if not dry_run:
+        import datetime as _dt
+        output_dir.mkdir(parents=True, exist_ok=True)
+        log_path = output_dir / "fasttree.log"
+        now_local = _dt.datetime.now().isoformat(timespec="seconds")
+        with open(log_path, "a") as lf:
+            lf.write(f"{now_local} | phyloai tree ml fasttree | exit={0 if n_trees > 0 else 2}\n")
+            lf.write(f"command: {cmd_str}\n")
+            for tool, ver in versions.items():
+                lf.write(f"{tool}: {ver}\n")
+            lf.write(f"wall_time: {payload['wall_time']:.2f}s\n")
+            lf.write(f"trees: {n_trees}, failed: {n_failed}, skipped: {n_skipped}\n")
     return payload
 
 
