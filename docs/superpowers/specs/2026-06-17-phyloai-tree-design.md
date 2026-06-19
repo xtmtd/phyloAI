@@ -1,7 +1,7 @@
 # PhyloAI Tree Module Design Specification
 
 **Date:** 2026-06-17  
-**Last updated:** 2026-06-18 (detailed ml/fasttree spec)  
+**Last updated:** 2026-06-19 (added ml/iqtree spec; updated 9.9 tool-args semantics)  
 **Status:** Approved  
 **Parent spec:** `2026-06-07-phyloai-design.md`
 
@@ -78,9 +78,11 @@ Each subcommand is a distinct inference or support workflow. The top-level `tree
 - `--matrix`: single concatenated matrix file → single-tree supermatrix inference
 - `--msa-dir` and `--matrix` are mutually exclusive
 
-**Shared parameters** (applicable to both `fasttree` and `iqtree`): `--msa-dir`, `--matrix`, `--seq-type` (AA|NT|auto), `--model` (domain varies by seq-type), `--mode` (normal|fastest|slow), `--boot` (int, 0 = no support), `--output-dir` / `-o` (default `runs/tree/ml/<backend>`), `--threads` / `-t` (only `--msa-dir` mode), `--overwrite`, `--resume`, `--dry-run`, `--quiet` / `-q`, `--tool-args`.
+**Shared parameters** (applicable to both `fasttree` and `iqtree`): `--msa-dir`, `--matrix`, `--seq-type` (AA|NT|auto), `--model` (domain varies by seq-type and backend), `--mode` (backend-specific: FastTree `normal|fastest|slow`, IQ-TREE `normal|fast`), `--boot` (int; optional, omit for no support), `--output-dir` / `-o` (default `runs/tree/ml/<backend>`), `--threads` (controls batch parallelism or tool threads per backend policy), `--overwrite`, `--resume`, `--dry-run`, `--quiet` / `-q`, `--tool-args`.
 
 Detailed specification for FastTree: `docs/superpowers/specs/2026-06-18-phyloai-tree-ml-fasttree-design.md`.
+
+Detailed specification for IQ-TREE: `docs/superpowers/specs/2026-06-19-phyloai-tree-ml-iqtree-design.md`.
 
 ### 3.2 `tree bi`
 

@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-18 (doctor module split into separate spec; astral-hybrid → wastral; phykit removed)  
+**Last updated:** 2026-06-19 (section 9.9 tool-args semantics clarified to two-tier model)  
 **Status:** Approved for implementation
 
 ---
@@ -359,11 +359,26 @@ Commands reading CSV/TSV tables expose `--input-format csv|tsv|auto` (default `a
 
 ### 9.9 `--tool-args` Strategy-Only Semantics
 
-1. PhyloAI builds managed arguments first (input, output, work dir, data type, threads, logs, codon/projection)
-2. `--tool-args` is tokenized with standard shell splitting
-3. If `--tool-args` includes a PhyloAI-managed flag, exit code 1 with blocked flag name
-4. Non-managed strategy parameters are appended unchanged
-5. No per-tool parser reimplementation; managed-flag conflict check only
+PhyloAI uses a two-tier model for `--tool-args` interaction:
+
+**Tier 1 — BLOCKED flags (hard-rejected):**
+
+PhyloAI always controls the tool's input file path and must not allow I/O redirection through `--tool-args`. Blocked flags are defined per subcommand and must be minimal. Common blocked items:
+- The tool's input-file flag (e.g., `-s` for IQ-TREE)
+- Shell I/O redirect tokens (`>`, `<`, `|`, etc.)
+
+If `--tool-args` contains any blocked flag, exit code 1 with the blocked flag name.
+
+**Tier 2 — OVERRIDEABLE parameters (suppress-if-present):**
+
+PhyloAI generates tool flags for its own managed parameters (model, bootstrap, partitions, etc.). If the user provides the same flag via `--tool-args`, PhyloAI suppresses its own version and lets `--tool-args` win. This allows users to bypass PhyloAI's parameter interface for edge cases while keeping the structured API for common use.
+
+**Assembly order:**
+
+1. PhyloAI assembles its base command (input file, output control, threads)
+2. For each managed parameter, PhyloAI checks whether `--tool-args` already contains that flag; if so, skip PhyloAI's version; otherwise append it
+3. `--tool-args` is tokenized with `shlex.split` and remaining tokens appended
+4. No per-tool parser reimplementation; flag-name overlap check only
 
 ### 9.10 Generated Sequence and Alignment Validation
 
