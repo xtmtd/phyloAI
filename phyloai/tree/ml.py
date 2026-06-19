@@ -82,30 +82,41 @@ def _build_fasttree_cmd(
 ) -> list[str]:
     cmd = [executable]
 
+    tool_tokens = set(shlex.split(tool_args)) if tool_args else set()
+    has_model_override = bool({"-lg", "-wag", "-gtr"} & tool_tokens)
+    has_mode_override = bool({"-fastest", "-slow"} & tool_tokens)
+    has_gamma_override = "-gamma" in tool_tokens
+    has_cat_override = "-cat" in tool_tokens
+    has_boot_override = bool({"-boot", "-nosupport"} & tool_tokens)
+
     if seq_type == "NT":
         cmd.append("-nt")
-        if model == "gtr":
+        if model == "gtr" and not has_model_override:
             cmd.append("-gtr")
     else:
-        if model == "lg":
-            cmd.append("-lg")
-        elif model == "wag":
-            cmd.append("-wag")
+        if not has_model_override:
+            if model == "lg":
+                cmd.append("-lg")
+            elif model == "wag":
+                cmd.append("-wag")
 
-    if mode == "fastest":
-        cmd.append("-fastest")
-    elif mode == "slow":
-        cmd.append("-slow")
+    if not has_mode_override:
+        if mode == "fastest":
+            cmd.append("-fastest")
+        elif mode == "slow":
+            cmd.append("-slow")
 
-    if gamma:
+    if gamma and not has_gamma_override:
         cmd.append("-gamma")
 
-    cmd.extend(["-cat", str(cat)])
+    if not has_cat_override:
+        cmd.extend(["-cat", str(cat)])
 
-    if boot > 0:
-        cmd.extend(["-boot", str(boot)])
-    else:
-        cmd.append("-nosupport")
+    if not has_boot_override:
+        if boot > 0:
+            cmd.extend(["-boot", str(boot)])
+        else:
+            cmd.append("-nosupport")
 
     if tool_args:
         _check_managed_flag_conflict(tool_args)

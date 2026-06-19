@@ -140,7 +140,72 @@ def test_check_managed_flag_conflict_allows_model_and_boot() -> None:
     _check_managed_flag_conflict("-lg -wag -gtr -cat 20 -gamma -boot 500 -nosupport -fastest -slow -noml")
 
 
-def test_build_fasttree_cmd_with_explicit_executable(tmp_path: Path) -> None:
+def test_build_fasttree_cmd_tool_args_overrides_model(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, seq_type="AA", model="lg", tool_args="-wag -noml")
+
+    assert "-lg" not in cmd
+    assert "-wag" in cmd
+    assert "-noml" in cmd
+
+
+def test_build_fasttree_cmd_tool_args_overrides_cat(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, cat=20, tool_args="-cat 30")
+
+    assert cmd.count("-cat") == 1
+    assert cmd.count("20") == 0
+    assert cmd.count("30") == 1
+
+
+def test_build_fasttree_cmd_tool_args_overrides_boot(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, boot=1000, tool_args="-boot 500")
+
+    assert cmd.count("-boot") == 1
+    assert cmd.count("1000") == 0
+    assert cmd.count("500") == 1
+
+
+def test_build_fasttree_cmd_tool_args_nosupport_overrides_boot(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, boot=1000, tool_args="-nosupport")
+
+    assert "-boot" not in cmd
+    assert cmd.count("-nosupport") == 1
+
+
+def test_build_fasttree_cmd_tool_args_overrides_gamma(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, gamma=True, tool_args="-gamma")
+
+    assert cmd.count("-gamma") == 1
+
+
+def test_build_fasttree_cmd_tool_args_overrides_mode(tmp_path: Path) -> None:
+    from phyloai.tree.ml import _build_fasttree_cmd
+
+    inp = tmp_path / "gene.fa"
+    out = tmp_path / "gene.tre"
+    cmd = _build_fasttree_cmd(inp, out, mode="normal", tool_args="-fastest")
+
+    assert "-fastest" in cmd
+    assert "-slow" not in cmd
     from phyloai.tree.ml import _build_fasttree_cmd
 
     inp = tmp_path / "gene.fa"

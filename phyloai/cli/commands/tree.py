@@ -44,7 +44,7 @@ def ml() -> None:
     "fasttree",
     help=(
         "Infer ML trees using FastTree.\n\n"
-        "  --msa-dir : batch gene trees from an MSA directory\n"
+        "  --msa-dir : batch gene trees from an MSA directory\n\n"
         "  --matrix  : single supermatrix tree from one file\n\n"
         "FastTree natively reads FASTA and phylip-relaxed formats.\n"
         "NEXUS files must be converted first via 'phyloai pretree convert'."
