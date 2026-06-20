@@ -1,7 +1,7 @@
 # PhyloAI Tree Module Design Specification
 
 **Date:** 2026-06-17  
-**Last updated:** 2026-06-19 (added ml/iqtree spec; updated 9.9 tool-args semantics)  
+**Last updated:** 2026-06-20 (added msc spec; msc is direct command, not Group)  
 **Status:** Approved  
 **Parent spec:** `2026-06-07-phyloai-design.md`
 
@@ -41,8 +41,9 @@ phyloai tree ml iqtree --matrix ./concat/matrix.fa --model LG --rate-heterogenei
 # Bayesian
 phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3
 
-# MSC
-phyloai tree msc wastral --gene-trees ./genetrees/
+# MSC (single backend: wASTRAL)
+phyloai tree msc --tree-dir ./genetrees/
+phyloai tree msc --tree input.trees --mode 4 -R
 
 # Concordance factors
 phyloai tree concordance --tree ./tree.nwk --gene-trees ./genetrees/
@@ -57,8 +58,7 @@ phyloai tree (click.Group)
 │   └── iqtree                # IQ-TREE3 backend
 ├── bi (click.Group)          # Bayesian inference
 │   └── phylobayes            # PhyloBayes backend
-├── msc (click.Group)         # Multispecies coalescent
-│   └── wastral               # wASTRAL backend
+├── msc                     # Multispecies coalescent (wASTRAL, single backend)
 └── concordance               # Concordance factors (gCF/sCF)
 ```
 
@@ -92,7 +92,18 @@ Detailed specification for IQ-TREE: `docs/superpowers/specs/2026-06-19-phyloai-t
 
 ### 3.3 `tree msc`
 
-`tree msc` owns multispecies coalescent inference with wASTRAL. It consumes gene trees and produces a species tree plus any local branch support or summary outputs associated with the run.
+`tree msc` owns multispecies coalescent inference with wASTRAL (ASTER). It is a direct command (not a Group) — wASTRAL is the only MSC backend. It consumes gene trees and produces a species tree with local posterior probability branch support.
+
+**Two input modes:**
+- `--tree`: single gene tree file (newick, one tree per line) → `wastral -i`
+- `--tree-dir`: directory of gene tree files → merged into one file → `wastral -i`
+- `--tree` and `--tree-dir` are mutually exclusive
+
+**Key parameters:** `--mode` (wastral `--mode`, default 1), `--boot` (wastral `-u`, default 1), `-R` / `--extra-rounds` (wastral `-R`), `--tree-boot-type` (input gene tree support type, auto/likelihood/abayes/bootstrap, default auto), `--output-dir` / `-o` (default `runs/tree/msc`), `--threads` / `-t`.
+
+**No `--resume`** — wASTRAL is one-shot computation.
+
+Detailed specification: `docs/superpowers/specs/2026-06-20-phyloai-tree-msc-design.md`.
 
 ### 3.4 `tree concordance`
 

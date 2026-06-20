@@ -32,6 +32,7 @@ TOOL_REGISTRY: dict[str, dict] = {
     "mafft":      {"required": True,  "version_flag": "--version",
                    "install": "https://mafft.cbrc.jp/alignment/software/"},
     "wastral":    {"required": False, "version_args": [["-v"], ["-h"]],
+                    "path_aliases": ["aster"],
                     "install": "https://github.com/chaoszhang/ASTER"},
     "pb_mpi":     {"required": False, "version_flag": "",
                    "install": "https://github.com/bayesiancook/pbmpi"},

@@ -27,7 +27,7 @@ class _MLGroup(click.Group):
 
 class _TreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["ml"]
+        return ["ml", "msc"]
 
 
 class _GroupedHelpCommand(click.Command):
@@ -724,3 +724,198 @@ def iqtree_command(
 
     if n_trees == 0 and n_failed > 0:
         _fail("All IQ-TREE runs failed.", 2)
+
+
+@tree.command(
+    "msc",
+    cls=_GroupedHelpCommand,
+    help=(
+        "Multispecies coalescent species tree inference with wASTRAL.\n\n"
+        "  --tree     : single gene tree file (newick, one tree per line)\n\n"
+        "  --tree-dir : directory of gene tree files (merged into one input)\n\n"
+        "--tree and --tree-dir are mutually exclusive. "
+        "wASTRAL is one-shot computation (no --resume)."
+    ),
+)
+@click.option(
+    "--tree",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Single gene tree file (newick, one tree per line).",
+)
+@click.option(
+    "--tree-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Directory of gene tree files for merging.",
+)
+@click.option(
+    "--mode",
+    type=click.IntRange(1, 4),
+    default=1,
+    show_default=True,
+    help="wastral --mode. 1=hybrid, 2=branch support weighting, 3=branch length weighting, 4=traditional unweighted Astral.",
+)
+@click.option(
+    "--boot",
+    type=click.IntRange(0, 3),
+    default=1,
+    show_default=True,
+    help="wastral -u/--support. 0=topology only, 1=local posterior probability, 2=quartet+local-PP, 3=2+freqQuad.csv.",
+)
+@click.option(
+    "--extra-rounds", "-R",
+    is_flag=True,
+    default=False,
+    help="Enable exhaustive search (wastral -R).",
+)
+@click.option(
+    "--tree-boot-type",
+    type=click.Choice(["auto", "likelihood", "abayes", "bootstrap"]),
+    default="auto",
+    show_default=True,
+    help="Gene tree branch support type wastral preset: "
+    "auto (detect from gene trees), "
+    "likelihood (wastral -L/--lrt: alrt, -x 1 -n 0), "
+    "abayes (wastral -B/--bayes, -x 1 -n 0.333), "
+    "bootstrap (wastral -S/--bootstrap: default, -x 100 -n 0).",
+)
+@click.option(
+    "--tree-boot-min",
+    type=float,
+    default=None,
+    help="Minimum support threshold (wastral -n). Only with non-auto --tree-boot-type.",
+)
+@click.option(
+    "--tree-boot-max",
+    type=float,
+    default=None,
+    help="Maximum support value (wastral -x). Only with non-auto --tree-boot-type.",
+)
+@click.option(
+    "--outgroup",
+    type=str,
+    default=None,
+    help="Outgroup species for rooting (wastral --root).",
+)
+@click.option(
+    "--output-dir", "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/msc"),
+    show_default=True,
+    help="Output directory.",
+)
+@click.option(
+    "--threads", "-t",
+    type=int,
+    default=4,
+    show_default=True,
+    help="Thread count for wastral -t.",
+)
+@click.option(
+    "--wastral-path",
+    type=Path,
+    default=None,
+    help="Explicit path to wastral executable.",
+)
+@click.option(
+    "--tool-args",
+    type=str,
+    default=None,
+    help="Extra wastral flags. -i/-o blocked; strategy flags override phyloAI defaults.",
+)
+@click.option("--overwrite", is_flag=True, default=False, help="Overwrite existing output directory.")
+@click.option("--dry-run", is_flag=True, default=False, help="Show commands without executing.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress terminal output except errors.")
+def msc_command(
+    tree: Path | None,
+    tree_dir: Path | None,
+    mode: int,
+    boot: int,
+    extra_rounds: bool,
+    tree_boot_type: str,
+    tree_boot_min: float | None,
+    tree_boot_max: float | None,
+    outgroup: str | None,
+    output_dir: Path,
+    threads: int,
+    wastral_path: Path | None,
+    tool_args: str | None,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    from phyloai.tree.msc import run_wastral
+
+    # Mutual exclusivity: CLI-layer early check for better error messages
+    if (tree is None and tree_dir is None) or (tree is not None and tree_dir is not None):
+        _fail("Either --tree or --tree-dir must be provided (mutually exclusive).", 1)
+
+    if tree is not None and not tree.exists():
+        _fail(f"--tree does not exist: {tree}", 1)
+    if tree_dir is not None and not tree_dir.exists():
+        _fail(f"--tree-dir does not exist: {tree_dir}", 1)
+
+    if wastral_path is not None:
+        if not wastral_path.exists():
+            _fail(f"--wastral-path does not exist: {wastral_path}", 1)
+        if not os.access(str(wastral_path), os.X_OK):
+            _fail(f"--wastral-path is not executable: {wastral_path}", 1)
+
+    error_msg: str | None = None
+
+    try:
+        payload = run_wastral(
+            tree=tree,
+            tree_dir=tree_dir,
+            output_dir=output_dir,
+            mode=mode,
+            boot=boot,
+            extra_rounds=extra_rounds,
+            tree_boot_type=tree_boot_type,
+            tree_boot_min=tree_boot_min,
+            tree_boot_max=tree_boot_max,
+            outgroup=outgroup,
+            threads=threads,
+            wastral_path=str(wastral_path) if wastral_path else None,
+            tool_args=tool_args,
+            overwrite=overwrite,
+            dry_run=dry_run,
+            quiet=quiet,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        error_msg = str(exc)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        error_msg = str(exc)
+
+    if error_msg is not None:
+        exit_code = 3 if "wastral not found" in error_msg.lower() else 1
+        _fail(error_msg, exit_code)
+
+    if dry_run:
+        if not quiet:
+            click.echo(
+                f"Dry run: {payload['key_results']['n_input_trees']} gene tree(s) "
+                f"would be processed."
+            )
+            click.echo(" ".join(payload["data"]["cmd"]))
+        return
+
+    # Write result.json (always, even on failure — design requires structured output)
+    result_path = output_dir / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+
+    # Check payload status for wastral execution failures (exit 2, after writing result.json)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "wastral execution failed"), 2)
+
+    if not quiet:
+        click.echo(
+            f"Species tree saved to {output_dir / 'wastral.tre'}"
+        )
+        click.echo(f"Log saved to {output_dir / 'msc.log'}", err=True)
+        click.echo(f"Results saved to {result_path}", err=True)

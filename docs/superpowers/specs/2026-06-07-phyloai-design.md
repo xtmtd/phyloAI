@@ -117,7 +117,7 @@ phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 phyloai tree ml iqtree    --matrix ./concat/matrix.fa --model C20 --guide-tree guide.nwk
 phyloai tree ml fasttree  --matrix ./concat/matrix.fa
 phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3 --threads 8
-phyloai tree msc wastral  --gene-trees ./genetrees/
+phyloai tree msc --tree-dir ./genetrees/
 
 # Post-tree
 phyloai posttree topology    --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk,h3.nwk
@@ -220,7 +220,7 @@ runs/
 │   │   ├── iqtree/
 │   │   └── fasttree/
 │   ├── bi/phylobayes/
-│   ├── msc/wastral/
+│   ├── msc/
 │   └── concordance/
 ├── posttree/
 │   ├── topology/
