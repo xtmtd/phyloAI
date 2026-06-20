@@ -62,7 +62,7 @@ def test_apply_recoding_preserves_gaps_and_special_chars() -> None:
 
     matrix = {"tax1": "A-H.?*X"}
     recoded, warnings = _apply_recoding(matrix, "Dayhoff-6")
-    assert recoded["tax1"] == "0-2.?*X"
+    assert recoded["tax1"] == "0-2.?*?"
     assert warnings == []
 
 

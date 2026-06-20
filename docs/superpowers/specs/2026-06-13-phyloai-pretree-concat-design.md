@@ -56,7 +56,7 @@ Schemes and their letter codes follow PhyKIT
 
 Sequences are normalized (via `core/sequence_normalization.py`) *before*
 recoding, so non-standard characters (`U/O/B/Z/J` etc.) are converted to
-standard equivalents.  The recoding tables include `"X": "X"` (AA) and all
+standard equivalents.  The recoding tables include `"X": "?"` (AA) and all
 IUPAC ambiguous codes (NT) so that normalized input should not normally
 trigger warnings.
 
@@ -347,7 +347,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
                    "H": "2", "K": "2", "R": "2",
                    "I": "3", "L": "3", "M": "3", "V": "3",
                    "F": "4", "W": "4", "Y": "4",
-                   "C": "5", "X": "X"},
+                   "C": "5", "X": "?"},
     ...
 }
 NT_RECODING_TABLES: dict[str, dict[str, str]] = {

@@ -97,7 +97,7 @@ def test_apply_recoding_preserves_gaps_and_special_chars() -> None:
 
     matrix = {"tax1": "A-H.?*X"}
     recoded, warnings = _apply_recoding(matrix, "Dayhoff-6")
-    assert recoded["tax1"] == "0-2.?*X"
+    assert recoded["tax1"] == "0-2.?*?"
     assert warnings == []
 
 
@@ -148,7 +148,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
         "I": "3", "L": "3", "M": "3", "V": "3",
         "F": "4", "W": "4", "Y": "4",
         "C": "5",
-        "X": "X",
+        "X": "?",
     },
     "Dayhoff-9": {
         "D": "0", "E": "0", "H": "0", "N": "0", "Q": "0",
@@ -160,7 +160,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
         "P": "6",
         "C": "7",
         "W": "8",
-        "X": "X",
+        "X": "?",
     },
     "Dayhoff-12": {
         "D": "0", "E": "0", "Q": "0",
@@ -175,7 +175,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
         "N": "9",
         "W": "A",
         "C": "B",
-        "X": "X",
+        "X": "?",
     },
     "Dayhoff-15": {
         "D": "0", "E": "0", "Q": "0",
@@ -193,7 +193,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
         "R": "C",
         "W": "D",
         "C": "E",
-        "X": "X",
+        "X": "?",
     },
     "Dayhoff-18": {
         "F": "0", "Y": "0",
@@ -214,7 +214,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
         "R": "F",
         "W": "G",
         "C": "H",
-        "X": "X",
+        "X": "?",
     },
     "SandR-6": {
         "A": "0", "P": "0", "S": "0", "T": "0",
@@ -223,7 +223,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
         "M": "3", "I": "3", "V": "3", "L": "3",
         "W": "4", "C": "4",
         "F": "5", "Y": "5", "H": "5",
-        "X": "X",
+        "X": "?",
     },
     "KGB-6": {
         "A": "0", "G": "0", "P": "0", "S": "0",
@@ -232,7 +232,7 @@ AA_RECODING_TABLES: dict[str, dict[str, str]] = {
         "W": "3",
         "F": "4", "Y": "4",
         "C": "5", "V": "5",
-        "X": "X",
+        "X": "?",
     },
 }
 
