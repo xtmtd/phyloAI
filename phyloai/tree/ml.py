@@ -303,6 +303,12 @@ def _validate_seq_types(
     return None, offending
 
 
+def _format_offender(o: dict[str, Any]) -> str:
+    if "reason" in o:
+        return f"{o['file']}: {o['reason']}"
+    return f"{o['file']}: {o['detected']} (expected {o['expected']})"
+
+
 def _resolved_fasttree_params(
     msa_dir: Path | None,
     matrix: Path | None,
@@ -402,13 +408,22 @@ def run_fasttree(
         found, skipped_input = _scan_input(msa_dir)
         if not found:
             raise ValueError("No valid input files found in --msa-dir")
+        stems = [p.stem for p in found]
+        dupes = {s for s in stems if stems.count(s) > 1}
+        if dupes:
+            colliding = sorted(p.name for p in found if p.stem in dupes)
+            raise ValueError(
+                "Duplicate output stems detected in --msa-dir. Files with different extensions "
+                "but the same base name collide:\n  " + "\n  ".join(colliding) +
+                "\nRename files so each stem is unique within the directory."
+            )
         declared = None if seq_type == "auto" else seq_type
         resolved_seq_type, offending = _validate_seq_types(found, declared_type=declared)
         if resolved_seq_type is None:
-            offending_strs = [f"{o['file']}: {o['detected']} (expected homogeneous)" for o in offending[:10]]
+            offending_strs = [_format_offender(o) for o in offending[:10]]
             raise ValueError("Mixed sequence types in --msa-dir:\n" + "\n".join(offending_strs))
         if offending:
-            offending_strs = [f"{o['file']}: {o['detected']} (expected {o['expected']})" for o in offending[:10]]
+            offending_strs = [_format_offender(o) for o in offending[:10]]
             raise ValueError(
                 f"Files with wrong --seq-type ({declared}) in --msa-dir:\n" + "\n".join(offending_strs)
             )

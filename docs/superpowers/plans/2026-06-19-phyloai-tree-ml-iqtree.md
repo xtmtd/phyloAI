@@ -396,7 +396,7 @@ Tests:
 1. Input mutual exclusivity check
 2. overwrite/resume mutual exclusivity
 3. Resolve iqtree3 executable + version
-4. Parse threads: `_parse_threads(threads, batch_mode)` — if `None`: batch defaults to `1`, single defaults to `"auto"`; batch rejects `"auto"`; single accepts `"auto"` or int >= 1. Returns `(threads_int, threads_str)`.
+4. Parse threads: `_parse_threads(threads, batch_mode)` — if `None`: batch defaults to `4`, single defaults to `"auto"`; batch rejects `"auto"`; single accepts `"auto"` or int >= 1. Returns `(threads_int, threads_str)`.
 5. **Output directory conflict check** (before running any tool):
    - `--overwrite`: `shutil.rmtree(output_dir)` if exists
    - `--resume`: validate checkpoint exists; skip if already success

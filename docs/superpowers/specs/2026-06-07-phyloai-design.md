@@ -114,7 +114,7 @@ phyloai pretree filter cluster   --table ./metrics/metrics.csv ...
 phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 
 # Tree
-phyloai tree ml iqtree    --matrix ./concat/matrix.fa --mode pmsf
+phyloai tree ml iqtree    --matrix ./concat/matrix.fa --model C20 --guide-tree guide.nwk
 phyloai tree ml fasttree  --matrix ./concat/matrix.fa
 phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3 --threads 8
 phyloai tree msc wastral  --gene-trees ./genetrees/

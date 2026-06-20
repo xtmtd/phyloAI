@@ -62,6 +62,17 @@ NEXUS files (.nex, .nxs, .nexus) are not supported. Convert them first:
 phyloai pretree convert --input data.nex --to fasta
 ```
 
+## Warnings & Errors
+
+| Condition | Behavior |
+|-----------|----------|
+| `--msa-dir` and `--matrix` both or neither provided | Error: exactly one is required |
+| `--overwrite` and `--resume` together | Error: mutually exclusive |
+| `--resume` in `--matrix` mode | Error: resume only in batch mode |
+| `--threads` with `--matrix` mode | Warning: `--threads` has no effect in single mode |
+| `--msa-dir` does not exist | Error: directory not found |
+| No valid inputs in `--msa-dir` | Error: no valid input files |
+
 ## Notes
 
 - `--threads` only controls parallel gene tree inference in `--msa-dir` mode. FastTree itself is single-threaded.

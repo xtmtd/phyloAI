@@ -35,8 +35,8 @@ phyloai tree ml fasttree --msa-dir ./trimmed/seqs --seq-type AA --model lg \
 # ML: single supermatrix
 phyloai tree ml fasttree --matrix ./concat/matrix.fa --seq-type NT --model gtr \
     --mode slow --boot 1000 -o runs/tree/ml/fasttree
-# ML: IQ-TREE3 (future)
-phyloai tree ml iqtree --matrix ./concat/matrix.fa --model LG+G4
+# ML: IQ-TREE3
+phyloai tree ml iqtree --matrix ./concat/matrix.fa --model LG --rate-heterogeneity +G4
 
 # Bayesian
 phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3
@@ -54,9 +54,11 @@ phyloai tree concordance --tree ./tree.nwk --gene-trees ./genetrees/
 phyloai tree (click.Group)
 ├── ml (click.Group)          # Maximum-likelihood tree inference
 │   ├── fasttree              # FastTree backend
-│   └── iqtree                # IQ-TREE3 backend (future)
-├── bi                        # Bayesian inference (PhyloBayes)
-├── msc                       # Multispecies coalescent (wASTRAL)
+│   └── iqtree                # IQ-TREE3 backend
+├── bi (click.Group)          # Bayesian inference
+│   └── phylobayes            # PhyloBayes backend
+├── msc (click.Group)         # Multispecies coalescent
+│   └── wastral               # wASTRAL backend
 └── concordance               # Concordance factors (gCF/sCF)
 ```
 

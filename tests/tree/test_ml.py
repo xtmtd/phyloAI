@@ -473,3 +473,20 @@ def test_run_one_fasttree_n_taxa(tmp_path: Path) -> None:
     )
 
     assert result["n_taxa"] == 3
+
+
+# ===================================================================
+# Duplicate stem detection
+# ===================================================================
+
+
+def test_run_fasttree_duplicate_stems_raises(tmp_path: Path) -> None:
+    from phyloai.tree.ml import run_fasttree
+
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene.fa").write_text(">a\nMKT\n>b\nMKT\n")
+    (msa_dir / "gene.phy").write_text("2 3\na MKT\nb MKT\n")
+
+    with pytest.raises(ValueError, match="Duplicate output stems"):
+        run_fasttree(msa_dir=msa_dir, output_dir=tmp_path / "out", quiet=True)

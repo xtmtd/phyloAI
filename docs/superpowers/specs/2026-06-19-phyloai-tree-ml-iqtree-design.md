@@ -63,7 +63,7 @@ When ModelFinder is not used, the substitution model is specified directly. `--m
 | `--mset` | str | `LG,WAG` (AA) / `GTR,HKY` (NT) | Comma-separated model list to restrict search. Use `all` for unrestricted |
 | `--msub` | `nuclear\|mitochondrial\|chloroplast\|viral` | `nuclear` | AA model source. AA only; ignored for NT |
 
-When `--modelfinder` is `MF` or `MFP`, `--model`, `--state-freq`, and `--rate-heterogeneity` are all ignored (ModelFinder determines the full model string including state frequencies and rate heterogeneity). Use `--mset` to restrict the model search space. Advanced frequency/rate candidate control for ModelFinder (IQ-TREE `--mfreq`, `--mrate`) is available only through `--tool-args`.
+When `--modelfinder` is `MF` or `MFP`, `--model`, `--state-freq`, and `--rate-heterogeneity` are all ignored (ModelFinder determines the full model string including state frequencies and rate heterogeneity). In `result.json`, these three fields are recorded as `null` to indicate they were not passed to IQ-TREE. Use `--mset` to restrict the model search space. Advanced frequency/rate candidate control for ModelFinder (IQ-TREE `--mfreq`, `--mrate`) is available only through `--tool-args`.
 
 When `--modelfinder MF` (model-only): no tree search, no branch support computation. Branch support flags (`--boot`, `--alrt`, `--bnni`) produce a warning and are ignored. The output `.iqtree` report contains the selected model; `.treefile` is **not** produced.
 
@@ -110,11 +110,12 @@ Note: The `--mode` domain is backend-specific. FastTree uses `normal|fastest|slo
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--boot` | int (>=0) | *optional* | UFBoot replicates (>=1000 recommended). Only passed to IQ-TREE when explicitly provided. Omit to skip UFBoot |
+| `--boot` | int (>=0) | `1000` | UFBoot replicates (>=1000 recommended). Maps to IQ-TREE `-B`. `0` = skip branch support |
 | `--alrt` | int (>=0) | *optional* | SH-aLRT replicates. Only passed to IQ-TREE when explicitly provided. `0` = parametric aLRT. Omit to skip SH-aLRT |
-| `--bnni` | flag | `False` | Optimize UFBoot trees by NNI. Only when `--boot` is provided; warn and ignore otherwise |
+| `--bnni` | flag | `False` | Optimize UFBoot trees by NNI. Only when `--boot > 0`; warn and ignore otherwise |
 
-If neither `--boot` nor `--alrt` is provided, no branch support is computed.
+By default, `--boot 1000` is enabled (matching `phyloai tree ml fasttree` behavior). Set `--boot 0` to skip UFBoot entirely.
+If neither `--boot` (>0) nor `--alrt` is provided, no branch support is computed.
 `--alrt` not provided → `--alrt` flag not passed to IQ-TREE (no SH-aLRT).
 `--alrt 0` → `--alrt 0` passed to IQ-TREE (parametric aLRT).
 
@@ -133,10 +134,11 @@ If neither `--boot` nor `--alrt` is provided, no branch support is computed.
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `-o`, `--output-dir` | Path | `runs/tree/ml/iqtree` | Output directory |
-| `--threads` | `NUM\|auto` | `1` (batch) / `auto` (single) | Batch mode: number of parallel IQ-TREE jobs (each with `-T 1`). Single mode: maps to IQ-TREE `-T NUM` or `-T AUTO` |
+| `--threads`, `-t` | `NUM\|auto` | `4` (batch) / `auto` (single) | Batch mode: number of parallel IQ-TREE jobs (each with `-T 1`). Single mode: maps to IQ-TREE `-T NUM` or `-T AUTO` |
 | `--overwrite` | flag | `False` | Remove existing output directory before running |
 | `--resume` | flag | `False` | Resume incomplete run (see Section 5) |
 | `--dry-run` | flag | `False` | Print commands without executing |
+| `--keep-extra` | flag | `False` | Batch mode: keep extra IQ-TREE output files (`.ckp.gz`, `.bionj`, `.mldist`, etc.) in `logs/`. By default only `.iqtree` and `.log` are kept |
 | `-q`, `--quiet` | flag | `False` | Suppress all output except errors |
 | `--iqtree-path` | Path | — | Custom path to `iqtree3` executable |
 | `--tool-args` | str | — | Additional strategy arguments passed to IQ-TREE. See Section 9.9 of main design spec |
@@ -237,15 +239,20 @@ The workflow is determined by `--modelfinder` and `--model`:
 
 10. Heterogeneous workflows (`--model` mixture or `MIX+MF`): only valid with `--matrix`. With `--msa-dir`: exit with error
 
-11. `--threads`:
-    - Batch mode (`--msa-dir`) default `1`: number of parallel IQ-TREE jobs, each with `-T 1`
+11. `--threads` / `-t`:
+    - Batch mode (`--msa-dir`) default `4`: number of parallel IQ-TREE jobs, each with `-T 1`
     - Single mode (`--matrix`) default `auto`: maps to IQ-TREE `-T AUTO`
     - Must be int >= 1 or `"auto"`
 
 12. `--boot` / `--alrt`:
-    - Both optional; if neither provided → no branch support
+    - `--boot` default `1000` (enabled, matching fasttree behavior); `--boot 0` skips UFBoot (no `-B` passed to IQ-TREE)
+    - `--alrt` is optional; omit to skip SH-aLRT
     - `--alrt 0` is valid (parametric aLRT) and passed to IQ-TREE
-    - `--bnni` only when `--boot` is provided; warn and ignore otherwise
+    - `--bnni` only when `--boot > 0`; warn and ignore otherwise
+
+13. `--keep-extra`:
+    - Batch mode only; when enabled, preserves all IQ-TREE-generated files in `logs/`
+    - By default only `.iqtree` and `.log` are kept per gene
 
 13. `--overwrite` / `--resume` mutually exclusive
 
@@ -255,7 +262,7 @@ The workflow is determined by `--modelfinder` and `--model`:
 
 15. `--tool-args` two-tier handling per Section 9.9 of main design spec:
     - BLOCKED (hard-rejected): `-s` (input file), shell I/O redirects
-    - OVERRIDEABLE (suppress-if-present in `--tool-args`): all flags PhyloAI generates (`-m`, `-p`, `-T`, `-B`/`--ufboot`, `--alrt`, `--bnni`, `--fast`, `--merge`, `--rclusterf`, `--rcluster-max`, `--mset`, `--msub`, `-ft`, `-g`, `-o`, `--prefix`, `--rate`, `-wslr`, `--qmax`, `--seqtype`, `-q`, `-Q`, `-S`, `--redo`, `--redo-tree`, `--undo`)
+    - OVERRIDEABLE (suppress-if-present in `--tool-args`): all flags PhyloAI generates (`-m`, `-p`, `-T`, `-B`/`--ufboot`, `--alrt`, `--bnni`, `--fast`, `--merge`, `--rclusterf`, `--rcluster-max`, `--mset`, `--msub`, `-ft`, `-g`, `-o`, `--rate`, `-wslr`, `-qmax`, `--seqtype`, `-q`, `-Q`, `-S`, `--redo`, `--redo-tree`, `--undo`; plus `--prefix` in single mode only)
     - Note: IQ-TREE `-q` (partition model) and PhyloAI `-q` (quiet) share a short flag but are orthogonal. `--tool-args "-q file"` is passed to IQ-TREE unchanged; PhyloAI's `-q` is handled at the CLI layer and never reaches the tool command.
 
 ---
@@ -264,6 +271,8 @@ The workflow is determined by `--modelfinder` and `--model`:
 
 - **Single MSA mode** (`--matrix`): repeat the identical IQ-TREE command. IQ-TREE natively handles resume via its own checkpoint mechanism (`--redo` handled by IQ-TREE).
 - **Batch mode** (`--msa-dir`): use PhyloAI checkpoint system. Load `checkpoint.json`, skip completed gene trees (validated by `.treefile` existence and newick parseability), re-run failed/pending tasks.
+
+Note: checkpoint params are hashed from resolved (effective) values — e.g., auto-detected `seq_type` rather than the literal `auto`. This ensures that if input files change between runs, the mismatch is caught; it also means a re-run with `--seq-type auto` on the same dataset produces a matching hash.
 
 Checkpoint system reuses `phyloai/tree/checkpoint_helpers.py` (shared with fasttree). `_run_one_iqtree` returns status per task; `mark_task` and `plan_resume` handle tracking. For `--modelfinder MF` mode tasks, validate against `.iqtree` report existence instead of `.treefile`.
 
@@ -480,7 +489,7 @@ For `--modelfinder MF` (model-only) tasks, `output_tree` is `None`; success is d
 | `model_selected` | `Best-fit model according to BIC: LG+F+R4` | `Best-fit model(?: according to \w+)?:\s*(\S+)` |
 | `model_selected` (alt) | `ModelFinder will test \d+ models` (no single model) | not applicable; `null` |
 
-Parsing failures yield `null` with no error. Raw matched lines preserved in `data` when parsing succeeds. `model_selected` is only populated when `--modelfinder` is `MF` or `MFP`.
+Parsing failures yield `null` with no error. Raw matched lines preserved in `data` when parsing succeeds. When `--modelfinder` is `MF` or `MFP`, `model_selected` is the best-fit model from the `.iqtree` report; when `--modelfinder` is `none`, `model_selected` reflects the `model_string` derived from user parameters.
 
 ---
 
