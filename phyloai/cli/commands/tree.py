@@ -27,12 +27,26 @@ class _MLGroup(click.Group):
 
 class _TreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["ml", "msc"]
+        return ["ml", "msc", "cf"]
 
 
 class _GroupedHelpCommand(click.Command):
     def format_epilog(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         return None
+
+
+class _CFCommand(_GroupedHelpCommand):
+    """Preserve newline formatting in help text without Click rewrapping."""
+
+    def format_help_text(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        text = self.help or ""
+        if not text:
+            return
+        paragraphs = text.split("\n\n")
+        for i, paragraph in enumerate(paragraphs):
+            if i:
+                formatter.write_paragraph()
+            formatter.write(paragraph)
 
 
 class _IQTreeCommand(_GroupedHelpCommand):
@@ -919,3 +933,259 @@ def msc_command(
         )
         click.echo(f"Log saved to {output_dir / 'msc.log'}", err=True)
         click.echo(f"Results saved to {result_path}", err=True)
+
+
+@tree.command(
+    "cf",
+    cls=_CFCommand,
+    help=(
+        "Compute concordance factors for a reference species tree.\n"
+        "\n"
+        "  Modes (--cf):\n"
+        "    gcf      Gene concordance factor (IQ-TREE3)\n"
+        "    scf      Site concordance factor, parsimony-based (IQ-TREE3)\n"
+        "    scfl     Site concordance factor, likelihood-based (IQ-TREE3)\n"
+        "    gcf+scf  Combined gCF + sCF in one IQ-TREE3 invocation\n"
+        "    qcf      Quartet concordance factor (wASTRAL)\n"
+        "\n"
+        "  Input requirements by mode:\n"
+        "    gcf / qcf       --ref-tree + (--tree or --tree-dir)\n"
+        "    scf / scfl      --ref-tree + --matrix\n"
+        "    gcf+scf         --ref-tree + (--tree or --tree-dir) + --matrix\n"
+        "    scfl            optionally --model or --partitions for speedup\n"
+        "\n"
+        "CF computation is one-shot (no --resume)."
+    ),
+)
+@click.option(
+    "--cf",
+    type=click.Choice(["gcf", "scf", "scfl", "gcf+scf", "qcf"]),
+    required=True,
+    help="Concordance factor type to compute.",
+)
+@click.option(
+    "--ref-tree",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+    help="Reference species tree (NEWICK).",
+)
+@click.option(
+    "--tree",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Single gene tree file (NEWICK, one tree per line). Mutually exclusive with --tree-dir.",
+)
+@click.option(
+    "--tree-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Directory of gene tree files (merged into merged.trees). Mutually exclusive with --tree.",
+)
+@click.option(
+    "--matrix",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Multiple sequence alignment (required for scf/scfl/gcf+scf).",
+)
+@click.option(
+    "--partitions",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Partition file for scfl model reuse (e.g., *.best_model.nex from IQ-TREE3).",
+)
+@click.option(
+    "--model",
+    type=str,
+    default=None,
+    help="Substitution model for scfl speedup (e.g., LG+F+R3). Mutually exclusive with --partitions.",
+)
+@click.option(
+    "--scf-quartets",
+    type=click.IntRange(1, None),
+    default=100,
+    show_default=True,
+    help="Number of quartets for sCF/sCFl (recommend >= 100).",
+)
+@click.option(
+    "--lpp",
+    is_flag=True,
+    default=False,
+    help="Append local posterior probabilities (pp1) to qCF support labels.",
+)
+@click.option(
+    "--prefix",
+    type=str,
+    default=None,
+    help="Output file prefix (default: auto-derived from --cf, e.g., gCF, sCF, sCFl, gCFsCF, qCF).",
+)
+@click.option(
+    "--output-dir", "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/cf"),
+    show_default=True,
+    help="Output directory.",
+)
+@click.option(
+    "--threads", "-t",
+    type=int,
+    default=4,
+    show_default=True,
+    help="Thread count (IQ-TREE3 -T or wASTRAL -t).",
+)
+@click.option(
+    "--iqtree-path",
+    type=Path,
+    default=None,
+    help="Explicit path to iqtree3 executable.",
+)
+@click.option(
+    "--wastral-path",
+    type=Path,
+    default=None,
+    help="Explicit path to wastral executable.",
+)
+@click.option("--overwrite", is_flag=True, default=False, help="Overwrite existing output directory.")
+@click.option("--dry-run", is_flag=True, default=False, help="Show commands without executing.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress terminal output except errors.")
+def cf_command(
+    cf: str,
+    ref_tree: Path,
+    tree: Path | None,
+    tree_dir: Path | None,
+    matrix: Path | None,
+    partitions: Path | None,
+    model: str | None,
+    scf_quartets: int,
+    prefix: str | None,
+    output_dir: Path,
+    threads: int,
+    iqtree_path: Path | None,
+    wastral_path: Path | None,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+    lpp: bool,
+) -> None:
+    """Concordance factor computation (gCF, sCF, sCFl, qCF)."""
+    from phyloai.tree.cf import run_cf
+
+    if iqtree_path is not None:
+        if not iqtree_path.exists():
+            _fail(f"--iqtree-path does not exist: {iqtree_path}", 1)
+        if not os.access(str(iqtree_path), os.X_OK):
+            _fail(f"--iqtree-path is not executable: {iqtree_path}", 1)
+    if wastral_path is not None:
+        if not wastral_path.exists():
+            _fail(f"--wastral-path does not exist: {wastral_path}", 1)
+        if not os.access(str(wastral_path), os.X_OK):
+            _fail(f"--wastral-path is not executable: {wastral_path}", 1)
+
+    error_msg: str | None = None
+
+    try:
+        payload = run_cf(
+            cf_mode=cf,
+            ref_tree=ref_tree,
+            tree=tree,
+            tree_dir=tree_dir,
+            matrix=matrix,
+            partitions=partitions,
+            model=model,
+            scf_quartets=scf_quartets,
+            prefix=prefix,
+            output_dir=output_dir,
+            threads=threads,
+            iqtree_path=str(iqtree_path) if iqtree_path else None,
+            wastral_path=str(wastral_path) if wastral_path else None,
+            overwrite=overwrite,
+            dry_run=dry_run,
+            quiet=quiet,
+            lpp=lpp,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        error_msg = str(exc)
+    except SystemExit:
+        raise
+    except Exception as exc:
+        error_msg = str(exc)
+
+    if error_msg is not None:
+        if "iqtree3 not found" in error_msg.lower() or "wastral not found" in error_msg.lower():
+            exit_code = 3
+        else:
+            exit_code = 1
+        try:
+            import json as _json
+            import datetime as _dt
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # cf.log
+            log_path = output_dir / "cf.log"
+            now_local = _dt.datetime.now().isoformat(timespec="seconds")
+            with open(log_path, "a") as lf:
+                lf.write(f"{now_local} | phyloai tree cf | --cf {cf} | exit={exit_code}\n")
+                lf.write(f"command: phyloai tree cf --cf {cf} --ref-tree {ref_tree}\n")
+                lf.write(f"error: {error_msg}\n")
+
+            # result.json
+            result = {
+                "status": "error",
+                "command": f"phyloai tree cf --cf {cf} --ref-tree {ref_tree}",
+                "wall_time": 0.0,
+                "tool_versions": {},
+                "params": {
+                    "cf": cf,
+                    "ref_tree": str(ref_tree),
+                    "tree": str(tree) if tree else None,
+                    "tree_dir": str(tree_dir) if tree_dir else None,
+                    "matrix": str(matrix) if matrix else None,
+                    "partitions": str(partitions) if partitions else None,
+                    "model": model,
+                    "scf_quartets": scf_quartets if cf not in ("gcf", "qcf") else None,
+                    "lpp": lpp,
+                    "prefix": prefix or ({"gcf":"gCF","scf":"sCF","scfl":"sCFl","gcf+scf":"gCFsCF","qcf":"qCF"}.get(cf, cf)),
+                    "output_dir": str(output_dir),
+                    "threads": threads,
+                    "overwrite": overwrite,
+                    "dry_run": dry_run,
+                    "iqtree_path": str(iqtree_path) if iqtree_path else None,
+                    "wastral_path": str(wastral_path) if wastral_path else None,
+                    "iqtree_exe": None,
+                    "wastral_exe": None,
+                },
+                "key_results": {"cf_type": cf, "prefix": prefix or ""},
+                "error": error_msg,
+                "data": {
+                    "input_mode": "--tree" if tree else "--tree-dir" if tree_dir else "--matrix",
+                    "input": {},
+                    "cmd": [],
+                    "skipped": [],
+                    "warnings": [],
+                },
+            }
+            (output_dir / "result.json").write_text(_json.dumps(result, indent=2))
+        except Exception:
+            pass
+        _fail(error_msg, exit_code)
+
+    if dry_run:
+        if not quiet:
+            cf_type = payload["key_results"]["cf_type"]
+            click.echo(f"Dry run: --cf {cf_type} would be executed.")
+            click.echo(" ".join(payload["data"]["cmd"]))
+        return
+
+    result_path = output_dir / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+
+    if payload["status"] == "error":
+        _fail(payload.get("error", "CF computation failed"), 2)
+
+    if not quiet:
+        prefix_val = payload["key_results"]["prefix"]
+        if cf in ("gcf", "scf", "scfl", "gcf+scf"):
+            click.echo(f"CF results saved to {output_dir}/{prefix_val}.cf.*")
+        else:
+            click.echo(f"qCF tree saved to {output_dir}/{prefix_val}.cf.tree")

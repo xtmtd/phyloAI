@@ -1,7 +1,7 @@
 # PhyloAI Tree Module Design Specification
 
 **Date:** 2026-06-17  
-**Last updated:** 2026-06-20 (added msc spec; msc is direct command, not Group)  
+**Last updated:** 2026-06-21 (renamed concordance → cf, added CF design spec)  
 **Status:** Approved  
 **Parent spec:** `2026-06-07-phyloai-design.md`
 
@@ -16,13 +16,13 @@ The tree layer has four submodules:
 - `ml` for maximum-likelihood inference with IQ-TREE and FastTree
 - `bi` for Bayesian inference with PhyloBayes
 - `msc` for multispecies coalescent inference with wASTRAL
-- `concordance` for concordance-factor calculations such as gCF and sCF
+- `cf` for concordance factor (gCF, sCF, sCFl, qCF) calculations
 
 The module boundary is deliberate:
 
 - ML and BI are supermatrix methods that consume a single concatenated alignment or matrix.
 - MSC is a supertree-style method that consumes a set of gene trees.
-- Concordance factors are node-support summaries, not downstream post-tree analytics, so they belong in `tree`.
+- Concordance factors (CF) are node-support summaries, not downstream post-tree analytics, so they belong in `tree`.
 
 ---
 
@@ -45,8 +45,10 @@ phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3
 phyloai tree msc --tree-dir ./genetrees/
 phyloai tree msc --tree input.trees --mode 4 -R
 
-# Concordance factors
-phyloai tree concordance --tree ./tree.nwk --gene-trees ./genetrees/
+# Concordance factors (CF)
+phyloai tree cf --cf gcf --ref-tree species.nwk --tree-dir ./genetrees/
+phyloai tree cf --cf scf --ref-tree gCF.cf.tree --matrix msa.fa
+phyloai tree cf --cf qcf --ref-tree species.nwk --tree merged.trees
 ```
 
 ### CLI Hierarchy
@@ -59,7 +61,7 @@ phyloai tree (click.Group)
 ├── bi (click.Group)          # Bayesian inference
 │   └── phylobayes            # PhyloBayes backend
 ├── msc                     # Multispecies coalescent (wASTRAL, single backend)
-└── concordance               # Concordance factors (gCF/sCF)
+└── cf                        # Concordance factors (gCF/sCF/sCFl/qCF, mode selector)
 ```
 
 Each subcommand is a distinct inference or support workflow. The top-level `tree` group exists to keep the CLI organized; it does not imply a shared execution model beyond shared output conventions from the main design.
@@ -105,9 +107,22 @@ Detailed specification for IQ-TREE: `docs/superpowers/specs/2026-06-19-phyloai-t
 
 Detailed specification: `docs/superpowers/specs/2026-06-20-phyloai-tree-msc-design.md`.
 
-### 3.4 `tree concordance`
+### 3.4 `tree cf`
 
-`tree concordance` computes gCF/sCF-style branch support from a tree and its supporting gene trees. It is a support-summary module, not a topology-search module.
+`tree cf` computes concordance factors (gCF, sCF, sCFl, qCF) — branch-support measures from a reference species tree and its supporting gene trees and/or alignment. It is a direct command (not a Group) with a `--cf` mode selector.
+
+**Two backends controlled by `--cf`:**
+- IQ-TREE3 for `gcf`, `scf`, `scfl`, `gcf+scf` modes
+- wASTRAL for `qcf` mode
+
+**Two input modes for gene trees:**
+- `--tree`: single gene tree file (newick, one tree per line)
+- `--tree-dir`: directory of gene tree files → merged into one file
+- `--tree` and `--tree-dir` are mutually exclusive
+
+CF computation is one-shot — no `--resume` support.
+
+Detailed specification: `docs/superpowers/specs/2026-06-21-phyloai-tree-cf-design.md`.
 
 ---
 
@@ -141,7 +156,7 @@ Implementation must update or add:
 - `docs/commands/tree-ml.md`
 - `docs/commands/tree-bi.md`
 - `docs/commands/tree-msc.md`
-- `docs/commands/tree-concordance.md`
+- `docs/commands/tree-cf.md`
 - `docs/commands` and main design references that still mention `tree genetree`, `tree iqtree`, `tree astral`, or `tree phylobayes`
 
 ---
@@ -150,4 +165,4 @@ Implementation must update or add:
 
 `posttree` keeps topology tests, dating, signal analysis, systematic error diagnostics, and simulation.
 
-`concordance` moves into `tree` because concordance factors are branch-support measures attached to tree inference, not post hoc analysis of finished phylogenetic results.
+`cf` moves into `tree` because concordance factors are branch-support measures attached to tree inference, not post hoc analysis of finished phylogenetic results.

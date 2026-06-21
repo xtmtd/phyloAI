@@ -162,10 +162,13 @@ def _detect_wastral_version(executable: str) -> dict[str, str]:
     if not combined.strip():
         return {"wastral": "unknown"}
 
-    m = _re.search(r"version\s*([\d.]+)", combined, _re.IGNORECASE)
+    m = _re.search(r"Version:\s*v?([\d.]+)", combined, _re.IGNORECASE)
     if m:
         return {"wastral": m.group(1)}
-    m = _re.search(r"([\d]+\.[\d]+(?:\.[\d]+)?)", combined)
+    m = _re.search(r"version\s+([\d.]+)", combined, _re.IGNORECASE)
+    if m:
+        return {"wastral": m.group(1)}
+    m = _re.search(r"\bv?(\d+(?:\.\d+)+)\b", combined)
     if m:
         return {"wastral": m.group(1)}
     return {"wastral": "unknown"}

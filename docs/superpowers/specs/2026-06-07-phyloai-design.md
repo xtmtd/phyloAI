@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-19 (section 9.9 tool-args semantics clarified to two-tier model)  
+**Last updated:** 2026-06-21 (renamed concordance → cf, updated tree cf CLI surface)  
 **Status:** Approved for implementation
 
 ---
@@ -64,7 +64,7 @@ phyloai/
 │   ├── ml.py           # ML tree inference: IQ-TREE and FastTree
 │   ├── bi.py           # Bayesian tree inference: PhyloBayes
 │   ├── msc.py          # multispecies coalescent inference: wASTRAL
-│   └── concordance.py  # concordance factors: gCF, sCF, combined summaries
+│   └── cf.py           # concordance factors: gCF, sCF, sCFl, qCF
 │
 ├── posttree/
 │   ├── topology.py     # AU / WKH / WSH tests, Four-cluster Likelihood Mapping (FcLM)
@@ -118,6 +118,7 @@ phyloai tree ml iqtree    --matrix ./concat/matrix.fa --model C20 --guide-tree g
 phyloai tree ml fasttree  --matrix ./concat/matrix.fa
 phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3 --threads 8
 phyloai tree msc --tree-dir ./genetrees/
+phyloai tree cf --cf gcf --ref-tree species.nwk --tree-dir ./genetrees/
 
 # Post-tree
 phyloai posttree topology    --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk,h3.nwk
@@ -221,7 +222,7 @@ runs/
 │   │   └── fasttree/
 │   ├── bi/phylobayes/
 │   ├── msc/
-│   └── concordance/
+│   └── cf/
 ├── posttree/
 │   ├── topology/
 │   ├── dating/
@@ -408,7 +409,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 |-------|-------|-------------|----------------|
 | 1 | `core/` infrastructure | env, runner, formats, logger | — |
 | 2 | `pretree/` modules | stats, convert, align, trim, metrics, filter, concat | Phase 1 |
-| 3 | `tree/` modules | ml, bi, msc, concordance | Phase 1 |
+| 3 | `tree/` modules | ml, bi, msc, cf | Phase 1 |
 | 4 | `posttree/` modules | topology, dating, signal, syserror, simulate | Phases 2–3 |
 | 5 | `phyloai run` | one-click supermatrix and coalescent pipelines | Phases 2–3 |
 | 6 | `report/` module | collector, methods, figures, run_record.yaml | Phases 2–4 |
