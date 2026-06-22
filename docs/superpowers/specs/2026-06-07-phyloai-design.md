@@ -67,9 +67,9 @@ phyloai/
 │   └── cf.py           # concordance factors: gCF, sCF, sCFl, qCF
 │
 ├── posttree/
-│   ├── topology.py     # AU / WKH / WSH tests, Four-cluster Likelihood Mapping (FcLM)
+│   ├── topology.py     # AU / WKH / WSH tree topology tests
 │   ├── dating.py       # MCMCTree (PAML): fossil calibration, convergence diagnostics
-│   ├── signal.py       # phylogenetic signal distribution
+│   ├── signal.py       # phylogenetic signal distribution, Four-cluster Likelihood Mapping (FcLM)
 │   ├── syserror.py     # systematic error diagnosis (iterative, atom operations)
 │   └── simulate.py     # AliSim (MSA simulation), gene-jackknife resampling
 │
@@ -121,7 +121,7 @@ phyloai tree msc --tree-dir ./genetrees/
 phyloai tree cf --cf gcf --ref-tree species.nwk --tree-dir ./genetrees/
 
 # Post-tree
-phyloai posttree topology    --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk,h3.nwk
+phyloai posttree topology    --matrix ./matrix.fa --candidate-trees candidate.trees
 phyloai posttree dating      --tree ./tree.nwk --matrix ./matrix.fa \
                              --calibrations calibrations.txt
 phyloai posttree signal      --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk
@@ -161,7 +161,7 @@ The filter step in `phyloai run` uses `phyloai pretree filter taper` (TAPER erro
 | `--overwrite` | Overwrite existing output directory |
 | `--resume` | Resume long-running commands from `checkpoint.json` |
 
-Commands that read alignment files support `--input-format` (auto-detect by default). Commands that invoke external tools support `--tool-args` for tool strategy parameters only. PhyloAI always manages input, output, work directory, data type, threads, logs, and codon/projection arguments.
+Commands that read alignment files support `--input-format` (auto-detect by default). Commands that invoke external tools support `--tool-args` for tool strategy parameters only. PhyloAI always manages command-level input paths, output directories, work directories, and structured result/log collection. Tool strategy parameters, including data type and thread flags, should be exposed as high-level PhyloAI options when useful but may be overridden by `--tool-args` unless a subcommand spec explicitly blocks them for safety.
 
 **Format handling policy:** Each module uses the format required by its underlying tool. `pretree convert` and `core/formats.py` provide conversion as needed. There is no global FASTA-only mandate.
 
@@ -418,8 +418,8 @@ PhyloAI uses a two-tier model for `--tool-args` interaction:
 
 **Tier 1 — BLOCKED flags (hard-rejected):**
 
-PhyloAI always controls the tool's input file path and must not allow I/O redirection through `--tool-args`. Blocked flags are defined per subcommand and must be minimal. Common blocked items:
-- The tool's input-file flag (e.g., `-s` for IQ-TREE)
+PhyloAI always controls command-level input file paths that define the PhyloAI operation and must not allow those paths to be redirected through `--tool-args`. Blocked flags are defined per subcommand and must be minimal. Common blocked items:
+- The tool input flags corresponding to required PhyloAI input parameters (e.g., `-s` for IQ-TREE when `--matrix` is the PhyloAI input)
 - Shell I/O redirect tokens (`>`, `<`, `|`, etc.)
 
 If `--tool-args` contains any blocked flag, exit code 1 with the blocked flag name.
