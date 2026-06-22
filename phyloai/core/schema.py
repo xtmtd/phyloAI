@@ -2,6 +2,8 @@
 """Shared data structures for PhyloAI."""
 
 from __future__ import annotations
+
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -111,3 +113,10 @@ class RunRecord:
             "phyloai_version": self.phyloai_version,
             "steps": self.steps,
         }
+
+
+def write_result_json(payload: dict[str, Any], output_dir: Path) -> None:
+    """Write result.json payload to output directory (shared helper)."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_dir / "result.json", "w") as fh:
+        json.dump(payload, fh, indent=2)

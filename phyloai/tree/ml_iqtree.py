@@ -867,6 +867,7 @@ def _run_one_iqtree(
             **result,
             "status": "success",
             "wall_time": wall_time,
+            "tool_stderr": stderr_text,
             "warnings": warnings_list,
         }
 
@@ -1177,13 +1178,14 @@ def run_iqtree(
             msa_dir=msa_dir, matrix=matrix,
             iqtree_path=iqtree_path, tool_args=tool_args,
             overwrite=overwrite, threads=str(threads_spec),
-            skipped_input=[], dry_run=dry_run,
+            skipped_input=[], dry_run=dry_run, resume=resume, keep_extra=keep_extra,
             state_freq=state_freq, rate_heterogeneity=rate_heterogeneity,
             mset=mset, msub=msub,
             pmsf_base_model=pmsf_base_model,
             qmax=resolved_qmax, rate=rate, wslr=wslr,
             constraint=constraint, outgroup=outgroup,
             prefix=prefix,
+            quiet=quiet,
         )
 
     # --- Batch mode ---
@@ -1327,9 +1329,60 @@ def run_iqtree(
             found = [Path(task.input) for task in checkpoint.tasks if task.task_id in to_run_ids]
         else:
             from phyloai.tree.checkpoint_helpers import build_initial_iqtree_checkpoint
+            iqtree_cmd_parts = ["phyloai", "tree", "ml", "iqtree", "--msa-dir", str(msa_dir)]
+            iqtree_cmd_parts.extend([
+                "--seq-type", resolved_seq_type, "--model", model,
+                "--state-freq", state_freq, "--rate-heterogeneity", rate_heterogeneity,
+                "--mode", mode,
+                "-o", str(output_dir),
+                "-t", str(threads_spec),
+            ])
+            if modelfinder != "none":
+                iqtree_cmd_parts.extend(["--modelfinder", modelfinder])
+            if mset is not None:
+                iqtree_cmd_parts.extend(["--mset", mset])
+            if msub is not None:
+                iqtree_cmd_parts.extend(["--msub", msub])
+            if resolved_boot is not None:
+                iqtree_cmd_parts.extend(["--boot", str(resolved_boot)])
+            if resolved_alrt is not None:
+                iqtree_cmd_parts.extend(["--alrt", str(resolved_alrt)])
+            if resolved_bnni:
+                iqtree_cmd_parts.append("--bnni")
+            if partitions:
+                iqtree_cmd_parts.extend(["--partitions", partitions])
+            if resolved_rclusterf is not None:
+                iqtree_cmd_parts.extend(["--rclusterf", str(resolved_rclusterf)])
+            if resolved_rcluster_max is not None:
+                iqtree_cmd_parts.extend(["--rcluster-max", str(resolved_rcluster_max)])
+            if pmsf_base_model is not None:
+                iqtree_cmd_parts.extend(["--pmsf-base-model", pmsf_base_model])
+            if guide_tree is not None:
+                iqtree_cmd_parts.extend(["--guide-tree", guide_tree])
+            if resolved_qmax is not None:
+                iqtree_cmd_parts.extend(["--qmax", str(resolved_qmax)])
+            if rate:
+                iqtree_cmd_parts.append("--rate")
+            if wslr:
+                iqtree_cmd_parts.append("--wslr")
+            if constraint is not None:
+                iqtree_cmd_parts.extend(["--constraint", constraint])
+            if outgroup is not None:
+                iqtree_cmd_parts.extend(["--outgroup", outgroup])
+            if prefix is not None:
+                iqtree_cmd_parts.extend(["--prefix", prefix])
+            if iqtree_path:
+                iqtree_cmd_parts.extend(["--iqtree-path", iqtree_path])
+            if tool_args:
+                if " " in tool_args:
+                    iqtree_cmd_parts.append(f"--tool-args '{tool_args}'")
+                else:
+                    iqtree_cmd_parts.extend(["--tool-args", tool_args])
+            if overwrite:
+                iqtree_cmd_parts.append("--overwrite")
             checkpoint = build_initial_iqtree_checkpoint(
                 step="tree.ml.iqtree",
-                command=f"phyloai tree ml iqtree --msa-dir {msa_dir} ...",
+                command=" ".join(iqtree_cmd_parts),
                 params=_resolved_iqtree_params(
                     msa_dir=msa_dir, matrix=matrix, output_dir=output_dir,
                     seq_type=resolved_seq_type, model=model,
@@ -1491,15 +1544,16 @@ def run_iqtree(
         iqtree_path=iqtree_path, tool_args=tool_args,
         overwrite=overwrite, threads=str(threads_spec),
         skipped_input=skipped_input,
-        n_resume_skipped=n_resume_skipped,
-        dry_run=dry_run,
-        state_freq=state_freq, rate_heterogeneity=rate_heterogeneity,
-        mset=mset, msub=msub,
-        pmsf_base_model=pmsf_base_model,
-        qmax=resolved_qmax, rate=rate, wslr=wslr,
-        constraint=constraint, outgroup=outgroup,
-        prefix=prefix,
-    )
+            n_resume_skipped=n_resume_skipped,
+            dry_run=dry_run, resume=resume, keep_extra=keep_extra,
+            state_freq=state_freq, rate_heterogeneity=rate_heterogeneity,
+            mset=mset, msub=msub,
+            pmsf_base_model=pmsf_base_model,
+            qmax=resolved_qmax, rate=rate, wslr=wslr,
+            constraint=constraint, outgroup=outgroup,
+            prefix=prefix,
+            quiet=quiet,
+        )
 
 
 def _assemble_iqtree_result(
@@ -1531,6 +1585,9 @@ def _assemble_iqtree_result(
     failed_results: list[dict[str, Any]] | None = None,
     n_resume_skipped: int = 0,
     dry_run: bool = False,
+    resume: bool = False,
+    keep_extra: bool = False,
+    quiet: bool = False,
     state_freq: str = "+F",
     rate_heterogeneity: str = "+R4",
     mset: str | None = None,
@@ -1573,12 +1630,25 @@ def _assemble_iqtree_result(
         cmd_parts.extend(["--matrix", str(matrix)])
     cmd_parts.extend([
         "--seq-type", resolved_seq_type,
-        "--model", model,
+    ])
+    if modelfinder == "none":
+        cmd_parts.extend([
+            "--model", model,
+            "--state-freq", state_freq,
+            "--rate-heterogeneity", rate_heterogeneity,
+        ])
+    cmd_parts.extend([
         "--mode", mode,
         "-o", str(output_dir),
     ])
+    if threads != "4":
+        cmd_parts.extend(["-t", threads])
     if modelfinder != "none":
         cmd_parts.extend(["--modelfinder", modelfinder])
+    if mset is not None:
+        cmd_parts.extend(["--mset", mset])
+    if msub is not None:
+        cmd_parts.extend(["--msub", msub])
     if boot is not None:
         cmd_parts.extend(["--boot", str(boot)])
     if alrt is not None:
@@ -1587,6 +1657,26 @@ def _assemble_iqtree_result(
         cmd_parts.append("--bnni")
     if partitions:
         cmd_parts.extend(["--partitions", partitions])
+    if rclusterf is not None:
+        cmd_parts.extend(["--rclusterf", str(rclusterf)])
+    if rcluster_max is not None:
+        cmd_parts.extend(["--rcluster-max", str(rcluster_max)])
+    if pmsf_base_model is not None:
+        cmd_parts.extend(["--pmsf-base-model", pmsf_base_model])
+    if guide_tree is not None:
+        cmd_parts.extend(["--guide-tree", guide_tree])
+    if qmax is not None:
+        cmd_parts.extend(["--qmax", str(qmax)])
+    if rate:
+        cmd_parts.append("--rate")
+    if wslr:
+        cmd_parts.append("--wslr")
+    if constraint is not None:
+        cmd_parts.extend(["--constraint", constraint])
+    if outgroup is not None:
+        cmd_parts.extend(["--outgroup", outgroup])
+    if prefix is not None:
+        cmd_parts.extend(["--prefix", prefix])
     if iqtree_path:
         cmd_parts.extend(["--iqtree-path", iqtree_path])
     if tool_args:
@@ -1596,6 +1686,12 @@ def _assemble_iqtree_result(
             cmd_parts.extend(["--tool-args", tool_args])
     if overwrite:
         cmd_parts.append("--overwrite")
+    if dry_run:
+        cmd_parts.append("--dry-run")
+    if resume:
+        cmd_parts.append("--resume")
+    if keep_extra:
+        cmd_parts.append("--keep-extra")
     cmd_str = " ".join(cmd_parts)
 
     workflow = _classify_workflow(
@@ -1613,6 +1709,54 @@ def _assemble_iqtree_result(
         model_selected = all_ok[0].get("model_selected")
     if modelfinder == "none":
         model_selected = model_string
+
+    if batch_mode:
+        ok_files = []
+        for r in all_ok:
+            entry = {k: v for k, v in r.items() if k != "tool_stderr"}
+            for key in ("log_file", "log_iqtree"):
+                log_path = Path(entry.get(key, ""))
+                if key in entry and log_path.is_absolute():
+                    try:
+                        entry[key] = str(log_path.relative_to(output_dir))
+                    except ValueError:
+                        pass
+            ok_files.append(entry)
+        ok_failed = [
+            {k: v for k, v in r.items() if k != "tool_stderr"}
+            for r in failed_results
+        ]
+        for entry in ok_failed:
+            for key in ("log_file", "log_iqtree"):
+                log_path = Path(entry.get(key, ""))
+                if key in entry and log_path.is_absolute():
+                    try:
+                        entry[key] = str(log_path.relative_to(output_dir))
+                    except ValueError:
+                        pass
+        data_block: dict[str, Any] = {
+            "summary": {
+                "n_input_files": len(results) + n_failed + n_skipped + n_resume_skipped,
+                "n_trees": n_successful if not (modelfinder == "MF") else 0,
+                "n_failed": n_failed,
+                "n_skipped": n_skipped,
+                "n_resume_skipped": n_resume_skipped,
+                "mean_wall_time": mean_wall_time,
+                "mode": "--msa-dir" if batch_mode else "--matrix",
+            },
+            "files": ok_files,
+            "failed": ok_failed,
+            "skipped": skipped_input,
+            "warnings": [],
+        }
+    else:
+        first = results[0] if results else {}
+        data_block = {
+            "cmd": first.get("cmd", []),
+            "tool_stderr": "",
+            "output": first.get("output_tree", ""),
+            "warnings": first.get("warnings", []),
+        }
 
     payload: dict[str, Any] = {
         "status": "error" if is_error else "success",
@@ -1647,6 +1791,11 @@ def _assemble_iqtree_result(
             "output_dir": str(output_dir),
             "threads": threads,
             "overwrite": overwrite,
+            "resume": resume,
+            "dry_run": dry_run,
+            "keep_extra": keep_extra,
+            "quiet": quiet,
+            "iqtree_path": iqtree_path,
             "tool_args": tool_args,
         },
         "key_results": {
@@ -1666,36 +1815,9 @@ def _assemble_iqtree_result(
             ),
         },
         "error": error_msg,
-        "data": {
-            "summary": {
-                "n_input_files": len(results) + n_failed + n_skipped + n_resume_skipped,
-                "n_trees": n_successful if not (modelfinder == "MF") else 0,
-                "n_failed": n_failed,
-                "n_skipped": n_skipped,
-                "n_resume_skipped": n_resume_skipped,
-                "mean_wall_time": mean_wall_time,
-                "mode": "--msa-dir" if batch_mode else "--matrix",
-            },
-            "files": all_ok,
-            "failed": failed_results,
-            "skipped": skipped_input,
-            "warnings": [],
-        },
+        "data": data_block,
     }
 
-    if not dry_run:
-        import datetime as _dt
-        output_dir.mkdir(parents=True, exist_ok=True)
-        log_path = output_dir / "iqtree.log"
-        now_local = _dt.datetime.now().isoformat(timespec="seconds")
-        exit_code = 0 if not is_error else 2
-        with open(log_path, "a") as lf:
-            lf.write(f"{now_local} | phyloai tree ml iqtree | exit={exit_code}\n")
-            lf.write(f"command: {cmd_str}\n")
-            for tool, ver in versions.items():
-                lf.write(f"{tool}: {ver}\n")
-            lf.write(f"wall_time: {payload['wall_time']:.2f}s\n")
-            lf.write(f"trees: {n_successful}, failed: {n_failed}, skipped: {n_skipped}\n")
     return payload
 
 
@@ -1703,9 +1825,26 @@ def _reconstruct_result(output_dir: Path, run_start: float) -> dict[str, Any]:
     result_path = output_dir / "result.json"
     if result_path.exists():
         return json.loads(result_path.read_text())
+    ckpt_path = output_dir / "checkpoint.json"
+    if ckpt_path.exists():
+        ckpt = json.loads(ckpt_path.read_text())
+        cmd = ckpt.get("command", "")
+    else:
+        cmd = ""
+    if not cmd:
+        return {
+            "status": "error",
+            "command": "phyloai tree ml iqtree",
+            "wall_time": _time.monotonic() - run_start,
+            "tool_versions": {},
+            "params": {},
+            "key_results": {},
+            "error": "Cannot reconstruct result: result.json not found and checkpoint.json missing or has no command",
+            "data": {"summary": {}, "files": [], "failed": [], "skipped": [], "warnings": []},
+        }
     return {
         "status": "success",
-        "command": "",
+        "command": cmd,
         "wall_time": _time.monotonic() - run_start,
         "tool_versions": {},
         "params": {},

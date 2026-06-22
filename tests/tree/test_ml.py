@@ -320,6 +320,7 @@ def test_validate_seq_types_no_files(tmp_path: Path) -> None:
 
 def test_run_fasttree_batch_dry_run(tmp_path: Path) -> None:
     from phyloai.tree.ml import run_fasttree
+    from tests.helpers import validate_params_completeness, validate_result_json
 
     msa_dir = tmp_path / "msas"
     msa_dir.mkdir()
@@ -339,6 +340,13 @@ def test_run_fasttree_batch_dry_run(tmp_path: Path) -> None:
     for f in payload["data"]["files"]:
         assert "cmd" in f
 
+    validate_result_json(payload)
+    validate_params_completeness(payload, {
+        "msa_dir", "matrix", "output_dir", "seq_type", "model", "mode",
+        "boot", "cat", "gamma", "threads", "fasttree_path", "tool_args",
+        "overwrite", "resume", "dry_run",
+    })
+
 
 def test_run_fasttree_single_dry_run(tmp_path: Path) -> None:
     from phyloai.tree.ml import run_fasttree
@@ -353,10 +361,9 @@ def test_run_fasttree_single_dry_run(tmp_path: Path) -> None:
         seq_type="AA", model="lg", dry_run=True, quiet=True,
     )
 
-    assert payload["data"]["summary"]["mode"] == "--matrix"
-    assert len(payload["data"]["files"]) >= 1
-    if payload["data"]["files"]:
-        assert "cmd" in payload["data"]["files"][0]
+    assert isinstance(payload["data"]["cmd"], list)
+    assert "tool_stderr" in payload["data"]
+    assert "output" in payload["data"]
 
 
 def test_run_fasttree_batch_auto_detects_mixed_and_fails(tmp_path: Path) -> None:
@@ -454,7 +461,6 @@ def test_run_fasttree_dry_run_no_artifacts(tmp_path: Path) -> None:
         matrix=mat, output_dir=out_dir, quiet=True, dry_run=True,
     )
 
-    assert not (out_dir / "fasttree.log").exists()
     assert result["status"] == "success"
 
 

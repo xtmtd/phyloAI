@@ -38,7 +38,7 @@ For typical phylogenomic MSAs, the five subcommands are designed to be applied i
 
 The subcommands can also be used independently. For example, if you already have gene trees and only want to prune taxa, start from step 3. If you only need to apply metric thresholds, jump directly to `filter metrics`.
 
-All subcommands write `result.json` and `filter.log` to their output directory. Terminal output uses Rich tables; suppress with `--quiet`.
+All subcommands write `result.json` to their output directory. Terminal output uses Rich tables; suppress with `--quiet`.
 
 Any PhyloAI-authored FASTA-family outputs written by these subcommands wrap sequence lines at 60 characters.
 
@@ -136,11 +136,13 @@ runs/pretree/filter/taper/
 ├── filter_decisions.csv|tsv           (locus, status, new_masked_sites, masked_taxa_count,
 │                                       masked_taxa_detail when --show-masked-sites)
 ├── checkpoint.json                    (internal; only with --resume)
-├── filter.log
-└── result.json
+├── logs/
+│   ├── gene1.log
+│   └── ...
+├── result.json
 ```
 
-Terminal output: two Rich tables — Filter Results (input/retained/dropped/masked loci/taxa/sites) and Retained MSA Statistics (MSA count, total/mean/min/max alignment length, mean taxa). Julia version auto-detected via `julia -v` and recorded in `result.json` and `filter.log`.
+Terminal output: two Rich tables — Filter Results (input/retained/dropped/masked loci/taxa/sites) and Retained MSA Statistics (MSA count, total/mean/min/max alignment length, mean taxa). Julia version auto-detected via `julia -v` and recorded in `result.json`.
 
 ### Examples
 
@@ -252,7 +254,7 @@ runs/pretree/filter/treeshrink/
 ├── removed_taxa.csv|tsv                (locus, taxon per row)
 ├── filter_decisions.csv|tsv            (locus, status, removed_count)
 ├── work/                               (only with --keep-work-dir)
-├── filter.log
+├── logs/treeshrink.log                 (single shared tool stderr)
 └── result.json
 ```
 
@@ -365,8 +367,7 @@ runs/pretree/filter/metrics/
 ├── filter_decisions.csv|tsv
 ├── seqs/                              (only with --copy --msa-dir)
 ├── trees/                             (only with --copy --tree-dir)
-├── filter.log
-└── result.json
+├── result.json
 ```
 
 Terminal output: Filter Results table (total/retained/dropped) + Retained MSA Statistics table when `--msa-dir` is provided.
@@ -499,7 +500,7 @@ runs/pretree/filter/symtest/
 │                                       sym_pval, mar_pval, int_pval,
 │                                       sym_sig, sym_non, mar_sig, mar_non,
 │                                       int_sig, int_non)
-├── filter.log
+├── logs/symtest.log                    (single shared tool stderr)
 └── result.json
 ```
 
@@ -633,8 +634,7 @@ runs/pretree/filter/cluster/
 │       ├── cluster_3d.pdf             (3D scatter)
 │       ├── cluster_metric_heatmap.pdf (z-score heatmap: metrics × clusters)
 │       └── cluster_metric_boxplots.pdf (per-metric distributions by cluster)
-├── filter.log
-└── result.json
+├── result.json
 ```
 
 With `--drop-outlier-clusters auto`, additionally:
@@ -737,4 +737,4 @@ Mode-specific `key_results` and `data`:
 | `metrics` | n_total, n_retained, n_dropped, condition_failure_counts | copied_msa, copied_tree, retained_msa_stats |
 | `cluster` | n_loci, n_valid_loci, n_features, n_clusters, reduction, selected_umap_replicate, n_retained, n_dropped | features, cluster_sizes, drop_clusters, retained_loci, retained_msa_stats, plot_paths, umap_replicates |
 
-`filter.log` records resolved command(s), tool versions, wall time, and per-locus outcomes.
+Tool stderr for external-tool subcommands (`taper`, `treeshrink`, `symtest`) is written to per-locus `logs/<locus>.log` (taper) or a shared `logs/<tool>.log` file (treeshrink, symtest). Pure-Python subcommands (`metrics`, `cluster`) write no external log.

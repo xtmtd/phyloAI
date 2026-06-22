@@ -129,7 +129,7 @@ Supermatrix assembly and partition position tracking are built inline in `run_sy
 11. Copy retained MSAs → seqs/
 12. If --tree-dir: match retained loci to trees, copy → trees/
 13. Clean up temp dir
-14. Write result.json, filter.log, decision tables
+14. Write result.json (single pattern: data.cmd, data.tool_stderr, data.results), decision tables
 ```
 
 Temporary files are written to a `tempfile.mkdtemp()` directory and cleaned up after step 12. IQ-TREE working files (`.log`, `.iqtree`, etc.) are also in the temp dir and cleaned up.
@@ -151,8 +151,7 @@ When `--tree-dir` is provided:
 
 ```
 runs/pretree/filter/symtest/
-├── result.json
-├── filter.log
+├── result.json                     # data.cmd, data.tool_stderr (single pattern)
 ├── seqs/                           # retained MSAs
 ├── trees/                          # retained trees (only when --tree-dir)
 ├── retained_loci.csv|tsv
@@ -187,27 +186,41 @@ Rich table output includes:
 
 ### 4.4 result.json
 
-Follows standard schema (§9.4). Key results:
+Follows single-pattern schema (JSON Output Standard §5.2). Key results:
 ```json
 {
   "status": "success",
   "command": "phyloai pretree filter symtest ...",
-  "wall_time": 0.0,
+  "wall_time": 45.2,
   "tool_versions": {"iqtree3": "2.3.x"},
-  "params": {},
+  "params": {"msa_dir": "...", "symtest_pval": 0.05, "symtest_type": "Sym", "threads": 4},
   "key_results": {
-    "input_loci": 100,
-    "retained_loci": 85,
-    "dropped_loci": 15,
+    "n_input": 100,
+    "n_retained": 85,
+    "n_dropped": 15,
     "p_value_threshold": 0.05,
     "symtest_type": "Sym",
-    "retained_msa_stats": {},
     "retained_trees_copied": 0
   },
   "error": null,
   "data": {
-    "retained_msa_stats": {},
-    "skipped": []
+    "cmd": ["iqtree3", "-s", "symtest_matrix.fa", "-p", "symtest_partitions.txt", "--symtest-only", "-T", "4"],
+    "tool_stderr": "IQ-TREE symtest output ...",
+    "summary": {
+      "n_input": 100,
+      "n_retained": 85,
+      "n_dropped": 15,
+      "p_value_threshold": 0.05,
+      "symtest_type": "Sym",
+      "retained_msa_stats": {"n_msa": 85, "total_length": 42500, "mean_length": 500},
+      "retained_tree_count": 0,
+      "missed_tree_count": 0,
+      "skipped_names": []
+    },
+    "results": [
+      {"locus": "gene1", "status": "retained"},
+      {"locus": "gene2", "status": "dropped", "reason": "SymPval 0.12 > threshold 0.05"}
+    ]
   }
 }
 ```
@@ -238,7 +251,7 @@ Follows standard schema (§9.4). Key results:
 
 Add `run_symtest` function following the pattern of existing `run_taper`, `run_treeshrink`, etc.:
 - Signature: `run_symtest(msa_dir, symtest_type, symtest_pval, symtest_keep_zero, iqtree_path, threads, tree_dir, output_dir, table_format, dry_run, quiet, tool_args=None) -> None`
-- Writes `result.json`, `filter.log`, decision tables
+- Writes `result.json`, decision tables
 - Renders Rich terminal summary
 
 ### 6.2 concat.py

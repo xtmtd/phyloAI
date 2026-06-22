@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shlex
+import time
 from pathlib import Path
 
 import click
@@ -20,7 +22,7 @@ from phyloai.pretree.stats import (
     stats_single_file,
 )
 from phyloai.pretree.trim import render_trim_summary_table, run_trim, _scan_input as _trim_scan_input
-from phyloai.pretree.concat import run_concat, _render_concat_panels
+from phyloai.pretree.concat import run_concat, _render_concat_panels, _build_concat_command
 from phyloai.pretree.metrics import (
     _compute_correlation,
     _detect_input_delimiter,
@@ -101,6 +103,7 @@ def convert_command(
                     aa_special=aa_special,
                     threads=threads,
                     overwrite=overwrite,
+                    quiet=quiet,
                     progress_callback=lambda _path: progress.advance(task),
                 )
             except ValueError as exc:
@@ -116,6 +119,7 @@ def convert_command(
                 aa_special=aa_special,
                 threads=threads,
                 overwrite=overwrite,
+                quiet=quiet,
             )
         except ValueError as exc:
             conversion_error = str(exc)
@@ -267,9 +271,44 @@ def stats_command(
             threads,
             quiet,
             is_aligned=not unaligned,
+            unaligned=unaligned,
+            overwrite=overwrite,
         )
     except ValueError as exc:
         _fail(str(exc), 1)
+
+
+def _build_stats_command(
+    seq_dir: Path | None,
+    seq: Path | None,
+    per_gene: bool,
+    table_format: str,
+    output_dir: Path,
+    input_format: str | None,
+    seq_type: str | None,
+    threads: int,
+    unaligned: bool,
+    overwrite: bool,
+) -> str:
+    parts = ["phyloai", "pretree", "stats"]
+    if seq is not None:
+        parts.extend(["--seq", str(seq)])
+    else:
+        parts.extend(["--seq-dir", str(seq_dir)])
+    if unaligned:
+        parts.append("--unaligned")
+    if per_gene:
+        parts.append("--per-gene")
+    parts.extend(["--table-format", table_format])
+    parts.extend(["--output-dir", str(output_dir)])
+    if input_format:
+        parts.extend(["--input-format", input_format])
+    if seq_type:
+        parts.extend(["--seq-type", seq_type])
+    parts.extend(["--threads", str(threads)])
+    if overwrite:
+        parts.append("--overwrite")
+    return shlex.join(parts)
 
 
 def _run_stats_command(
@@ -283,22 +322,37 @@ def _run_stats_command(
     threads: int,
     quiet: bool,
     is_aligned: bool = True,
+    unaligned: bool = False,
+    overwrite: bool = False,
 ) -> None:
     """Run the stats command after CLI validation."""
+    start = time.monotonic()
     result_path = output_dir / "result.json"
+    params: dict = {
+        "seq_dir": str(seq_dir) if seq_dir is not None else None,
+        "seq": str(seq) if seq is not None else None,
+        "per_gene": per_gene,
+        "table_format": table_format,
+        "output_dir": str(output_dir),
+        "input_format": input_format or "auto",
+        "seq_type": seq_type or "auto",
+        "threads": threads,
+        "quiet": quiet,
+        "is_aligned": is_aligned,
+        "unaligned": unaligned,
+        "overwrite": overwrite,
+    }
 
     if seq is not None:
+        cmd_str = _build_stats_command(seq_dir, seq, per_gene, table_format, output_dir, input_format, seq_type, threads, unaligned, overwrite)
         stats = stats_single_file(seq, seq_type=seq_type, input_format=input_format)
+        elapsed = time.monotonic() - start
         payload = {
             "status": "success",
-            "command": "phyloai pretree stats",
-            "wall_time": 0.0,
+            "command": cmd_str,
+            "wall_time": round(elapsed, 3),
             "tool_versions": {},
-            "params": {
-                "seq": str(seq),
-                "seq_type": seq_type or "auto",
-                "input_format": input_format or "auto",
-            },
+            "params": params,
             "key_results": {},
             "error": None,
             "data": stats,
@@ -311,6 +365,7 @@ def _run_stats_command(
         click.echo(f"Results saved to {result_path}", err=True)
         return
 
+    cmd_str = _build_stats_command(seq_dir, seq, per_gene, table_format, output_dir, input_format, seq_type, threads, unaligned, overwrite)
     if not quiet:
         files = collect_seq_files(seq_dir)
         with Progress(console=console, transient=True) as progress:
@@ -352,16 +407,10 @@ def _run_stats_command(
         data["per_gene"] = results
     payload = {
         "status": "success" if summary["n_genes_ok"] > 0 else "error",
-        "command": "phyloai pretree stats",
-        "wall_time": 0.0,
+        "command": cmd_str,
+        "wall_time": round(time.monotonic() - start, 3),
         "tool_versions": {},
-        "params": {
-            "seq_dir": str(seq_dir),
-            "seq_type": seq_type or "auto",
-            "input_format": input_format or "auto",
-            "threads": threads,
-            "per_gene": per_gene,
-        },
+        "params": params,
         "key_results": {},
         "error": None if summary["n_genes_ok"] > 0 else "All files failed during processing.",
         "data": data,
@@ -449,7 +498,7 @@ def _write_per_gene_csv(
               help="Directory of unaligned CDS sequences for --backtrans mode.")
 @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
               default=Path("runs/pretree/align"), show_default=True,
-              help="Output directory; contains seqs/, align.log, result.json.")
+              help="Output directory; contains seqs/, logs/<locus>.log, result.json.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of genes to align in parallel (each uses 1 thread).")
 @click.option("--tool-args", type=str, default=None,
@@ -596,9 +645,9 @@ def align_command(
                 nt_dir=nt_dir,
                 threads=threads,
                 tool_args=tool_args,
-                mafft_executable=mafft_exe,
-                magus_executable=magus_exe,
-                trimal_executable=trimal_exe,
+                mafft_path=mafft_exe,
+                magus_path=magus_exe,
+                trimal_path=trimal_exe,
                 quiet=quiet,
             )
             checkpoint = load_checkpoint(ckpt_path)
@@ -642,7 +691,7 @@ def align_command(
     ),
 )
 @click.option("--msa-dir", type=click.Path(file_okay=False, path_type=Path), required=True, help="Input directory of aligned MSA files. In AA+NT mode, this is the aligned AA MSA directory; --nt-dir supplies matching NT/CDS files.")
-@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/trim"), show_default=True, help="Output directory; contains seqs/, trim.log, checkpoint.json, result.json.")
+@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path), default=Path("runs/pretree/trim"), show_default=True, help="Output directory; contains seqs/, logs/, checkpoint.json, result.json.")
 @click.option("--tool", type=click.Choice(["trimal", "bmge", "clipkit"]), default="trimal", show_default=True, help="Trimming tool to use.")
 @click.option("--seq-type", type=click.Choice(["AA", "NT", "CODON", "auto"]), default="auto", show_default=True, help="Molecule type. 'auto' detects AA vs NT only; CODON must be explicit.")
 @click.option("--nt-dir", type=click.Path(file_okay=False, path_type=Path), default=None, help="NT directory for AA+NT dual output. trimAl accepts raw CDS or gapped codon-aligned NT because PhyloAI strips NT gaps before backtranslation; ClipKIT/BMGE expect codon-aligned NT MSAs.")
@@ -702,7 +751,7 @@ def trim_command(
             trimal_method=trimal_method,
             bmge_matrix=bmge_matrix,
             bmge_entropy=bmge_entropy,
-            clipkit_mode=clipkit_method,
+            clipkit_method=clipkit_method,
             trimal_path=trimal_path,
             bmge_path=bmge_path,
             clipkit_path=clipkit_path,
@@ -819,7 +868,7 @@ def trim_command(
     help="Single taxon name to move to first position in each output matrix.",
 )
 @click.option(
-    "--to", "to_format",
+    "--to", "to",
     type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]),
     default="fasta", show_default=True, help="Output format.",
 )
@@ -851,7 +900,7 @@ def concat_command(
     taxa_occupancy: float,
     recoding: str | None,
     outgroup: str | None,
-    to_format: str,
+    to: str,
     translate_codon: bool,
     exclude_codon3: bool,
     dry_run: bool,
@@ -874,11 +923,12 @@ def concat_command(
             taxa_occupancy=taxa_occupancy,
             recoding=recoding,
             outgroup=outgroup,
-            to_format=to_format,
+            to=to,
             translate_codon=translate_codon,
             exclude_codon3=exclude_codon3,
             dry_run=dry_run,
             overwrite=overwrite,
+            quiet=quiet,
         )
     except ValueError as exc:
         error_msg = str(exc)
@@ -887,9 +937,10 @@ def concat_command(
 
             err_payload = {
                 "status": "error",
-                "command": f"phyloai pretree concat --msa-dir {msa_dir}",
+                "command": _build_concat_command(msa_dir, output_dir, prefix, seq_type, taxa_occupancy, recoding, outgroup, to, translate_codon, exclude_codon3, dry_run, overwrite, quiet=quiet),
                 "wall_time": 0.0,
                 "tool_versions": {},
+                # NOTE: params must be kept in sync with concat.py run_concat()
                 "params": {
                     "msa_dir": str(msa_dir),
                     "output_dir": str(output_dir),
@@ -898,14 +949,16 @@ def concat_command(
                     "taxa_occupancy": taxa_occupancy,
                     "recoding": recoding,
                     "outgroup": outgroup,
-                    "to_format": to_format,
+                    "to": to,
                     "translate_codon": translate_codon,
                     "exclude_codon3": exclude_codon3,
                     "dry_run": dry_run,
+                    "overwrite": overwrite,
+                    "quiet": quiet,
                 },
                 "key_results": {},
                 "error": error_msg,
-                "data": {},
+                "data": {"cmd": [], "tool_stderr": ""},
             }
             result_path = output_dir / "result.json"
             with open(result_path, "w") as fh:
@@ -917,7 +970,7 @@ def concat_command(
     if not quiet and payload is not None:
         overview = {
             "prefix": prefix,
-            "to_format": payload["params"]["to_format"],
+            "to": payload["params"]["to"],
             "n_taxa": payload["key_results"]["n_taxa"],
             "n_msa_input": payload["key_results"]["n_msa_input"],
             "n_msa_used": payload["key_results"]["n_msa_used"],
@@ -975,7 +1028,7 @@ def concat_command(
               help="Table format for auxiliary tabular outputs (metrics table, basic statistics, correlation matrix).")
 @click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
               default=Path("runs/pretree/metrics"), show_default=True,
-              help="Output directory for the metrics table, plots/, correlation_heatmap.pdf, result.json, metrics.log.")
+              help="Output directory for the metrics table, plots/, correlation_heatmap.pdf, result.json.")
 @click.option("--threads", "-t", type=int, default=4, show_default=True,
               help="Number of worker processes.")
 @click.option("--dry-run", is_flag=True, default=False,
@@ -1034,7 +1087,7 @@ def metrics_group(
     payload = run_metrics(
         msa_dir=msa_dir, tree_dir=tree_dir, seq_type=seq_type,
         threads=threads, output_dir=output_dir, decimal_places=decimal_places,
-        skip_freq=skip_freq_statistics, pseudo_tree=pseudo_tree_metrics,
+        skip_freq_statistics=skip_freq_statistics, pseudo_tree_metrics=pseudo_tree_metrics,
         fasttree_path=str(fasttree_path) if fasttree_path else "FastTree",
         skip_pairwise_identity=skip_pairwise_identity,
         outgroup_list=outgroup_list, ref_tree=ref_tree,
@@ -1096,7 +1149,7 @@ def metrics_group(
         progress.stop()
 
     if not quiet:
-        key = payload["key_results"]
+        summary = payload["data"].get("summary", {})
         suffix = _table_suffix(table_format)
         click.echo(f"Metrics table  → {output_dir / f'metrics{suffix}'}", err=True)
         click.echo(f"Plots        → {output_dir / 'plots'} ({n_plots} PDFs)", err=True)
@@ -1104,8 +1157,8 @@ def metrics_group(
         click.echo(f"Correlation  → {output_dir / 'correlate' / 'correlation_heatmap.pdf'}", err=True)
         click.echo(f"Results      → {output_dir / 'result.json'}", err=True)
         click.echo(
-            f"n_markers={key['n_markers']}, n_success={key['n_success']}, "
-            f"n_errors={key['n_errors']}",
+            f"n_markers={summary.get('n_markers', '?')}, n_success={summary.get('n_success', '?')}, "
+            f"n_errors={summary.get('n_errors', '?')}",
             err=True,
         )
 
@@ -1165,6 +1218,7 @@ def metrics_plot_command(
     color: str, fig_width: float, fig_height: float, dpi: int, font_size: int,
     output_dir: Path | None, overwrite: bool, quiet: bool,
 ) -> None:
+    start = time.monotonic()
     import numpy as _np
     import csv as _csv_mod
 
@@ -1220,14 +1274,36 @@ def metrics_plot_command(
         if not quiet:
             click.echo(f"Filtered loci list  → {fltr_path} ({n_filtered} filtered)", err=True)
 
+    cmd_parts = ["phyloai", "pretree", "metrics", "plot", "--csv", str(csv_path)]
+    if input_format != "auto":
+        cmd_parts.extend(["--input-format", input_format])
+    cmd_parts.extend(["--metric", metric, "--bins", str(bins)])
+    if xmin is not None:
+        cmd_parts.extend(["--xmin", str(xmin)])
+    if xmax is not None:
+        cmd_parts.extend(["--xmax", str(xmax)])
+    if tukey_k is not None:
+        cmd_parts.extend(["--tukey-k", str(tukey_k)])
+    if title is not None:
+        cmd_parts.extend(["--title", title])
+    if xlabel is not None:
+        cmd_parts.extend(["--xlabel", xlabel])
+    cmd_parts.extend(["--ylabel", ylabel, "--color", color])
+    cmd_parts.extend(["--fig-width", str(fig_width), "--fig-height", str(fig_height), "--dpi", str(dpi), "--font-size", str(font_size)])
+    cmd_parts.extend(["--output-dir", str(output_dir)])
+    if overwrite:
+        cmd_parts.append("--overwrite")
     payload = {
         "status": "success",
-        "command": "phyloai pretree metrics plot",
-        "wall_time": 0.0, "tool_versions": {},
+        "command": " ".join(cmd_parts),
+        "wall_time": round(time.monotonic() - start, 3), "tool_versions": {},
         "params": {"csv": str(csv_path), "input_format": input_format, "metric": metric, "bins": bins,
                    "tukey_k": tukey_k, "n_filtered": n_filtered,
-                   "fig_width": fig_width, "fig_height": fig_height, "dpi": dpi},
-        "key_results": {}, "error": None, "data": {},
+                   "fig_width": fig_width, "fig_height": fig_height, "dpi": dpi, "font_size": font_size,
+                   "xmin": xmin, "xmax": xmax, "title": title, "xlabel": xlabel, "ylabel": ylabel,
+                   "color": color, "output_dir": str(output_dir), "overwrite": overwrite},
+        "key_results": {"n_filtered": n_filtered}, "error": None,
+        "data": {"cmd": [], "tool_stderr": "", "plot": {"metric": metric, "output": str(out_path), "n_filtered": n_filtered}},
     }
     with open(output_dir / "result.json", "w") as fh:
         json.dump(payload, fh, indent=2)
@@ -1295,6 +1371,7 @@ def metrics_correlate_command(
     fig_width: float, fig_height: float, dpi: int, font_size: int, label_angle: float,
     title: str | None, output_dir: Path, overwrite: bool, quiet: bool,
 ) -> None:
+    start = time.monotonic()
     import csv as _csv_mod
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1340,17 +1417,40 @@ def metrics_correlate_command(
     )
     _write_correlation_csv(corr_matrix, col_names, output_dir / "correlation_matrix.csv")
 
+    cmd_parts = ["phyloai", "pretree", "metrics", "correlate", "--csv", str(csv_path)]
+    if input_format != "auto":
+        cmd_parts.extend(["--input-format", input_format])
+    if metrics:
+        cmd_parts.extend(["--metrics", metrics])
+    if include_freq:
+        cmd_parts.append("--include-freq")
+    if include_sd:
+        cmd_parts.append("--include-sd")
+    cmd_parts.extend(["--method", method, "--triangle", triangle])
+    if annot:
+        cmd_parts.append("--annot")
+    if cluster_rectangles is not None:
+        cmd_parts.extend(["--cluster-rectangles", str(cluster_rectangles)])
+    cmd_parts.extend(["--cmap", cmap, "--fmt", fmt])
+    cmd_parts.extend(["--fig-width", str(fig_width), "--fig-height", str(fig_height), "--dpi", str(dpi), "--font-size", str(font_size), "--label-angle", str(label_angle)])
+    if title:
+        cmd_parts.extend(["--title", title])
+    cmd_parts.extend(["--output-dir", str(output_dir)])
+    if overwrite:
+        cmd_parts.append("--overwrite")
     payload = {
         "status": "success",
-        "command": "phyloai pretree metrics correlate",
-        "wall_time": 0.0, "tool_versions": {},
+        "command": " ".join(cmd_parts),
+        "wall_time": round(time.monotonic() - start, 3), "tool_versions": {},
         "params": {"csv": str(csv_path), "input_format": input_format, "metrics": metrics,
                    "include_freq": include_freq, "include_sd": include_sd, "method": method,
                    "triangle": triangle,
                    "annot": annot, "cmap": cmap, "fmt": fmt,
-                   "fig_width": fig_width, "fig_height": fig_height, "dpi": dpi,
-                   "label_angle": label_angle},
-        "key_results": {}, "error": None, "data": {},
+                   "fig_width": fig_width, "fig_height": fig_height, "dpi": dpi, "font_size": font_size,
+                   "label_angle": label_angle, "title": title, "output_dir": str(output_dir),
+                   "overwrite": overwrite, "cluster_rectangles": cluster_rectangles},
+        "key_results": {"n_variables": len(col_names) if col_names else 0}, "error": None,
+        "data": {"cmd": [], "tool_stderr": "", "heatmap": {"variables": len(col_names) if col_names else 0, "method": method, "output": str(heatmap_path)}},
     }
     with open(output_dir / "result.json", "w") as fh:
         json.dump(payload, fh, indent=2)
@@ -1458,7 +1558,7 @@ _TAPER_HELP = (
 @click.option(
     "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
     default=Path("runs/pretree/filter/taper"), show_default=True,
-    help="Directory for masked output files, decision tables, result.json, and filter.log.",
+    help="Directory for masked output files, decision tables, result.json, and logs.",
 )
 @click.option(
     "--table-format", type=click.Choice(["csv", "tsv"]),
@@ -1555,7 +1655,8 @@ def filter_taper_command(msa_dir, nt_dir, seq_type, cutoff, taper_path, julia_pa
             "Masked taxa": payload["key_results"]["total_masked_taxa"],
             "Masked sites": payload["key_results"]["total_masked_aa_sites"],
         }))
-        msa_stats = payload["data"].get("retained_msa_stats", {})
+        summary_data = payload["data"].get("summary", {})
+        msa_stats = summary_data.get("retained_msa_stats", {})
         if msa_stats and msa_stats.get("n_msa", 0) > 0:
             console.print(render_filter_summary_table({
                 "Retained MSAs": msa_stats["n_msa"],
@@ -1629,7 +1730,7 @@ _TREESHRINK_HELP = (
     "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
     default=Path("runs/pretree/filter/treeshrink"), show_default=True,
     help="Directory for shrunk trees, optional shrunk MSAs, decision tables, "
-    "result.json, and filter.log.",
+    "result.json, and logs.",
 )
 @click.option(
     "--table-format", type=click.Choice(["csv", "tsv"]),
@@ -1670,7 +1771,8 @@ def filter_treeshrink_command(tree_dir, msa_dir, threshold, treeshrink_mode, tre
         return
     if not quiet:
         console.print(render_filter_summary_table({"Input": payload["key_results"]["n_input"], "Retained": payload["key_results"]["n_retained"], "Modified": payload["key_results"]["n_modified"], "Dropped": payload["key_results"]["n_dropped"], "Taxa removed": payload["key_results"]["n_removed_taxa_total"]}))
-        msa_stats = payload["data"].get("retained_msa_stats", {})
+        summary_data = payload["data"].get("summary", {})
+        msa_stats = summary_data.get("retained_msa_stats", {})
         if msa_stats and msa_stats.get("n_msa", 0) > 0:
             console.print(render_filter_summary_table({
                 "Retained MSAs": msa_stats["n_msa"],
@@ -1746,7 +1848,7 @@ _METRICS_HELP = (
 @click.option(
     "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
     default=Path("runs/pretree/filter/metrics"), show_default=True,
-    help="Directory for decision tables, optional copied files, result.json, and filter.log.",
+    help="Directory for decision tables, optional copied files, result.json, and logs.",
 )
 @click.option(
     "--table-format", type=click.Choice(["csv", "tsv"]),
@@ -1777,7 +1879,8 @@ def filter_metrics_command(table_path, keep, input_format, loci_column, msa_dir,
         return
     if not quiet:
         console.print(render_filter_summary_table({"Total": payload["key_results"]["n_total"], "Retained": payload["key_results"]["n_retained"], "Dropped": payload["key_results"]["n_dropped"]}))
-        msa_stats = payload["data"].get("retained_msa_stats", {})
+        fm_summary = payload["data"].get("summary", {})
+        msa_stats = fm_summary.get("retained_msa_stats", {})
         if msa_stats and msa_stats.get("n_msa", 0) > 0:
             console.print(render_filter_summary_table({
                 "Retained MSAs": msa_stats["n_msa"],
@@ -1854,7 +1957,7 @@ def _validate_symtest_pval(ctx, param, value):
     "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
     default=Path("runs/pretree/filter/symtest"), show_default=True,
     help="Directory for retained MSAs, optional trees, decision tables, "
-    "result.json, and filter.log.",
+    "result.json, and logs.",
 )
 @click.option(
     "--table-format", type=click.Choice(["csv", "tsv"]),
@@ -1928,7 +2031,8 @@ def filter_symtest_command(msa_dir, symtest_type, symtest_pval, symtest_keep_zer
             "P-value threshold": payload["key_results"]["p_value_threshold"],
             "Symtest type": payload["key_results"]["symtest_type"],
         }))
-        msa_stats = payload["data"].get("retained_msa_stats", {})
+        summary_data = payload["data"].get("summary", {})
+        msa_stats = summary_data.get("retained_msa_stats", {})
         if msa_stats and msa_stats.get("n_msa", 0) > 0:
             console.print(render_filter_summary_table({
                 "Retained MSAs": msa_stats["n_msa"],
@@ -1939,7 +2043,7 @@ def filter_symtest_command(msa_dir, symtest_type, symtest_pval, symtest_keep_zer
                 "Mean taxa": msa_stats["mean_taxa"],
             }))
         if payload["key_results"].get("retained_trees_copied", 0) > 0:
-            mt = payload["data"].get("missed_tree_count", 0)
+            mt = summary_data.get("missed_tree_count", 0)
             console.print(render_filter_summary_table({
                 "Trees copied": payload["key_results"]["retained_trees_copied"],
                 "Trees missed": mt,
@@ -2106,7 +2210,7 @@ _CLUSTER_HELP = (
     "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
     default=Path("runs/pretree/filter/cluster"), show_default=True,
     help="Directory for cluster assignments, diagnostic plots, decision tables, "
-    "result.json, and filter.log.",
+    "result.json, and logs.",
 )
 @click.option(
     "--table-format", type=click.Choice(["csv", "tsv"]),
@@ -2145,11 +2249,12 @@ def filter_cluster_command(table_path, input_format, metrics, exclude_regex, red
             "Clusters": payload["key_results"]["n_clusters"],
             "Dropped": payload["key_results"]["n_dropped"],
         }))
-        if payload["data"].get("drop_clusters"):
-            drop_list = payload["data"]["drop_clusters"]
+        fc_summary = payload["data"].get("summary", {})
+        if fc_summary.get("drop_clusters"):
+            drop_list = fc_summary["drop_clusters"]
             console.print(f"[yellow]Dropped clusters: {drop_list} "
                           f"({payload['key_results']['n_dropped']} loci removed)[/yellow]")
-        msa_stats = payload["data"].get("retained_msa_stats", {})
+        msa_stats = fc_summary.get("retained_msa_stats", {})
         if msa_stats and msa_stats.get("n_msa", 0) > 0:
             console.print(render_filter_summary_table({
                 "Retained MSAs": msa_stats["n_msa"],

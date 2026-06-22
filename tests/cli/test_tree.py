@@ -163,7 +163,6 @@ def test_tree_ml_fasttree_writes_result_json_and_log(tmp_path: Path) -> None:
     ])
     if result.exit_code == 0:
         assert (out_dir / "result.json").exists()
-        assert (out_dir / "fasttree.log").exists()
     elif result.exit_code == 3:
         import pytest
         pytest.skip("FastTree not installed")
@@ -422,7 +421,6 @@ def test_tree_ml_iqtree_writes_result_json_and_log(tmp_path: Path) -> None:
     ])
     if result.exit_code == 0:
         assert (out_dir / "result.json").exists()
-        assert (out_dir / "iqtree.log").exists()
     elif result.exit_code == 3:
         import pytest
         pytest.skip("iqtree3 not installed")

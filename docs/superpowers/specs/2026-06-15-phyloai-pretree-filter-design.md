@@ -88,7 +88,7 @@ Per-subcommand default output directories:
 - `filter symtest`: `runs/pretree/filter/symtest`
 - `filter cluster`: `runs/pretree/filter/cluster`
 
-All successful non-dry-run invocations write `result.json` and `filter.log`. `--dry-run` writes no files.
+All successful non-dry-run invocations write `result.json`. `--dry-run` writes no files.
 
 ### 3.2 Dry-Run Contract
 
@@ -541,7 +541,6 @@ Default output layout:
 ```
 runs/pretree/filter/cluster/
 ├── result.json
-├── filter.log
 ├── 01-input/
 │   └── features_used.csv|tsv
 ├── 02-reduction/
@@ -639,17 +638,15 @@ If some retained MSA files cannot be read, show a warning and record details in 
 
 ## 10. Logging and Result Schema
 
-All non-dry-run executions write:
-- `filter.log`
-- `result.json`
+All non-dry-run executions write `result.json` to the output directory.
 
-`filter.log` includes:
-- resolved command(s)
-- tool versions where applicable
-- stderr
-- wall time
-- exit code
-- stdout only when it is diagnostic text, not primary sequence output
+Batch subcommand (`taper`) writes per-locus tool stderr to `<output-dir>/logs/<locus>.log`. The `result.json` references these via `data.files[].log_file` (batch pattern, JSON Output Standard Section 5.1).
+
+Single-invocation subcommands (`treeshrink`, `symtest`) inline the tool's full stderr in `result.json` as `data.tool_stderr` (single pattern, JSON Output Standard Section 5.2). No external log file is written. Per-locus filtering decisions are stored in `data.results[]` (locus, status, and optional locus-specific metadata).
+
+Purely-computational subcommands (`metrics`, `cluster`) have no external tool invocations per locus. Per JSON Output Standard Section 6.2, `files[].cmd` and `files[].log_file` are omitted for these subcommands. Any optional debugging output under `logs/` is an implementation detail, not part of the result schema.
+
+No top-level `<step>.log` file is written.
 
 `result.json` follows existing pipeline conventions:
 

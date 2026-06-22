@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as _dt
 import logging
 import os
 import re as _re
@@ -477,39 +476,6 @@ def _detect_wastral_version(executable: str) -> dict[str, str]:
 # ---- Logging helper --------------------------------------------------
 
 
-def _write_cf_log(
-    output_dir: Path,
-    cf_mode: str,
-    cmd: list[str],
-    versions: dict[str, str],
-    *,
-    wall_time: float = 0.0,
-    n_input_trees: int = 0,
-    cf_tree: str | None = None,
-    cf_stat: str | None = None,
-    exit_code: int = 0,
-    error_msg: str | None = None,
-) -> None:
-    """Write/append a cf.log entry."""
-    log_path = output_dir / "cf.log"
-    now_local = _dt.datetime.now().isoformat(timespec="seconds")
-    with open(log_path, "a") as lf:
-        lf.write(f"{now_local} | phyloai tree cf | --cf {cf_mode} | exit={exit_code}\n")
-        lf.write(f"command: {' '.join(cmd)}\n")
-        for tool, ver in versions.items():
-            lf.write(f"{tool}: {ver}\n")
-        if wall_time > 0:
-            lf.write(f"wall_time: {wall_time:.2f}s\n")
-        if n_input_trees > 0:
-            lf.write(f"n_input_trees: {n_input_trees}\n")
-        if cf_tree:
-            lf.write(f"cf_tree: {cf_tree}\n")
-        if cf_stat:
-            lf.write(f"cf_stat: {cf_stat}\n")
-        if error_msg:
-            lf.write(f"error: {error_msg}\n")
-
-
 # ---- Result assembly --------------------------------------------------
 
 
@@ -531,6 +497,7 @@ def _assemble_cf_result(
     wastral_path: str | None,
     overwrite: bool,
     dry_run: bool,
+    quiet: bool = False,
     lpp: bool,
     input_path: Path,
     n_input_trees: int,
@@ -543,6 +510,7 @@ def _assemble_cf_result(
     versions: dict[str, str],
     iqtree_exe: str | None = None,
     wastral_exe: str | None = None,
+    tool_stderr: str = "",
 ) -> dict[str, Any]:
     """Build the result.json payload."""
     if tree_dir is not None:
@@ -573,6 +541,12 @@ def _assemble_cf_result(
     cmd_parts.extend(["-t", str(threads)])
     if overwrite:
         cmd_parts.append("--overwrite")
+    if iqtree_path:
+        cmd_parts.extend(["--iqtree-path", iqtree_path])
+    if wastral_path:
+        cmd_parts.extend(["--wastral-path", wastral_path])
+    if dry_run:
+        cmd_parts.append("--dry-run")
     cmd_str = " ".join(cmd_parts)
 
     input_data: dict[str, Any] = {"path": str(input_path)}
@@ -588,7 +562,6 @@ def _assemble_cf_result(
         key_results["cf_tree"] = str(output_dir / f"{prefix}.cf.tree")
     else:
         key_results["cf_tree"] = str(output_dir / f"{prefix}.cf.tree")
-        key_results["wastral_log"] = str(output_dir / "wastral.log")
 
     return {
         "status": "error" if is_error else "success",
@@ -612,8 +585,7 @@ def _assemble_cf_result(
             "dry_run": dry_run,
             "iqtree_path": iqtree_path,
             "wastral_path": wastral_path,
-            "iqtree_exe": iqtree_exe,
-            "wastral_exe": wastral_exe,
+            "quiet": quiet,
         },
         "key_results": key_results,
         "error": error_msg,
@@ -621,6 +593,8 @@ def _assemble_cf_result(
             "input_mode": input_mode,
             "input": input_data,
             "cmd": cmd,
+            "tool_stderr": tool_stderr,
+            **({"tool_log": f"{prefix}.log"} if cf_mode in _CF_MODES_IQTREE else {"tool_log": "wastral.log"} if cf_mode == "qcf" else {}),
             "skipped": skipped,
             "warnings": warnings_list,
         },
@@ -824,6 +798,7 @@ def run_cf(
     # --- Resolve executables ---
     if cf_mode in _CF_MODES_IQTREE:
         iqtree_exe = _resolve_iqtree_path(iqtree_path, dry_run)
+        wastral_exe = None
     else:
         iqtree_exe = None
         wastral_exe = _resolve_wastral_path(wastral_path, dry_run)
@@ -868,12 +843,14 @@ def run_cf(
             threads=threads,
             iqtree_path=iqtree_path, wastral_path=wastral_path,
             overwrite=overwrite, dry_run=dry_run,
+            quiet=quiet,
             lpp=lpp,
             input_path=input_path, n_input_trees=n_input_trees,
             cmd=cmd, wall_time=0.0,
             skipped=skipped, warnings_list=warnings_list,
             is_error=False, error_msg=None,
             versions=versions,
+            tool_stderr="",
         )
 
     # --- Execution ---
@@ -934,13 +911,13 @@ def run_cf(
         proc.wait()
         proc.stdout = "".join(captured_stdout)  # type: ignore[assignment]
         proc.stderr = "".join(captured_stderr)  # type: ignore[assignment]
+        if cf_mode == "qcf":
+            (output_dir / "wastral.log").write_text(str(proc.stderr))
     except Exception as exc:
         if cf_mode in _CF_MODES_IQTREE:
             versions = {"iqtree3": "unknown"}
         else:
             versions = {"wastral": "unknown"}
-        _write_cf_log(output_dir, cf_mode, cmd, versions,
-                      exit_code=1, error_msg=str(exc))
         return _assemble_cf_result(
             run_start=run_start,
             cf_mode=cf_mode, ref_tree=ref_tree,
@@ -951,12 +928,14 @@ def run_cf(
             threads=threads,
             iqtree_path=iqtree_path, wastral_path=wastral_path,
             overwrite=overwrite, dry_run=dry_run,
+            quiet=quiet,
             lpp=lpp,
             input_path=input_path, n_input_trees=n_input_trees,
             cmd=cmd, wall_time=0.0,
             skipped=skipped, warnings_list=warnings_list,
             is_error=True, error_msg=str(exc),
             versions=versions,
+            tool_stderr="",
         )
 
     if cf_mode in _CF_MODES_IQTREE:
@@ -966,12 +945,6 @@ def run_cf(
 
     wall_time = _time.monotonic() - run_start
 
-    # For qCF mode, always save wastral log before checking return code (diagnostics)
-    if cf_mode == "qcf":
-        (output_dir / "wastral.log").write_text(
-            getattr(proc, "stderr", "") + "\n" + getattr(proc, "stdout", "")
-        )
-
     if proc.returncode != 0:
         error_msg = (
             f"IQ-TREE3 exited with code {proc.returncode}"
@@ -979,9 +952,6 @@ def run_cf(
             else f"wASTRAL exited with code {proc.returncode}"
         )
         error_msg += f": {str(proc.stderr)[:500]}"
-        _write_cf_log(output_dir, cf_mode, cmd, versions,
-                      wall_time=wall_time, n_input_trees=n_input_trees,
-                      exit_code=proc.returncode, error_msg=error_msg)
         return _assemble_cf_result(
             run_start=run_start,
             cf_mode=cf_mode, ref_tree=ref_tree,
@@ -992,12 +962,14 @@ def run_cf(
             threads=threads,
             iqtree_path=iqtree_path, wastral_path=wastral_path,
             overwrite=overwrite, dry_run=dry_run,
+            quiet=quiet,
             lpp=lpp,
             input_path=input_path, n_input_trees=n_input_trees,
             cmd=cmd, wall_time=wall_time,
             skipped=skipped, warnings_list=warnings_list,
             is_error=True, error_msg=error_msg,
             versions=versions,
+            tool_stderr="" if cf_mode == "qcf" else str(proc.stderr),
         )
 
     # Post-process for qCF: map values from wastral.tre to ref tree
@@ -1009,9 +981,6 @@ def run_cf(
                 _map_qcf_to_tree(ref_tree, wastral_tre_path, output_dir / f"{prefix}.cf.tree", lpp=lpp)
             except Exception as exc:
                 error_msg = f"qCF mapping failed: {exc}"
-                _write_cf_log(output_dir, cf_mode, cmd, versions,
-                              wall_time=wall_time, n_input_trees=n_input_trees,
-                              exit_code=2, error_msg=error_msg)
                 return _assemble_cf_result(
                     run_start=run_start,
                     cf_mode=cf_mode, ref_tree=ref_tree,
@@ -1022,18 +991,17 @@ def run_cf(
                     threads=threads,
                     iqtree_path=iqtree_path, wastral_path=wastral_path,
                     overwrite=overwrite, dry_run=dry_run,
+                    quiet=quiet,
                     lpp=lpp,
                     input_path=input_path, n_input_trees=n_input_trees,
                     cmd=cmd, wall_time=wall_time,
                     skipped=skipped, warnings_list=warnings_list,
                     is_error=True, error_msg=error_msg,
                     versions=versions,
+                    tool_stderr="" if cf_mode == "qcf" else str(proc.stderr),
                 )
         else:
             error_msg = "wASTRAL completed but did not produce wastral.tre"
-            _write_cf_log(output_dir, cf_mode, cmd, versions,
-                          wall_time=wall_time, n_input_trees=n_input_trees,
-                          exit_code=2, error_msg=error_msg)
             return _assemble_cf_result(
                 run_start=run_start,
                 cf_mode=cf_mode, ref_tree=ref_tree,
@@ -1044,12 +1012,14 @@ def run_cf(
                 threads=threads,
                 iqtree_path=iqtree_path, wastral_path=wastral_path,
                 overwrite=overwrite, dry_run=dry_run,
+                quiet=quiet,
                 lpp=lpp,
                 input_path=input_path, n_input_trees=n_input_trees,
                 cmd=cmd, wall_time=wall_time,
                 skipped=skipped, warnings_list=warnings_list,
                 is_error=True, error_msg=error_msg,
                 versions=versions,
+                tool_stderr="" if cf_mode == "qcf" else str(proc.stderr),
             )
 
     payload = _assemble_cf_result(
@@ -1062,6 +1032,7 @@ def run_cf(
         threads=threads,
         iqtree_path=iqtree_path, wastral_path=wastral_path,
         overwrite=overwrite, dry_run=dry_run,
+        quiet=quiet,
         lpp=lpp,
         input_path=input_path, n_input_trees=n_input_trees,
         cmd=cmd, wall_time=wall_time,
@@ -1070,11 +1041,7 @@ def run_cf(
         versions=versions,
         iqtree_exe=iqtree_exe,
         wastral_exe=wastral_exe,
+        tool_stderr="" if cf_mode == "qcf" else str(proc.stderr),
     )
-
-    _write_cf_log(output_dir, cf_mode, cmd, versions,
-                  wall_time=payload["wall_time"], n_input_trees=n_input_trees,
-                  cf_tree=payload["key_results"].get("cf_tree"),
-                  cf_stat=payload["key_results"].get("cf_stat"))
 
     return payload

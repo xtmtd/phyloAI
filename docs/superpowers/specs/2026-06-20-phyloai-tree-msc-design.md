@@ -293,8 +293,7 @@ When `--tool-args` contains a flag that overlaps with a phyloAI-managed paramete
 
 ```
 runs/tree/msc/
-├── result.json
-├── wastral.log              # wastral stderr (saved via 2> wastral.log)
+├── result.json               # data.tool_stderr inlined (single pattern)
 ├── wastral.tre              # species tree output (wastral -o)
 └── merged.trees             # merged gene tree input (--tree-dir mode only)
 ```
@@ -303,8 +302,7 @@ runs/tree/msc/
 
 ```
 runs/tree/msc/
-├── result.json
-├── wastral.log
+├── result.json               # data.tool_stderr inlined (single pattern)
 └── wastral.tre
 ```
 
@@ -312,8 +310,7 @@ runs/tree/msc/
 
 ```
 runs/tree/msc/
-├── result.json
-├── wastral.log
+├── result.json               # data.tool_stderr inlined (single pattern)
 ├── wastral.tre
 └── merged.trees             # merged input for auditability
 ```
@@ -367,6 +364,7 @@ runs/tree/msc/
       "n_trees": 1066
     },
     "output_tree": "runs/tree/msc/wastral.tre",
+    "tool_stderr": "# wastral diagnostic output (single pattern, JSON Output Standard Section 5.2)",
     "cmd": [
       "wastral", "-i", "runs/tree/msc/merged.trees",
       "-o", "runs/tree/msc/wastral.tre",
@@ -437,9 +435,9 @@ For `--tree` (single file) mode:
 
 ## 11. Logging
 
-- `wastral.log`: wastral stderr output, saved via `2> wastral.log` (per official wastral recommendation). Contains wastral's diagnostic output, version info, search progress, and final quartet score.
-- `result.json`: written alongside `wastral.log` and `wastral.tre` in the output directory.
-- wastral stdout (the species tree in newick format) is captured to `wastral.tre` via `-o`.
+`msc` is a single-mode command. wASTRAL stderr is inlined in `result.json` as `data.tool_stderr` (single pattern, JSON Output Standard Section 5.2). No external log file is written.
+
+wASTRAL stdout (the species tree in newick format) is captured to `wastral.tre` via `-o`.
 
 ---
 
@@ -468,7 +466,7 @@ For `--tree` (single file) mode:
 - **No checkpoint**: wastral is one-shot; no `checkpoint.json`, no `--resume`
 - **No batch/parallelism**: wastral handles its own internal multithreading via `-t`; no `ProcessPoolExecutor` needed at the phyloAI layer
 - **Command override detection**: flag-name overlap check, same pattern as FastTree/IQ-TREE (see `_is_flag_overridden()` in `ml_iqtree.py`)
-- **Log saving pattern**: wastral stderr captured via subprocess and written to `wastral.log` — this emulates the `2> wastral.log` pattern recommended by wastral docs
+- **Log saving pattern**: wastral stderr captured via subprocess and inlined in `data.tool_stderr` (single pattern, JSON Output Standard Section 5.2)
 
 ### 12.4 wASTRAL Executable Resolution
 
@@ -593,7 +591,7 @@ Before merging, verify the following:
 ### 13.8 Output
 - [ ] `result.json` written with correct schema
 - [ ] `wastral.tre` produced (valid newick species tree)
-- [ ] `wastral.log` produced (wastral stderr saved)
+- [ ] `data.tool_stderr` populated with wastral stderr (single pattern)
 - [ ] `merged.trees` produced (`--tree-dir` mode only)
 - [ ] `tool_versions` populated with key `wastral`
 

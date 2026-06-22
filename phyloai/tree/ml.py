@@ -213,13 +213,13 @@ def _run_one_fasttree(
 
         out_tree.write_text(proc.stdout)
         out_log.write_text(proc.stderr)
+        result["log_file"] = str(out_log)
 
         if proc.returncode != 0:
             return {
                 **result,
                 "status": "failed",
                 "reason": f"FastTree exited with code {proc.returncode}: {proc.stderr[:200]}",
-                "tool_stderr": proc.stderr,
                 "wall_time": wall_time,
                 "warnings": warnings,
             }
@@ -232,7 +232,6 @@ def _run_one_fasttree(
                 **result,
                 "status": "failed",
                 "reason": f"FastTree produced unparseable Newick output: {e}",
-                "tool_stderr": proc.stderr,
                 "wall_time": wall_time,
                 "warnings": warnings,
             }
@@ -241,6 +240,7 @@ def _run_one_fasttree(
             **result,
             "status": "success",
             "wall_time": wall_time,
+            "tool_stderr": proc.stderr,
             "warnings": warnings,
         }
 
@@ -507,7 +507,9 @@ def run_fasttree(
             fasttree_path=fasttree_path, tool_args=tool_args,
             overwrite=overwrite, threads=threads,
             skipped_input=[],
+            resume=resume,
             dry_run=dry_run,
+            quiet=quiet,
         )
 
     if not resume and not dry_run:
@@ -518,9 +520,28 @@ def run_fasttree(
             output_dir=output_dir, threads=threads,
             fasttree_path=fasttree_path, tool_args=tool_args,
         )
+        cmd_parts = ["phyloai", "tree", "ml", "fasttree", "--msa-dir", str(msa_dir)]
+        cmd_parts.extend([
+            "--seq-type", resolved_seq_type, "--model", model,
+            "--mode", mode, "--boot", str(boot), "--cat", str(cat),
+        ])
+        if not gamma:
+            cmd_parts.append("--no-gamma")
+        cmd_parts.extend(["-o", str(output_dir)])
+        if threads != 4:
+            cmd_parts.extend(["-t", str(threads)])
+        if fasttree_path:
+            cmd_parts.extend(["--fasttree-path", fasttree_path])
+        if tool_args:
+            if " " in tool_args:
+                cmd_parts.append(f"--tool-args '{tool_args}'")
+            else:
+                cmd_parts.extend(["--tool-args", tool_args])
+        if overwrite:
+            cmd_parts.append("--overwrite")
         checkpoint = build_initial_checkpoint(
             step="tree.ml.fasttree",
-            command=f"phyloai tree ml fasttree --msa-dir {msa_dir} ...",
+            command=" ".join(cmd_parts),
             params=resolved_params,
             inputs=found,
             trees_dir=trees_dir,
@@ -622,7 +643,9 @@ def run_fasttree(
         overwrite=overwrite, threads=threads,
         skipped_input=skipped_input,
         n_resume_skipped=n_resume_skipped,
+        resume=resume,
         dry_run=dry_run,
+        quiet=quiet,
     )
 
 
@@ -665,7 +688,9 @@ def _assemble_result(
     threads: int,
     skipped_input: list[dict[str, str]],
     n_resume_skipped: int = 0,
+    resume: bool = False,
     dry_run: bool = False,
+    quiet: bool = False,
 ) -> dict[str, Any]:
     if failed_results is None:
         failed_results = []
@@ -717,7 +742,58 @@ def _assemble_result(
             cmd_parts.extend(["--tool-args", tool_args])
     if overwrite:
         cmd_parts.append("--overwrite")
+    if dry_run:
+        cmd_parts.append("--dry-run")
+    if resume:
+        cmd_parts.append("--resume")
     cmd_str = " ".join(cmd_parts)
+
+    if batch_mode:
+        ok_files = []
+        for r in all_ok:
+            entry = {k: v for k, v in r.items() if k != "tool_stderr"}
+            log_path = Path(entry.get("log_file", ""))
+            if "log_file" in entry and log_path.is_absolute():
+                try:
+                    entry["log_file"] = str(log_path.relative_to(output_dir))
+                except ValueError:
+                    pass
+            ok_files.append(entry)
+        ok_failed = [
+            {k: v for k, v in r.items() if k != "tool_stderr"}
+            for r in failed_results
+        ]
+        for entry in ok_failed:
+            log_path = Path(entry.get("log_file", ""))
+            if "log_file" in entry and log_path.is_absolute():
+                try:
+                    entry["log_file"] = str(log_path.relative_to(output_dir))
+                except ValueError:
+                    pass
+        data_block: dict[str, Any] = {
+            "summary": {
+                "n_input_files": len(results) + n_failed + n_skipped + n_resume_skipped,
+                "n_trees": n_trees,
+                "n_failed": n_failed,
+                "n_skipped": n_skipped,
+                "n_resume_skipped": n_resume_skipped,
+                "mean_n_taxa": mean_n_taxa,
+                "mean_wall_time": mean_wall_time,
+                "mode": "--msa-dir" if batch_mode else "--matrix",
+            },
+            "files": ok_files,
+            "failed": ok_failed,
+            "skipped": skipped_input,
+            "warnings": [],
+        }
+    else:
+        first = results[0] if results else {}
+        data_block = {
+            "cmd": first.get("cmd", []),
+            "tool_stderr": "",
+            "output": first.get("output_tree", ""),
+            "warnings": first.get("warnings", []),
+        }
 
     payload: dict[str, Any] = {
         "status": "error" if is_error else "success",
@@ -736,6 +812,9 @@ def _assemble_result(
             "output_dir": str(output_dir),
             "threads": threads,
             "overwrite": overwrite,
+            "resume": resume,
+            "dry_run": dry_run,
+            "quiet": quiet,
             "fasttree_path": fasttree_path,
             "tool_args": tool_args,
         },
@@ -750,36 +829,9 @@ def _assemble_result(
             "boot": boot,
         },
         "error": error_msg,
-        "data": {
-            "summary": {
-                "n_input_files": len(results) + n_failed + n_skipped + n_resume_skipped,
-                "n_trees": n_trees,
-                "n_failed": n_failed,
-                "n_skipped": n_skipped,
-                "n_resume_skipped": n_resume_skipped,
-                "mean_n_taxa": mean_n_taxa,
-                "mean_wall_time": mean_wall_time,
-                "mode": "--msa-dir" if batch_mode else "--matrix",
-            },
-            "files": all_ok,
-            "failed": failed_results,
-            "skipped": skipped_input,
-            "warnings": [],
-        },
+        "data": data_block,
     }
 
-    if not dry_run:
-        import datetime as _dt
-        output_dir.mkdir(parents=True, exist_ok=True)
-        log_path = output_dir / "fasttree.log"
-        now_local = _dt.datetime.now().isoformat(timespec="seconds")
-        with open(log_path, "a") as lf:
-            lf.write(f"{now_local} | phyloai tree ml fasttree | exit={0 if n_trees > 0 else 2}\n")
-            lf.write(f"command: {cmd_str}\n")
-            for tool, ver in versions.items():
-                lf.write(f"{tool}: {ver}\n")
-            lf.write(f"wall_time: {payload['wall_time']:.2f}s\n")
-            lf.write(f"trees: {n_trees}, failed: {n_failed}, skipped: {n_skipped}\n")
     return payload
 
 
@@ -809,9 +861,26 @@ def _reconstruct_result(output_dir: Path, run_start: float) -> dict[str, Any]:
     result_path = output_dir / "result.json"
     if result_path.exists():
         return json.loads(result_path.read_text())
+    ckpt_path = output_dir / "checkpoint.json"
+    if ckpt_path.exists():
+        ckpt = json.loads(ckpt_path.read_text())
+        cmd = ckpt.get("command", "")
+    else:
+        cmd = ""
+    if not cmd:
+        return {
+            "status": "error",
+            "command": "phyloai tree ml fasttree",
+            "wall_time": time.monotonic() - run_start,
+            "tool_versions": {},
+            "params": {},
+            "key_results": {},
+            "error": "Cannot reconstruct result: result.json not found and checkpoint.json missing or has no command",
+            "data": {"summary": {}, "files": [], "failed": [], "skipped": [], "warnings": []},
+        }
     return {
         "status": "success",
-        "command": "",
+        "command": cmd,
         "wall_time": time.monotonic() - run_start,
         "tool_versions": {},
         "params": {},

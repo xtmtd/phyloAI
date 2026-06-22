@@ -64,7 +64,9 @@ runs/pretree/trim/
 ├── seqs/
 │   ├── gene1.fa
 │   └── ...
-├── trim.log
+├── logs/
+│   ├── gene1.log
+│   └── ...
 ├── checkpoint.json
 └── result.json
 ```
@@ -77,7 +79,9 @@ runs/pretree/trim/
 │   │   └── gene1.fa
 │   └── fna/
 │       └── gene1.fa
-├── trim.log
+├── logs/
+│   ├── gene1.log
+│   └── ...
 ├── checkpoint.json
 └── result.json
 ```
@@ -121,4 +125,4 @@ phyloai pretree trim --msa-dir ./aligned_aa --nt-dir ./aligned_nt \
 
 - `--tool-args` is strategy-only. Do not pass tool-managed flags such as trimAl `-in/-out/-backtrans`, BMGE `-i/-of/-t`, or ClipKIT `-o/--codon`.
 - For trimAl, if `--tool-args` includes manual thresholds like `-gt` or `-cons`, PhyloAI does not add the default automatic preset.
-- `trim.log` records the resolved command, status, wall time, reason, and stderr for each gene.
+- Each gene's tool stderr is written to `logs/<locus>.log`. The `result.json` `data.files[]` entries reference these via `log_file`.

@@ -529,6 +529,7 @@ def test_run_cf_default_prefix_per_mode(tmp_path: Path) -> None:
 
 def test_run_cf_dry_run_gcf_produces_payload(tmp_path: Path) -> None:
     from phyloai.tree.cf import run_cf
+    from tests.helpers import validate_params_completeness, validate_result_json
 
     ref_tree = tmp_path / "ref.nwk"
     ref_tree.write_text("(A,B);")
@@ -548,6 +549,13 @@ def test_run_cf_dry_run_gcf_produces_payload(tmp_path: Path) -> None:
     assert result["key_results"]["prefix"] == "gCF"
     assert "iqtree3" in result["data"]["cmd"]
     assert "--gcf" in result["data"]["cmd"]
+
+    validate_result_json(result)
+    validate_params_completeness(result, {
+        "cf", "ref_tree", "tree", "tree_dir", "matrix", "partitions",
+        "model", "scf_quartets", "lpp", "prefix", "output_dir", "threads",
+        "overwrite", "dry_run", "iqtree_path", "wastral_path", "quiet",
+    })
 
 
 def test_run_cf_dry_run_qcf_produces_payload(tmp_path: Path) -> None:
@@ -771,24 +779,6 @@ def test_map_qcf_raw_newick_with_lpp(tmp_path: Path) -> None:
 
     out = output_nwk.read_text()
     assert "100/0.5/0.9" in out
-
-
-def test_run_cf_error_writes_cf_log(tmp_path: Path) -> None:
-    """Verify cf.log is written on error."""
-    from phyloai.tree.cf import _write_cf_log
-
-    log_dir = tmp_path / "cf_test"
-    log_dir.mkdir()
-    _write_cf_log(log_dir, "gcf", ["iqtree3", "-s", "msa.fa"],
-                  {"iqtree3": "2.3.6"}, exit_code=1,
-                  error_msg="simulated error")
-
-    log_path = log_dir / "cf.log"
-    assert log_path.exists()
-    content = log_path.read_text()
-    assert "cf gcf" in content
-    assert "exit=1" in content
-    assert "simulated error" in content
 
 
 def test_map_qcf_canonical_bipartition_matching(tmp_path: Path) -> None:

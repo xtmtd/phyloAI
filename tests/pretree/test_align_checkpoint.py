@@ -46,9 +46,9 @@ def test_resolved_align_params_includes_required_keys() -> None:
         nt_dir=None,
         threads=8,
         tool_args=None,
-        mafft_executable="/usr/bin/mafft",
-        magus_executable="magus",
-        trimal_executable="trimal",
+        mafft_path="/usr/bin/mafft",
+        magus_path="magus",
+        trimal_path="trimal",
         quiet=True,
     )
 
@@ -61,9 +61,9 @@ def test_resolved_align_params_includes_required_keys() -> None:
         "nt_dir": None,
         "threads": 8,
         "tool_args": None,
-        "mafft_executable": "/usr/bin/mafft",
-        "magus_executable": "magus",
-        "trimal_executable": "trimal",
+        "mafft_path": "/usr/bin/mafft",
+        "magus_path": "magus",
+        "trimal_path": "trimal",
         "quiet": True,
     }
 
@@ -80,9 +80,9 @@ def test_resolved_align_params_excludes_mode_flags() -> None:
         nt_dir=None,
         threads=1,
         tool_args=None,
-        mafft_executable="mafft",
-        magus_executable="magus",
-        trimal_executable="trimal",
+        mafft_path="mafft",
+        magus_path="magus",
+        trimal_path="trimal",
         quiet=False,
     )
 
@@ -108,15 +108,15 @@ def test_build_initial_checkpoint(tmp_path: Path) -> None:
         nt_dir=None,
         threads=2,
         tool_args=None,
-        mafft_executable="mafft",
-        magus_executable="magus",
-        trimal_executable="trimal",
+        mafft_path="mafft",
+        magus_path="magus",
+        trimal_path="trimal",
         quiet=False,
     )
 
     checkpoint = build_initial_checkpoint(
         step="pretree.align",
-        command="phyloai pretree align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
         params=params,
         inputs=inputs,
         output_for=lambda p: tmp_path / "out" / f"{p.stem}.fa",
@@ -134,7 +134,7 @@ def test_mark_task_updates_status() -> None:
     checkpoint = Checkpoint(
         schema_version=1,
         step="pretree.align",
-        command="phyloai pretree align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
         status="running",
         params_hash="sha256:abc",
         params={},
@@ -162,7 +162,7 @@ def test_plan_resume_progress_total_matches_remaining_tasks(tmp_path: Path) -> N
 
     cp = Checkpoint(
         schema_version=1, step="pretree.align",
-        command="phyloai pretree align", status="interrupted",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4", status="interrupted",
         params_hash="sha256:...", params={}, started_at="2026-06-12T00:00:00",
         updated_at="2026-06-12T00:00:00", completed_at=None,
         tasks=[
@@ -186,7 +186,7 @@ def test_plan_resume_marks_invalid_success_for_rerun(tmp_path: Path) -> None:
     checkpoint = Checkpoint(
         schema_version=1,
         step="pretree.align",
-        command="phyloai pretree align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
         status="running",
         params_hash="sha256:abc",
         params={},
@@ -217,7 +217,7 @@ def test_reconstruct_align_result_aggregates_states(tmp_path: Path) -> None:
     checkpoint = Checkpoint(
         schema_version=1,
         step="pretree.align",
-        command="phyloai pretree align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
         status="success",
         params_hash="sha256:abc",
         params={"method": "linsi", "backtrans": True},

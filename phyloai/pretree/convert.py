@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import shutil
+import time
+import shlex
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,34 @@ TARGET_SUFFIX = {
 }
 
 
+def _build_convert_command(
+    input_path: Path,
+    output_dir: Path,
+    target_format: str,
+    input_format: str | None,
+    seq_type: str | None,
+    aa_special: str,
+    threads: int,
+    overwrite: bool,
+    quiet: bool = False,
+) -> str:
+    parts = [
+        "phyloai", "pretree", "convert",
+        "--input", str(input_path),
+        "--output-dir", str(output_dir),
+        "--to", target_format,
+        "--input-format", input_format or "auto",
+        "--seq-type", seq_type or "auto",
+        "--aa-special", aa_special,
+        "--threads", str(threads),
+    ]
+    if overwrite:
+        parts.append("--overwrite")
+    if quiet:
+        parts.append("--quiet")
+    return " ".join(parts)
+
+
 def convert_input(
     input_path: Path,
     output_dir: Path,
@@ -34,8 +64,10 @@ def convert_input(
     aa_special: str = "x",
     threads: int = 4,
     overwrite: bool = False,
+    quiet: bool = False,
     progress_callback: Callable[[Path], None] | None = None,
 ) -> dict[str, Any]:
+    start = time.monotonic()
     if output_dir.exists() and any(output_dir.iterdir()):
         if not overwrite:
             raise ValueError(f"Output directory '{output_dir}' already exists and is non-empty. Use --overwrite to replace it.")
@@ -59,17 +91,19 @@ def convert_input(
     total_replacements = sum(sum(item["replacements"].values()) for item in files)
     payload = {
         "status": "success",
-        "command": "phyloai pretree convert",
-        "wall_time": 0.0,
+        "command": _build_convert_command(input_path, output_dir, target_format, input_format, seq_type, aa_special, threads, overwrite, quiet=quiet),
+        "wall_time": round(time.monotonic() - start, 3),
         "tool_versions": {},
         "params": {
-            "input": str(input_path),
+            "input_path": str(input_path),
             "output_dir": str(output_dir),
-            "to": target_format,
+            "target_format": target_format,
             "input_format": input_format or "auto",
-            "seq_type": seq_type or "auto",
+            "seq_type": seq_type,
             "aa_special": aa_special,
             "threads": threads,
+            "overwrite": overwrite,
+            "quiet": quiet,
         },
         "key_results": {},
         "error": None,

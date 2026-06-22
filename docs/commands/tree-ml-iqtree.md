@@ -141,8 +141,7 @@ runs/tree/ml/iqtree/
 ├── <prefix>.treefile
 ├── <prefix>.log
 ├── ... (other IQ-TREE outputs)
-├── iqtree.log
-└── result.json
+├── result.json
 ```
 
 ### Batch mode (`--msa-dir`)
@@ -157,8 +156,7 @@ runs/tree/ml/iqtree/
 │   ├── <gene1>.log
 │   └── ... (extra files only with --keep-extra)
 ├── checkpoint.json
-├── iqtree.log
-└── result.json
+├── result.json
 ```
 
 ## Exit Codes

@@ -72,7 +72,6 @@ runs/pretree/concat/
 ├── matrix.cds12.partitions     # if --exclude-codon3
 ├── dropped_alignments.csv      # if any MSA dropped
 ├── result.json
-└── concat.log
 ```
 
 ### Variants

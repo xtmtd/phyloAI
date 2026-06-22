@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import datetime
 import io
 import json
 import shlex
@@ -40,6 +39,7 @@ from phyloai.core.sequence_normalization import (
     resolve_seq_type,
 )
 from phyloai.core.sequence_output_validation import validate_fasta_output
+from phyloai.core.schema import write_result_json
 from phyloai.pretree.checkpoint_helpers import (
     build_initial_checkpoint,
     mark_task,
@@ -68,12 +68,6 @@ def _table_suffix(table_format: str) -> str:
     return ".tsv" if table_format == "tsv" else ".csv"
 
 
-def _write_result_json(payload: dict, output_dir: Path) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with open(output_dir / "result.json", "w") as fh:
-        json.dump(payload, fh, indent=2)
-
-
 def _common_output_conflict(output_dir: Path, overwrite: bool) -> None:
     if output_dir.exists() and any(output_dir.iterdir()):
         if not overwrite:
@@ -84,17 +78,6 @@ def _common_output_conflict(output_dir: Path, overwrite: bool) -> None:
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-
-def _write_filter_log(output_dir: Path, command: str, wall_time: float,
-                      tool_versions: dict, success: bool) -> None:
-    log_path = output_dir / "filter.log"
-    with open(log_path, "a") as fh:
-        fh.write(f"# {command}\n")
-        fh.write(f"# Started: {datetime.datetime.now().isoformat()}\n")
-        fh.write(f"# Tool versions: {json.dumps(tool_versions)}\n")
-        fh.write(f"# Wall time: {wall_time:.1f}s\n")
-        fh.write(f"# Exit code: {'0' if success else '1'}\n")
-        fh.write("---\n")
 
 
 def render_filter_summary_table(summary: dict) -> Table:
@@ -158,38 +141,97 @@ def _build_taper_cmd(
     return cmd
 
 
+def _build_taper_command(
+    msa_dir: Path, output_dir: Path, seq_type: str, cutoff: int,
+    nt_dir: Path | None = None,
+    taper_path: Path | None = None, julia_path: Path | None = None,
+    threads: int = 4, tool_args: str | None = None,
+    resume: bool = False, overwrite: bool = False,
+    dry_run: bool = False, quiet: bool = False,
+    table_format: str = "csv",
+    show_masked_sites: bool = False,
+) -> str:
+    cmd = ["phyloai", "pretree", "filter", "taper",
+           "--msa-dir", str(msa_dir), "--output-dir", str(output_dir),
+           "--seq-type", seq_type, "--cutoff", str(cutoff),
+           "--threads", str(threads)]
+    if nt_dir:
+        cmd.extend(["--nt-dir", str(nt_dir)])
+    if taper_path:
+        cmd.extend(["--taper-path", str(taper_path)])
+    if julia_path:
+        cmd.extend(["--julia-path", str(julia_path)])
+    if tool_args:
+        cmd.extend(["--tool-args", tool_args])
+    if resume:
+        cmd.append("--resume")
+    if overwrite:
+        cmd.append("--overwrite")
+    if dry_run:
+        cmd.append("--dry-run")
+    if quiet:
+        cmd.append("--quiet")
+    if table_format != "csv":
+        cmd.extend(["--table-format", table_format])
+    if show_masked_sites:
+        cmd.append("--show-masked-sites")
+    return shlex.join(cmd)
+
+
 def _run_taper_one(
     input_file: Path, output_file: Path, seq_type: str, cutoff: int,
     julia_exe: str, taper_script: str, tool_args: str | None,
 ) -> dict:
+    t0 = time.monotonic()
     cmd = _build_taper_cmd(input_file, output_file, seq_type, cutoff, julia_exe, taper_script, tool_args)
+    in_recs_all = list(SeqIO.parse(str(input_file), "fasta"))
+    n_taxa_before = len(in_recs_all)
+    length_before = len(in_recs_all[0].seq) if in_recs_all else 0
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with open(output_file, "w") as fh:
         proc = subprocess.run(cmd, stdout=fh, stderr=subprocess.PIPE, text=True, timeout=86400)
+    wall_time = round(time.monotonic() - t0, 2)
+    n_taxa_after = 0
+    length_after = 0
+    out_recs_list: list = []
+    if proc.returncode == 0 and output_file.exists():
+        out_recs_list = list(SeqIO.parse(str(output_file), "fasta"))
+        SeqIO.write(out_recs_list, str(output_file), "fasta")
+        n_taxa_after = len(out_recs_list)
+        length_after = len(out_recs_list[0].seq) if out_recs_list else 0
     new_mask_count = 0
     masked_taxa: list[dict] = []
+    warnings_list: list[str] = []
     if proc.returncode == 0 and output_file.exists() and seq_type == "AA":
-        in_recs = {rec.id: str(rec.seq) for rec in SeqIO.parse(str(input_file), "fasta")}
-        out_recs = {rec.id: str(rec.seq) for rec in SeqIO.parse(str(output_file), "fasta")}
+        in_recs = {rec.id: str(rec.seq) for rec in in_recs_all}
+        out_recs_dict = {rec.id: str(rec.seq) for rec in (out_recs_list if out_recs_list else SeqIO.parse(str(output_file), "fasta"))}
         for taxon in in_recs:
-            if taxon in out_recs:
+            if taxon in out_recs_dict:
                 taxon_mask_count = 0
-                for i, (in_ch, out_ch) in enumerate(zip(in_recs[taxon], out_recs[taxon])):
+                for i, (in_ch, out_ch) in enumerate(zip(in_recs[taxon], out_recs_dict[taxon])):
                     if in_ch != "X" and out_ch == "X":
                         taxon_mask_count += 1
                 new_mask_count += taxon_mask_count
                 if taxon_mask_count > 0:
                     masked_taxa.append({"taxon": taxon, "masked_sites": taxon_mask_count})
+    if proc.returncode != 0:
+        warnings_list.append(f"TAPER exited with code {proc.returncode}")
     return {
         "locus": logical_msa_locus_name(input_file),
         "status": "success" if proc.returncode == 0 else "failed",
         "returncode": proc.returncode,
         "cmd": " ".join(cmd),
-        "stderr": proc.stderr[:500] if proc.stderr else "",
+        "stderr": proc.stderr if proc.stderr else "",
         "new_masked_sites": new_mask_count,
         "masked_taxa_count": len(masked_taxa),
         "masked_taxa": masked_taxa,
         "output": str(output_file),
+        "n_taxa_before": n_taxa_before,
+        "n_taxa_after": n_taxa_after,
+        "length_before": length_before,
+        "length_after": length_after,
+        "wall_time": wall_time,
+        "warnings": warnings_list,
     }
 
 
@@ -304,13 +346,21 @@ def run_taper(
         )
 
     params = {
-        "msa_dir": str(msa_dir), "nt_dir": str(nt_dir) if nt_dir else None,
+        "msa_dir": str(msa_dir), "output_dir": str(output_dir),
+        "nt_dir": str(nt_dir) if nt_dir else None,
         "seq_type": seq_type, "cutoff": cutoff,
         "taper_path": taper_script, "julia_path": julia_exe,
         "threads": threads, "tool_args": tool_args, "table_format": table_format,
         "show_masked_sites": show_masked_sites,
+        "resume": resume, "overwrite": overwrite, "dry_run": dry_run, "quiet": quiet,
     }
-    command = f"phyloai pretree filter taper --msa-dir {msa_dir} --seq-type {seq_type} --cutoff {cutoff}"
+    command = _build_taper_command(
+        msa_dir, output_dir, seq_type, cutoff,
+        nt_dir=nt_dir, taper_path=taper_path, julia_path=julia_path,
+        threads=threads, tool_args=tool_args,
+        resume=resume, overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+        table_format=table_format, show_masked_sites=show_masked_sites,
+    )
 
     ckpt_path = output_dir / "checkpoint.json"
     locus_list = sorted(msa_map.keys())
@@ -369,6 +419,10 @@ def run_taper(
             mark_task(checkpoint, tid, status="running")
         save_checkpoint_atomic(checkpoint, ckpt_path)
 
+    if not dry_run:
+        logs_dir = output_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+
     file_results: list[dict] = list(resume_success_results)
     last_flush = time.monotonic()
     interrupted = False
@@ -402,6 +456,8 @@ def run_taper(
                                 result["status"] = "failed"
                                 result["nt_error"] = str(exc)[:200]
                     file_results.append(result)
+                    if not dry_run and result.get("stderr"):
+                        (logs_dir / f"{task_id}.log").write_text(result["stderr"])
                     if checkpoint:
                         mark_task(checkpoint, task_id, status=result.get("status", "failed"), reason=result.get("reason"))
                         now = time.monotonic()
@@ -447,6 +503,25 @@ def run_taper(
     total_masked_sites = sum(r.get("new_masked_sites", 0) for r in file_results)
     total_masked_taxa = sum(r.get("masked_taxa_count", 0) for r in file_results)
     masked_loci_count = sum(1 for r in retained if r.get("new_masked_sites", 0) > 0)
+
+    files_list: list[dict] = []
+    for r in file_results:
+        locus = r["locus"]
+        entry = {
+            "locus": locus,
+            "status": "retained" if r.get("status") == "success" else "dropped",
+            "cmd": shlex.split(r.get("cmd", "")),
+            "log_file": f"logs/{locus}.log",
+            "n_taxa_before": r.get("n_taxa_before", 0),
+            "n_taxa_after": r.get("n_taxa_after", 0),
+            "length_before": r.get("length_before", 0),
+            "length_after": r.get("length_after", 0),
+            "masked_sites": r.get("new_masked_sites", 0),
+            "wall_time": r.get("wall_time", 0),
+            "warnings": r.get("warnings", []),
+        }
+        files_list.append(entry)
+
     payload = {
         "status": "success" if retained else "error",
         "command": command, "wall_time": round(wall_time, 2),
@@ -460,22 +535,60 @@ def run_taper(
         },
         "error": None if retained else "All loci failed TAPER.",
         "data": {
-            "retained_loci": [r["locus"] for r in retained],
-            "dropped_loci": [r["locus"] for r in dropped],
-            "file_results": file_results,
-            "retained_msa_stats": _compute_retained_msa_stats(
-                [Path(r["output"]) for r in retained if r.get("output")]),
+            "files": files_list,
+            "summary": {
+                "n_input": len(file_results),
+                "n_retained": len(retained),
+                "n_dropped": len(dropped),
+                "total_masked_aa_sites": total_masked_sites,
+                "total_masked_taxa": total_masked_taxa,
+                "masked_loci": masked_loci_count,
+            },
         },
     }
     if not dry_run:
-        _write_result_json(payload, output_dir)
-        _write_filter_log(output_dir, command, wall_time, payload["tool_versions"], payload["status"] == "success")
+        write_result_json(payload, output_dir)
     return payload
 
 
 # --- TreeShrink ---
 
 _TREESHRINK_MANAGED_FLAGS = {"-i", "-t", "-a", "-q", "-m", "-o", "-O"}
+
+
+def _build_treeshrink_command(
+    tree_dir: Path, output_dir: Path,
+    msa_dir: Path | None = None, threshold: float = 0.05,
+    treeshrink_mode: str = "auto", treeshrink_path: Path | None = None,
+    tool_args: str | None = None, keep_work_dir: bool = False,
+    overwrite: bool = False, dry_run: bool = False,
+    quiet: bool = False, table_format: str = "csv",
+) -> str:
+    cmd = ["phyloai", "pretree", "filter", "treeshrink",
+           "--tree-dir", str(tree_dir), "--output-dir", str(output_dir),
+           "--threshold", str(threshold)]
+    if msa_dir:
+        cmd.extend(["--msa-dir", str(msa_dir)])
+    if treeshrink_mode != "auto":
+        cmd.extend(["--treeshrink-mode", treeshrink_mode])
+    if treeshrink_path:
+        cmd.extend(["--treeshrink-path", str(treeshrink_path)])
+    if tool_args:
+        if " " in tool_args:
+            cmd.append(f"--tool-args '{tool_args}'")
+        else:
+            cmd.extend(["--tool-args", tool_args])
+    if keep_work_dir:
+        cmd.append("--keep-work-dir")
+    if overwrite:
+        cmd.append("--overwrite")
+    if dry_run:
+        cmd.append("--dry-run")
+    if quiet:
+        cmd.append("--quiet")
+    if table_format != "csv":
+        cmd.extend(["--table-format", table_format])
+    return shlex.join(cmd)
 
 
 def run_treeshrink(
@@ -487,8 +600,11 @@ def run_treeshrink(
     quiet: bool = False, table_format: str = "csv",
 ) -> dict[str, Any]:
     start = time.monotonic()
-    env = ToolEnv()
-    treeshrink_exe = str(treeshrink_path) if treeshrink_path else str(env.require("run_treeshrink.py"))
+    tool_paths = {"run_treeshrink.py": treeshrink_path} if treeshrink_path else {}
+    env = ToolEnv(tool_paths=tool_paths)
+    treeshrink_exe = str(env.require("run_treeshrink.py"))
+    info = env._detect_tool("run_treeshrink.py", version_flag="--version")
+    treeshrink_version = info.version or "unknown"
 
     delimiter = _table_delimiter(table_format)
     suffix = _table_suffix(table_format)
@@ -498,9 +614,20 @@ def run_treeshrink(
     msa_map: dict[str, Path] = scan_msa_dir(msa_dir) if msa_dir else {}
     pairing = pair_msa_and_tree_maps(msa_map, list(tree_map.values()))
 
-    params = {"tree_dir": str(tree_dir), "msa_dir": str(msa_dir) if msa_dir else None,
-              "threshold": threshold, "treeshrink_mode": treeshrink_mode, "table_format": table_format}
-    command = f"phyloai pretree filter treeshrink --tree-dir {tree_dir} --threshold {threshold}"
+    params = {"tree_dir": str(tree_dir), "output_dir": str(output_dir),
+              "msa_dir": str(msa_dir) if msa_dir else None,
+              "threshold": threshold, "treeshrink_mode": treeshrink_mode,
+              "treeshrink_path": str(treeshrink_path) if treeshrink_path else None,
+              "tool_args": tool_args, "keep_work_dir": keep_work_dir,
+              "overwrite": overwrite, "dry_run": dry_run, "quiet": quiet,
+              "table_format": table_format}
+    command = _build_treeshrink_command(
+        tree_dir, output_dir,
+        msa_dir=msa_dir, threshold=threshold, treeshrink_mode=treeshrink_mode,
+        treeshrink_path=treeshrink_path, tool_args=tool_args,
+        keep_work_dir=keep_work_dir, overwrite=overwrite, dry_run=dry_run,
+        quiet=quiet, table_format=table_format,
+    )
 
     if dry_run:
         work_dir_display = output_dir / "work" if keep_work_dir else Path("/tmp/treeshrink_tmp")
@@ -509,7 +636,7 @@ def run_treeshrink(
             cmd_display.extend(["-a", "input.fasta"])
         if treeshrink_mode != "auto":
             cmd_display.extend(["-m", treeshrink_mode])
-        return {"status": "success", "command": command, "wall_time": 0, "tool_versions": {},
+        return {"status": "success", "command": command, "wall_time": 0, "tool_versions": {"run_treeshrink.py": treeshrink_version},
                 "params": params, "key_results": {"n_input": len(pairing.paired)}, "error": None,
                 "data": {"dry_run_cmd": " ".join(cmd_display), "summary": {"n_input_files": len(pairing.paired)}}}
 
@@ -541,7 +668,7 @@ def run_treeshrink(
         cmd.extend(extra)
 
     runner = Runner()
-    runner.run(cmd, tool_name="run_treeshrink.py")
+    ts_result = runner.run(cmd, tool_name="run_treeshrink.py")
 
     trees_out = output_dir / "trees"
     seqs_out = output_dir / "seqs"
@@ -574,8 +701,11 @@ def run_treeshrink(
                 src_fa = input_dir / locus / "output.fasta"
                 if src_fa.exists():
                     seqs_out.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src_fa, seqs_out / f"{locus}.fa")
-                    entry["output_msa"] = str(seqs_out / f"{locus}.fa")
+                    dst_fa = seqs_out / f"{locus}.fa"
+                    shutil.copy2(src_fa, dst_fa)
+                    records = list(SeqIO.parse(str(dst_fa), "fasta"))
+                    SeqIO.write(records, str(dst_fa), "fasta")
+                    entry["output_msa"] = str(dst_fa)
             retained.append(entry)
             file_results.append(entry)
         else:
@@ -593,14 +723,49 @@ def run_treeshrink(
     if not keep_work_dir:
         shutil.rmtree(work_dir, ignore_errors=True)
 
-    msa_stats = _compute_retained_msa_stats(list(seqs_out.glob("*.fa"))) if msa_dir else {}
     wall_time = time.monotonic() - start
-    payload = {"status": "success" if retained else "error", "command": command, "wall_time": round(wall_time, 2),
-               "tool_versions": {"run_treeshrink.py": "unknown"}, "params": params,
-               "key_results": {"n_input": len(pairing.paired), "n_retained": len(retained), "n_modified": len(modified_loci), "n_dropped": len(dropped), "n_removed_taxa_total": len(removed_taxa)},
-               "error": None if retained else "All loci failed.", "data": {"retained_loci": [r["locus"] for r in retained], "modified_loci": modified_loci, "dropped_loci": dropped, "removed_taxa": removed_taxa, "retained_msa_stats": msa_stats}}
-    _write_result_json(payload, output_dir)
-    _write_filter_log(output_dir, command, wall_time, payload["tool_versions"], payload["status"] == "success")
+    modified_locus_names = {m["locus"] for m in modified_loci}
+    results: list[dict] = []
+    for r in file_results:
+        locus = r.get("locus", "")
+        status = r.get("status", "failed")
+        entry: dict = {"locus": locus, "status": status if status != "failed" else "dropped"}
+        if locus in modified_locus_names:
+            entry["status"] = "modified"
+            entry["removed_taxa"] = [t["taxon"] for t in removed_taxa if t["locus"] == locus]
+        if r.get("output_tree"):
+            entry["output_tree"] = r["output_tree"]
+        if r.get("output_msa"):
+            entry["output_msa"] = r["output_msa"]
+        if r.get("reason"):
+            entry["reason"] = r["reason"]
+        results.append(entry)
+
+    merged_stderr = "\n".join(p for p in (ts_result.stdout.strip(), ts_result.stderr.strip()) if p)
+    payload = {
+        "status": "success" if retained else "error",
+        "command": command, "wall_time": round(wall_time, 2),
+        "tool_versions": {"run_treeshrink.py": treeshrink_version}, "params": params,
+        "key_results": {
+            "n_input": len(pairing.paired), "n_retained": len(retained) - len(modified_loci),
+            "n_modified": len(modified_loci), "n_dropped": len(dropped),
+            "n_removed_taxa_total": len(removed_taxa),
+        },
+        "error": None if retained else "All loci failed.",
+        "data": {
+            "cmd": cmd,
+            "tool_stderr": merged_stderr,
+            "summary": {
+                "n_input": len(pairing.paired),
+                "n_retained": len(retained) - len(modified_loci),
+                "n_modified": len(modified_loci),
+                "n_dropped": len(dropped),
+                "n_removed_taxa_total": len(removed_taxa),
+            },
+            "results": results,
+        },
+    }
+    write_result_json(payload, output_dir)
     return payload
 
 
@@ -697,6 +862,38 @@ def _detect_input_delimiter(path: Path, input_format: str) -> str:
     return "\t" if tabs > commas else ","
 
 
+def _build_metrics_filter_command(
+    table_path: Path, output_dir: Path, keep: str,
+    input_format: str = "auto", loci_column: str = "loci",
+    msa_dir: Path | None = None, tree_dir: Path | None = None,
+    copy: bool = False, overwrite: bool = False,
+    dry_run: bool = False, quiet: bool = False,
+    table_format: str = "csv",
+) -> str:
+    cmd = ["phyloai", "pretree", "filter", "metrics",
+           "--table", str(table_path), "--output-dir", str(output_dir),
+           "--keep", keep]
+    if input_format != "auto":
+        cmd.extend(["--input-format", input_format])
+    if loci_column != "loci":
+        cmd.extend(["--loci-column", loci_column])
+    if msa_dir:
+        cmd.extend(["--msa-dir", str(msa_dir)])
+    if tree_dir:
+        cmd.extend(["--tree-dir", str(tree_dir)])
+    if copy:
+        cmd.append("--copy")
+    if overwrite:
+        cmd.append("--overwrite")
+    if dry_run:
+        cmd.append("--dry-run")
+    if quiet:
+        cmd.append("--quiet")
+    if table_format != "csv":
+        cmd.extend(["--table-format", table_format])
+    return shlex.join(cmd)
+
+
 def run_metrics_filter(
     table_path: Path, output_dir: Path, *, keep: str,
     input_format: str = "auto", loci_column: str = "loci",
@@ -720,8 +917,14 @@ def run_metrics_filter(
     columns = list(rows[0].keys())
     conditions = parse_keep_conditions(keep, set(columns))
     retained, dropped, failure_counts = _apply_metric_filters(rows, conditions, loci_column)
-    params = {"table": str(table_path), "keep": keep, "input_format": input_format, "loci_column": loci_column, "copy": copy, "table_format": table_format}
-    command = f"phyloai pretree filter metrics --table {table_path} --keep {keep!r}"
+    params = {"table": str(table_path), "output_dir": str(output_dir), "keep": keep, "input_format": input_format, "loci_column": loci_column, "msa_dir": str(msa_dir) if msa_dir else None, "tree_dir": str(tree_dir) if tree_dir else None, "copy": copy, "overwrite": overwrite, "dry_run": dry_run, "quiet": quiet, "table_format": table_format}
+    command = _build_metrics_filter_command(
+        table_path, output_dir, keep,
+        input_format=input_format, loci_column=loci_column,
+        msa_dir=msa_dir, tree_dir=tree_dir,
+        copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+        table_format=table_format,
+    )
     if dry_run:
         return {"status": "success", "command": command, "wall_time": 0, "tool_versions": {}, "params": params, "key_results": {"n_total": len(rows), "n_retained": len(retained), "n_dropped": len(dropped)}, "error": None, "data": {"condition_failure_counts": failure_counts}}
     _common_output_conflict(output_dir, overwrite)
@@ -753,9 +956,41 @@ def run_metrics_filter(
         [msa_map[loc] for loc in retained_set if loc in msa_map]
     ) if msa_map else {}
     wall_time = time.monotonic() - start
-    payload = {"status": "success", "command": command, "wall_time": round(wall_time, 2), "tool_versions": {}, "params": params, "key_results": {"n_total": len(rows), "n_retained": len(retained), "n_dropped": len(dropped), "condition_failure_counts": failure_counts}, "error": None, "data": {"copied_msa": copied_msa, "copied_tree": copied_tree, "retained_msa_stats": msa_stats, "condition_failure_counts": failure_counts}}
-    _write_result_json(payload, output_dir)
-    _write_filter_log(output_dir, command, wall_time, {}, True)
+
+    files_list: list[dict] = []
+    for r in retained:
+        locus = r.get(loci_column, "")
+        files_list.append({"locus": locus, "status": "retained", "warnings": []})
+    for d in dropped:
+        locus = d.get(loci_column, "")
+        files_list.append({
+            "locus": locus,
+            "status": "dropped",
+            "warnings": [d.get("_filter_reason", "")],
+        })
+
+    payload = {
+        "status": "success", "command": command, "wall_time": round(wall_time, 2),
+        "tool_versions": {}, "params": params,
+        "key_results": {
+            "n_total": len(rows), "n_retained": len(retained),
+            "n_dropped": len(dropped), "condition_failure_counts": failure_counts,
+        },
+        "error": None,
+        "data": {
+            "files": files_list,
+            "summary": {
+                "n_total": len(rows),
+                "n_retained": len(retained),
+                "n_dropped": len(dropped),
+                "copied_msa": copied_msa,
+                "copied_tree": copied_tree,
+                "retained_msa_stats": msa_stats,
+                "condition_failure_counts": failure_counts,
+            },
+        },
+    }
+    write_result_json(payload, output_dir)
     return payload
 
 
@@ -988,6 +1223,7 @@ def _generate_cluster_plots(
         ax.set_ylabel("Dim 2")
         ax.set_zlabel("Dim 3")
         ax.set_title(f"Cluster Scatter (3D) -- k={n_clusters}")
+        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
         fig.tight_layout()
         pdf_3d = plots_dir / "cluster_3d.pdf"
         fig.savefig(pdf_3d, dpi=150, bbox_inches="tight")
@@ -1264,6 +1500,83 @@ def _write_outlier_diagnostics(
 # --- Cluster main entry point ---
 
 
+def _build_cluster_command(
+    table_path: Path, output_dir: Path,
+    input_format: str = "auto", metrics: str | None = None,
+    exclude_regex: list[str] | None = None, reduction: str = "pca",
+    n_clusters: int | None = None, max_clusters: int | None = None,
+    cluster_linkage: str = "ward", cluster_distance: str = "euclidean",
+    drop_outlier_clusters: str = "none", outlier_metric: str = "average_BS",
+    outlier_direction: str = "low", max_drop_fraction: float = 0.2,
+    plot_metrics_cols: int = 2, plot_label_angle: float = 45.0,
+    outlier_boxplot_cols: int = 4,
+    umap_n_neighbors: int = 15, umap_min_dist: float = 0.001,
+    umap_replicates: int = 1, umap_random_state: int = 42,
+    threads: int = 1,
+    msa_dir: Path | None = None, tree_dir: Path | None = None,
+    copy: bool = False, overwrite: bool = False,
+    dry_run: bool = False, quiet: bool = False,
+    table_format: str = "csv",
+) -> str:
+    cmd = ["phyloai", "pretree", "filter", "cluster",
+           "--table", str(table_path), "--output-dir", str(output_dir),
+           "--reduction", reduction]
+    if input_format != "auto":
+        cmd.extend(["--input-format", input_format])
+    if metrics:
+        cmd.extend(["--metrics", metrics])
+    if exclude_regex:
+        for pattern in exclude_regex:
+            cmd.extend(["--exclude-regex", pattern])
+    if n_clusters is not None:
+        cmd.extend(["--n-clusters", str(n_clusters)])
+    if max_clusters is not None:
+        cmd.extend(["--max-clusters", str(max_clusters)])
+    if cluster_linkage != "ward":
+        cmd.extend(["--cluster-linkage", cluster_linkage])
+    if cluster_distance != "euclidean":
+        cmd.extend(["--cluster-distance", cluster_distance])
+    if drop_outlier_clusters != "none":
+        cmd.extend(["--drop-outlier-clusters", drop_outlier_clusters])
+    if outlier_metric != "average_BS":
+        cmd.extend(["--outlier-metric", outlier_metric])
+    if outlier_direction != "low":
+        cmd.extend(["--outlier-direction", outlier_direction])
+    if max_drop_fraction != 0.2:
+        cmd.extend(["--max-drop-fraction", str(max_drop_fraction)])
+    if plot_metrics_cols != 2:
+        cmd.extend(["--plot-metrics-cols", str(plot_metrics_cols)])
+    if plot_label_angle != 45.0:
+        cmd.extend(["--plot-label-angle", str(plot_label_angle)])
+    if outlier_boxplot_cols != 4:
+        cmd.extend(["--outlier-boxplot-cols", str(outlier_boxplot_cols)])
+    if umap_n_neighbors != 15:
+        cmd.extend(["--umap-n-neighbors", str(umap_n_neighbors)])
+    if umap_min_dist != 0.001:
+        cmd.extend(["--umap-min-dist", str(umap_min_dist)])
+    if umap_replicates != 1:
+        cmd.extend(["--umap-replicates", str(umap_replicates)])
+    if umap_random_state != 42:
+        cmd.extend(["--umap-random-state", str(umap_random_state)])
+    if threads != 1:
+        cmd.extend(["--threads", str(threads)])
+    if msa_dir:
+        cmd.extend(["--msa-dir", str(msa_dir)])
+    if tree_dir:
+        cmd.extend(["--tree-dir", str(tree_dir)])
+    if copy:
+        cmd.append("--copy")
+    if overwrite:
+        cmd.append("--overwrite")
+    if dry_run:
+        cmd.append("--dry-run")
+    if quiet:
+        cmd.append("--quiet")
+    if table_format != "csv":
+        cmd.extend(["--table-format", table_format])
+    return shlex.join(cmd)
+
+
 def run_cluster_filter(
     table_path: Path, output_dir: Path, *,
     input_format: str = "auto", metrics: str | None = None,
@@ -1309,8 +1622,22 @@ def run_cluster_filter(
         raise ValueError(f"Need >=2 features; found {len(features)}.")
     if not quiet:
         _console.print(f"  {len(features)} features selected, {len(feature_entries) - len(features)} excluded")
-    params = {"table": str(table_path), "metrics": metrics, "reduction": reduction, "n_clusters": n_clusters, "max_clusters": max_clusters, "cluster_linkage": cluster_linkage, "cluster_distance": cluster_distance, "drop_outlier_clusters": drop_outlier_clusters, "outlier_metric": outlier_metric, "outlier_direction": outlier_direction, "max_drop_fraction": max_drop_fraction, "plot_metrics_cols": plot_metrics_cols, "plot_label_angle": plot_label_angle, "outlier_boxplot_cols": outlier_boxplot_cols, "umap_n_neighbors": umap_n_neighbors, "umap_min_dist": umap_min_dist, "umap_replicates": umap_replicates, "umap_random_state": umap_random_state, "threads": threads, "table_format": table_format}
-    command = f"phyloai pretree filter cluster --table {table_path} --reduction {reduction}"
+    params = {"table": str(table_path), "output_dir": str(output_dir), "input_format": input_format, "metrics": metrics, "exclude_regex": list(exclude_regex) if exclude_regex else None, "reduction": reduction, "n_clusters": n_clusters, "max_clusters": max_clusters, "cluster_linkage": cluster_linkage, "cluster_distance": cluster_distance, "drop_outlier_clusters": drop_outlier_clusters, "outlier_metric": outlier_metric, "outlier_direction": outlier_direction, "max_drop_fraction": max_drop_fraction, "plot_metrics_cols": plot_metrics_cols, "plot_label_angle": plot_label_angle, "outlier_boxplot_cols": outlier_boxplot_cols, "umap_n_neighbors": umap_n_neighbors, "umap_min_dist": umap_min_dist, "umap_replicates": umap_replicates, "umap_random_state": umap_random_state, "threads": threads, "msa_dir": str(msa_dir) if msa_dir else None, "tree_dir": str(tree_dir) if tree_dir else None, "copy": copy, "overwrite": overwrite, "dry_run": dry_run, "quiet": quiet, "table_format": table_format}
+    command = _build_cluster_command(
+        table_path, output_dir,
+        input_format=input_format, metrics=metrics, exclude_regex=exclude_regex,
+        reduction=reduction, n_clusters=n_clusters, max_clusters=max_clusters,
+        cluster_linkage=cluster_linkage, cluster_distance=cluster_distance,
+        drop_outlier_clusters=drop_outlier_clusters, outlier_metric=outlier_metric,
+        outlier_direction=outlier_direction, max_drop_fraction=max_drop_fraction,
+        plot_metrics_cols=plot_metrics_cols, plot_label_angle=plot_label_angle,
+        outlier_boxplot_cols=outlier_boxplot_cols,
+        umap_n_neighbors=umap_n_neighbors, umap_min_dist=umap_min_dist,
+        umap_replicates=umap_replicates, umap_random_state=umap_random_state,
+        threads=threads, msa_dir=msa_dir, tree_dir=tree_dir,
+        copy=copy, overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+        table_format=table_format,
+    )
     if dry_run:
         k_range = [n_clusters, n_clusters] if n_clusters is not None else [2, min(max_clusters or min(30, max(6, int(np.ceil(np.sqrt(len(rows)) / 3)))), max(2, len(rows) - 1))]
         return {"status": "success", "command": command, "wall_time": 0, "tool_versions": {}, "params": params, "key_results": {"n_loci": len(rows), "n_features": len(features)}, "error": None, "data": {"features": features, "reduction": reduction, "k_range": k_range, "drop_outlier_clusters": drop_outlier_clusters, "copy": copy}}
@@ -1465,6 +1792,16 @@ def run_cluster_filter(
     if msa_dir and retained_set:
         msa_paths = [msa_dir / f"{locus}.fa" for locus in retained_set]
         msa_stats = _compute_retained_msa_stats([p for p in msa_paths if p.exists()])
+
+    files_list: list[dict] = []
+    for i in range(len(valid_loci)):
+        locus = valid_loci[i]
+        is_dropped = labels[i] in drop_clusters if drop_clusters else False
+        entry: dict = {"locus": locus, "status": "dropped" if is_dropped else "retained", "warnings": []}
+        if is_dropped:
+            entry["warnings"].append("outlier_cluster")
+        files_list.append(entry)
+
     payload = {
         "status": "success", "command": command, "wall_time": round(wall_time, 2),
         "tool_versions": {}, "params": params,
@@ -1477,17 +1814,25 @@ def run_cluster_filter(
         },
         "error": None,
         "data": {
-            "features": features,
-            "cluster_sizes": {int(c): int((labels == c).sum()) for c in range(selected_k)},
-            "drop_clusters": [int(c) for c in sorted(drop_clusters)],
-            "retained_loci": retained_set,
-            "retained_msa_stats": msa_stats,
-            "plot_paths": plot_paths + boxplot_paths + [means_path] + outer_plot_paths,
-            "umap_replicates": umap_replicate_rows,
+            "files": files_list,
+            "summary": {
+                "n_loci": len(rows),
+                "n_valid_loci": len(valid_loci),
+                "n_features": len(features),
+                "n_clusters": int(selected_k),
+                "reduction": reduction,
+                "n_retained": n_retained,
+                "n_dropped": n_dropped,
+                "features": features,
+                "cluster_sizes": {int(c): int((labels == c).sum()) for c in range(selected_k)},
+                "drop_clusters": [int(c) for c in sorted(drop_clusters)],
+                "retained_msa_stats": msa_stats,
+                "plot_paths": plot_paths + boxplot_paths + [means_path] + outer_plot_paths,
+                "umap_replicates": umap_replicate_rows,
+            },
         },
     }
-    _write_result_json(payload, output_dir)
-    _write_filter_log(output_dir, command, wall_time, {}, True)
+    write_result_json(payload, output_dir)
     return payload
 
 
@@ -1656,6 +2001,43 @@ def _build_symtest_supermatrix(
     return matrix_str, genes, prefix_type
 
 
+def _build_symtest_command(
+    msa_dir: Path, output_dir: Path,
+    symtest_type: str | None = None,
+    symtest_pval: float = 0.05,
+    symtest_keep_zero: bool = False,
+    iqtree_path: Path | None = None,
+    threads: int = 4,
+    tree_dir: Path | None = None,
+    table_format: str = "csv",
+    dry_run: bool = False,
+    overwrite: bool = False,
+    quiet: bool = False,
+) -> str:
+    cmd = ["phyloai", "pretree", "filter", "symtest",
+           "--msa-dir", str(msa_dir), "--output-dir", str(output_dir),
+           "--symtest-pval", str(symtest_pval)]
+    if symtest_type:
+        cmd.extend(["--symtest-type", symtest_type])
+    if symtest_keep_zero:
+        cmd.append("--symtest-keep-zero")
+    if iqtree_path:
+        cmd.extend(["--iqtree-path", str(iqtree_path)])
+    if threads != 4:
+        cmd.extend(["--threads", str(threads)])
+    if tree_dir:
+        cmd.extend(["--tree-dir", str(tree_dir)])
+    if table_format != "csv":
+        cmd.extend(["--table-format", table_format])
+    if dry_run:
+        cmd.append("--dry-run")
+    if overwrite:
+        cmd.append("--overwrite")
+    if quiet:
+        cmd.append("--quiet")
+    return shlex.join(cmd)
+
+
 def run_symtest(
     msa_dir: Path, output_dir: Path, *,
     symtest_type: str | None = None,
@@ -1689,16 +2071,22 @@ def run_symtest(
     # Resolve symtest_type: None -> "Sym"
     resolved_type = symtest_type if symtest_type else "Sym"
 
-    command = f"phyloai pretree filter symtest --msa-dir {msa_dir} --symtest-pval {symtest_pval}"
-    if symtest_type:
-        command += f" --symtest-type {symtest_type}"
-
     params = {
-        "msa_dir": str(msa_dir), "symtest_type": symtest_type,
+        "msa_dir": str(msa_dir), "output_dir": str(output_dir),
+        "symtest_type": symtest_type,
         "symtest_pval": symtest_pval, "symtest_keep_zero": symtest_keep_zero,
+        "iqtree_path": str(iqtree_path) if iqtree_path else None,
         "threads": threads, "tree_dir": str(tree_dir) if tree_dir else None,
+        "overwrite": overwrite, "dry_run": dry_run, "quiet": quiet,
         "table_format": table_format,
     }
+    command = _build_symtest_command(
+        msa_dir, output_dir,
+        symtest_type=symtest_type, symtest_pval=symtest_pval,
+        symtest_keep_zero=symtest_keep_zero, iqtree_path=iqtree_path,
+        threads=threads, tree_dir=tree_dir, table_format=table_format,
+        dry_run=dry_run, overwrite=overwrite, quiet=quiet,
+    )
 
     if dry_run:
         sym_extra = f" --symtest-type {symtest_type}" if symtest_type else ""
@@ -1835,6 +2223,17 @@ def run_symtest(
         msa_stats = _compute_retained_msa_stats(retained_paths)
 
         wall_time = time.monotonic() - start
+        merged_stderr = "\n".join(p for p in (result.stdout.strip(), result.stderr.strip()) if p)
+        results: list[dict] = []
+        for d in decisions:
+            locus = d.get("locus", "")
+            entry: dict = {"locus": locus, "status": d.get("status", "dropped")}
+            if d.get("status") == "dropped":
+                reason = next((dr["reason"] for dr in dropped if dr["locus"] == locus), "")
+                if reason:
+                    entry["reason"] = reason
+            results.append(entry)
+
         payload = {
             "status": "success",
             "command": command,
@@ -1851,18 +2250,23 @@ def run_symtest(
             },
             "error": None,
             "data": {
-                "retained_msa_stats": msa_stats,
-                "retained_loci": [r["locus"] for r in retained],
-                "dropped_loci": dropped,
-                "decisions": decisions,
-                "retained_tree_count": retained_tree_count,
-                "missed_tree_count": missed_tree_count,
-                "skipped": extra_in_csv_sorted,
+                "cmd": cmd,
+                "tool_stderr": merged_stderr,
+                "summary": {
+                    "n_input": len(symtest_results),
+                    "n_retained": len(retained),
+                    "n_dropped": len(dropped),
+                    "p_value_threshold": symtest_pval,
+                    "symtest_type": resolved_type,
+                    "retained_msa_stats": msa_stats,
+                    "retained_tree_count": retained_tree_count,
+                    "missed_tree_count": missed_tree_count,
+                    "skipped_names": extra_in_csv_sorted,
+                },
+                "results": results,
             },
         }
-        _write_result_json(payload, output_dir)
-        _write_filter_log(output_dir, command, wall_time,
-                          payload["tool_versions"], True)
+        write_result_json(payload, output_dir)
 
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)

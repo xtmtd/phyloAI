@@ -425,6 +425,7 @@ def test_run_wastral_invalid_threads(tmp_path: Path) -> None:
 
 def test_run_wastral_dry_run_produces_payload(tmp_path: Path) -> None:
     from phyloai.tree.msc import run_wastral
+    from tests.helpers import validate_params_completeness, validate_result_json
 
     tree_file = tmp_path / "g.trees"
     tree_file.write_text("((a,b),c);\n")
@@ -436,6 +437,14 @@ def test_run_wastral_dry_run_produces_payload(tmp_path: Path) -> None:
     assert "cmd" in result["data"]
     assert "phyloai tree msc" in result["command"]
     assert not (out_dir / "wastral.tre").exists()
+
+    validate_result_json(result)
+    validate_params_completeness(result, {
+        "tree", "tree_dir", "output_dir", "mode", "boot", "extra_rounds",
+        "tree_boot_type", "tree_boot_min", "tree_boot_max", "outgroup",
+        "threads", "wastral_path", "tool_args", "overwrite", "dry_run",
+        "quiet",
+    })
 
 
 def test_run_wastral_dry_run_tree_dir(tmp_path: Path) -> None:

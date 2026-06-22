@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -378,7 +379,7 @@ def _render_concat_panels(overview: dict[str, Any], variant_stats: list[dict[str
     overview_table.add_column("Metric")
     overview_table.add_column("Value")
     overview_table.add_row("prefix", str(overview.get("prefix", "")))
-    overview_table.add_row("to_format", str(overview.get("to_format", "")))
+    overview_table.add_row("to", str(overview.get("to", "")))
     overview_table.add_row("n_taxa", str(overview.get("n_taxa", "")))
     overview_table.add_row("n_msa_input", str(overview.get("n_msa_input", "")))
     overview_table.add_row("n_msa_used", str(overview.get("n_msa_used", "")))
@@ -441,6 +442,47 @@ def _render_concat_panels(overview: dict[str, Any], variant_stats: list[dict[str
     ]
 
 
+def _build_concat_command(
+    msa_dir: Path,
+    output_dir: Path,
+    prefix: str,
+    seq_type: str,
+    taxa_occupancy: float,
+    recoding: str | None,
+    outgroup: str | None,
+    to: str,
+    translate_codon: bool,
+    exclude_codon3: bool,
+    dry_run: bool,
+    overwrite: bool,
+    quiet: bool = False,
+) -> str:
+    parts = [
+        "phyloai", "pretree", "concat",
+        "--msa-dir", str(msa_dir),
+        "--output-dir", str(output_dir),
+        "--prefix", prefix,
+        "--seq-type", seq_type,
+        "--taxa-occupancy", str(taxa_occupancy),
+        "--to", to,
+    ]
+    if recoding:
+        parts.extend(["--recoding", recoding])
+    if outgroup:
+        parts.extend(["--outgroup", outgroup])
+    if translate_codon:
+        parts.append("--translate-codon")
+    if exclude_codon3:
+        parts.append("--exclude-codon3")
+    if dry_run:
+        parts.append("--dry-run")
+    if overwrite:
+        parts.append("--overwrite")
+    if quiet:
+        parts.append("--quiet")
+    return shlex.join(parts)
+
+
 def run_concat(
     msa_dir: Path,
     output_dir: Path,
@@ -449,11 +491,12 @@ def run_concat(
     taxa_occupancy: float = 0.5,
     recoding: str | None = None,
     outgroup: str | None = None,
-    to_format: str = "fasta",
+    to: str = "fasta",
     translate_codon: bool = False,
     exclude_codon3: bool = False,
     dry_run: bool = False,
     overwrite: bool = False,
+    quiet: bool = False,
 ) -> dict[str, Any]:
     start_time = time.time()
 
@@ -476,7 +519,7 @@ def run_concat(
         if not dry_run:
             err_payload: dict[str, Any] = {
                 "status": "error",
-                "command": f"phyloai pretree concat --msa-dir {msa_dir}",
+        "command": _build_concat_command(msa_dir, output_dir, prefix, seq_type, taxa_occupancy, recoding, outgroup, to, translate_codon, exclude_codon3, dry_run, overwrite, quiet=quiet),
                 "wall_time": round(time.time() - start_time, 3),
                 "tool_versions": {},
                 "params": {
@@ -487,14 +530,16 @@ def run_concat(
                     "taxa_occupancy": taxa_occupancy,
                     "recoding": recoding,
                     "outgroup": outgroup,
-                    "to_format": to_format,
+                    "to": to,
                     "translate_codon": translate_codon,
                     "exclude_codon3": exclude_codon3,
                     "dry_run": dry_run,
+                    "overwrite": overwrite,
+                    "quiet": quiet,
                 },
                 "key_results": {},
                 "error": message,
-                "data": {},
+                "data": {"cmd": [], "tool_stderr": ""},
             }
             result_path = output_dir / "result.json"
             with open(result_path, "w") as fh:
@@ -586,7 +631,7 @@ def run_concat(
     # --- Variant generation -----------------------------------------------------
     variants: list[dict[str, Any]] = []
     ext_map = {"fasta": ".fa", "phylip-relaxed": ".phy", "phylip-paml": ".phy", "nexus": ".nex"}
-    ext = ext_map.get(to_format, ".fa")
+    ext = ext_map.get(to, ".fa")
     recoding_warnings: list[str] = []
 
     try:
@@ -595,7 +640,7 @@ def run_concat(
         _fail_with_error(str(exc))
     original_path = output_dir / f"{prefix}{ext}"
     if not dry_run:
-        _write_matrix(matrix, original_path, to_format, resolved_seq_type)
+        _write_matrix(matrix, original_path, to, resolved_seq_type)
         _write_partitions(
             output_dir / f"{prefix}.partitions",
             genes_original,
@@ -617,7 +662,7 @@ def run_concat(
             _fail_with_error(str(exc))
         recoded_path = output_dir / f"{prefix}.recoded{ext}"
         if not dry_run:
-            _write_matrix(recoded_matrix, recoded_path, to_format, recoded_seq_type)
+            _write_matrix(recoded_matrix, recoded_path, to, recoded_seq_type)
             _write_partitions(
                 output_dir / f"{prefix}.recoded.partitions",
                 genes_original,
@@ -647,7 +692,7 @@ def run_concat(
             _fail_with_error(str(exc))
         translated_path = output_dir / f"{prefix}.translated{ext}"
         if not dry_run:
-            _write_matrix(translated_matrix, translated_path, to_format, "AA")
+            _write_matrix(translated_matrix, translated_path, to, "AA")
             genes_translated: list[tuple[str, int, int]] = []
             tpos = 1
             for path_t in kept_paths:
@@ -683,7 +728,7 @@ def run_concat(
             _fail_with_error(str(exc))
         cds12_path = output_dir / f"{prefix}.cds12{ext}"
         if not dry_run:
-            _write_matrix(cds12_matrix, cds12_path, to_format, "NT")
+            _write_matrix(cds12_matrix, cds12_path, to, "NT")
             genes_cds12: list[tuple[str, int, int]] = []
             cpos = 1
             for path_c in kept_paths:
@@ -750,7 +795,7 @@ def run_concat(
     wall_time = time.time() - start_time
     payload = {
         "status": "success",
-        "command": f"phyloai pretree concat --msa-dir {msa_dir}",
+        "command": _build_concat_command(msa_dir, output_dir, prefix, resolved_seq_type, taxa_occupancy, recoding, outgroup, to, translate_codon, exclude_codon3, dry_run, overwrite, quiet=quiet),
         "wall_time": round(wall_time, 3),
         "tool_versions": {},
         "params": {
@@ -761,10 +806,12 @@ def run_concat(
             "taxa_occupancy": taxa_occupancy,
             "recoding": recoding,
             "outgroup": outgroup,
-            "to_format": to_format,
+            "to": to,
             "translate_codon": translate_codon,
             "exclude_codon3": exclude_codon3,
             "dry_run": dry_run,
+            "overwrite": overwrite,
+            "quiet": quiet,
         },
         "key_results": {
             "n_taxa": len(all_taxa),
@@ -776,6 +823,8 @@ def run_concat(
         },
         "error": None,
         "data": {
+            "cmd": [],
+            "tool_stderr": "",
             "character_summary": orig_stats["character_summary"],
             "site_patterns": orig_stats["site_patterns"],
             "variant_stats": variant_stats,
@@ -800,22 +849,5 @@ def run_concat(
         result_path = output_dir / "result.json"
         with open(result_path, "w") as fh:
             json.dump(payload, fh, indent=2)
-
-        log_path = output_dir / "concat.log"
-        log_lines = [
-            "command=phyloai pretree concat",
-            f"wall_time={round(wall_time, 3)}",
-            "status=success",
-            "exit_code=0",
-            f"n_taxa={len(all_taxa)}",
-            f"n_msa_input={len(msa_paths)}",
-            f"n_msa_used={len(kept_paths)}",
-            f"n_msa_dropped={len(dropped)}",
-            f"total_length={orig_stats['alignment_length']}",
-        ]
-        for vs in variant_stats:
-            log_lines.append(f"variant.{vs['variant']}.seq_type={vs['seq_type']}")
-            log_lines.append(f"variant.{vs['variant']}.total_length={vs['total_length']}")
-        log_path.write_text("\n".join(log_lines) + "\n")
 
     return payload

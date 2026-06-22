@@ -67,7 +67,9 @@ runs/pretree/align/
 ├── seqs/
 │   ├── gene1.fa
 │   └── ...
-├── align.log
+├── logs/
+│   ├── gene1.log
+│   └── ...
 ├── checkpoint.json
 └── result.json
 ```
@@ -80,7 +82,9 @@ runs/pretree/align/
 │   │   └── gene1.fa
 │   └── fna/
 │       └── gene1.fa
-├── align.log
+├── logs/
+│   ├── gene1.log
+│   └── ...
 ├── checkpoint.json
 └── result.json
 ```
@@ -89,7 +93,7 @@ Aligned FASTA outputs use PhyloAI's shared FASTA writer and wrap sequence lines 
 
 `result.json` contains `key_results` with `n_aligned`, `method`, `mean_alignment_length`, and `mean_n_taxa` for report integration.
 
-`align.log` records commands, timing, exit status, and stderr. MAFFT alignment stdout is saved as FASTA files under `seqs/` and is not duplicated in the log.
+Each gene's tool stderr is written to `logs/<locus>.log`. The `result.json` `data.files[]` entries reference these via `log_file`. MAFFT alignment stdout is saved as FASTA files under `seqs/` and is not duplicated in the log.
 
 ## Examples
 
@@ -126,7 +130,7 @@ phyloai pretree align --seq-dir ./raw_aa --method linsi --seq-type AA \
 - Tasks with status `failed`, `pending`, `running`, or `success` whose outputs are now missing or invalid are rerun.
 - The progress bar counts only remaining runnable tasks after checkpoint verification. Completed verified tasks are summarized, not replayed through the bar.
 - `--resume` and `--overwrite` are mutually exclusive.
-- Resume appends to `align.log` and rewrites `result.json` on completion.
+- Resume appends to per-locus `logs/<locus>.log` with a separator and rewrites `result.json` on completion.
 
 ## Warnings and Errors
 

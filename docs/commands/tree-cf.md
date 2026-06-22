@@ -106,9 +106,8 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree merged.trees \
 | `<prefix>.cf.branch` | Tree with branch IDs |
 | `<prefix>.cf.tree`  | Tree annotated with CF values |
 | `<prefix>.cf.tree.nex` | NEXUS annotated tree for FigTree |
-| `<prefix>.log`       | IQ-TREE3 log |
-| `cf.log`             | PhyloAI module log (command, versions, timing) |
-| `result.json`        | PhyloAI structured result |
+| `<prefix>.log`       | IQ-TREE3 native log (referenced as `data.tool_log`) |
+| `result.json`        | PhyloAI structured result (stderr inline in `data.tool_stderr`) |
 | `merged.trees`       | Merged gene trees (if `--tree-dir` used) |
 
 ### qCF mode
@@ -117,9 +116,7 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree merged.trees \
 |------|-------------|
 | `<prefix>.cf.tree` | Reference tree annotated with qCF (and optionally pp1) |
 | `wastral.tre`      | Raw wASTRAL output (intermediate) |
-| `wastral.log`      | wASTRAL log |
-| `cf.log`           | PhyloAI module log (command, versions, timing) |
-| `result.json`      | PhyloAI structured result |
+| `result.json`      | PhyloAI structured result (stderr inline in `data.tool_stderr`) |
 | `merged.trees`     | Merged gene trees (if `--tree-dir` used) |
 
 ## qCF Output Format

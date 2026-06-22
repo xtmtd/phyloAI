@@ -294,7 +294,7 @@ def test_trim_one_clipkit_dry_run(tmp_path: Path) -> None:
     assert "cmd" in result
 
 
-def test_trim_one_clipkit_mode4_dry_run(tmp_path: Path) -> None:
+def test_trim_one_clipkit_method4_dry_run(tmp_path: Path) -> None:
     from phyloai.pretree.trim import _trim_one_clipkit
 
     msa = tmp_path / "gene1.faa"
@@ -393,14 +393,18 @@ def test_run_trim_resume_completed_checkpoint_returns_existing_success(tmp_path:
     aa_out.parent.mkdir(parents=True)
     aa_out.write_text(">a\nMKT\n>b\nMKT\n")
     params = {
-        "msa_dir": str(msa_dir), "nt_dir": None, "seq_type": "AA", "effective_seq_type": "AA",
-        "tool": "trimal", "trimal_method": "automated1", "bmge_matrix": "BLOSUM62",
-        "bmge_entropy": 0.5, "clipkit_mode": "smart-gap", "threads": 1,
+        "msa_dir": str(msa_dir), "nt_dir": None, "seq_type": "AA",
+        "tool": "trimal", "trimal_method": "automated1", "trimal_path": None,
+        "bmge_matrix": None, "bmge_entropy": None, "bmge_path": None,
+        "clipkit_method": None, "clipkit_path": None,
+        "threads": 1,
         "tool_args": None, "output_dir": str(out_dir),
+        "overwrite": False, "dry_run": False,
+        "resume": True, "quiet": False,
     }
     checkpoint = build_initial_checkpoint(
         step="pretree.trim",
-        command="phyloai pretree trim",
+        command="phyloai pretree trim --msa-dir /data --output-dir /out --tool trimal --seq-type AA --threads 4",
         params=params,
         inputs=[gene],
         output_for=lambda _path: aa_out,
@@ -434,14 +438,18 @@ def test_run_trim_resume_reconstructs_skipped_successes(tmp_path: Path) -> None:
     aa1.parent.mkdir(parents=True)
     aa1.write_text(">a\nMKT\n>b\nMKT\n")
     params = {
-        "msa_dir": str(msa_dir), "nt_dir": None, "seq_type": "AA", "effective_seq_type": "AA",
-        "tool": "trimal", "trimal_method": "automated1", "bmge_matrix": "BLOSUM62",
-        "bmge_entropy": 0.5, "clipkit_mode": "smart-gap", "threads": 1,
+        "msa_dir": str(msa_dir), "nt_dir": None, "seq_type": "AA",
+        "tool": "trimal", "trimal_method": "automated1", "trimal_path": None,
+        "bmge_matrix": None, "bmge_entropy": None, "bmge_path": None,
+        "clipkit_method": None, "clipkit_path": None,
+        "threads": 1,
         "tool_args": None, "output_dir": str(out_dir),
+        "overwrite": False, "dry_run": True,
+        "resume": True, "quiet": False,
     }
     checkpoint = build_initial_checkpoint(
         step="pretree.trim",
-        command="phyloai pretree trim",
+        command="phyloai pretree trim --msa-dir /data --output-dir /out --tool trimal --seq-type AA --threads 4",
         params=params,
         inputs=[gene1, gene2],
         output_for=lambda path: aa1 if path.stem == "gene1" else aa2,
@@ -476,6 +484,7 @@ def test_codon_workers_write_terminal_stop_stripped_temp_inputs(tmp_path: Path) 
         out.write_text(">seq1\nM\n>seq2\nM\n")
         class Proc:
             returncode = 0
+            stdout = ""
             stderr = ""
         return Proc(), 0.01, None
 
@@ -564,6 +573,7 @@ def test_trim_one_trimal_omits_auto_method_when_manual_thresholds_in_tool_args(t
         out.write_text(">a\nMKT\n>b\nMKT\n")
         class Proc:
             returncode = 0
+            stdout = ""
             stderr = ""
         return Proc(), 0.01, None
 
@@ -607,6 +617,7 @@ def test_trim_one_trimal_backtrans_strips_gaps_from_nt_input(tmp_path: Path) -> 
 
         class Proc:
             returncode = 0
+            stdout = ""
             stderr = ""
 
         return Proc(), 0.01, None
@@ -640,6 +651,7 @@ def test_bmge_codon_output_is_normalized_to_three_times_aa(tmp_path: Path) -> No
         out.write_text(">seq1\nMA\n>seq2\nMA\n")
         class Proc:
             returncode = 0
+            stdout = ""
             stderr = ""
         return Proc(), 0.01, None
 
@@ -676,6 +688,7 @@ def test_bmge_codon_trims_translated_aa_then_projects_nt(tmp_path: Path) -> None
         out.write_text(">seq1\nMS\n>seq2\nMS\n")
         class Proc:
             returncode = 0
+            stdout = ""
             stderr = ""
         return Proc(), 0.01, None
 
@@ -703,6 +716,7 @@ def test_bmge_success_return_without_output_is_skipped(tmp_path: Path) -> None:
     def fake_run(_cmd: list[str]):
         class Proc:
             returncode = 0
+            stdout = ""
             stderr = ""
         return Proc(), 0.01, None
 
@@ -770,14 +784,14 @@ def test_trim_clipkit_aa_integration(tmp_path: Path) -> None:
     }
     (msa_dir / "gene1.faa").write_text("\n".join(f">{name}\n{seq}" for name, seq in aa_seqs.items()))
 
-    payload = run_trim(msa_dir=msa_dir, output_dir=tmp_path / "out", tool="clipkit", seq_type="AA", clipkit_mode="gappy", threads=1)
+    payload = run_trim(msa_dir=msa_dir, output_dir=tmp_path / "out", tool="clipkit", seq_type="AA", clipkit_method="gappy", threads=1)
 
     assert payload["status"] == "success"
     assert payload["data"]["summary"]["n_trimmed"] == 1
 
 
 @pytest.mark.skipif(shutil.which("clipkit") is None, reason="clipkit not available")
-def test_trim_clipkit_mode4_integration(tmp_path: Path) -> None:
+def test_trim_clipkit_method4_integration(tmp_path: Path) -> None:
     from Bio import SeqIO as _SeqIO
     from Bio.Seq import Seq
     from Bio.SeqRecord import SeqRecord
@@ -800,7 +814,7 @@ def test_trim_clipkit_mode4_integration(tmp_path: Path) -> None:
     _SeqIO.write(aa_recs, str(msa_dir / "gene1.faa"), "fasta")
     _SeqIO.write(codon_recs, str(nt_dir / "gene1.fna"), "fasta")
 
-    payload = run_trim(msa_dir=msa_dir, output_dir=tmp_path / "out", tool="clipkit", seq_type="AA", nt_dir=nt_dir, clipkit_mode="gappy", threads=1)
+    payload = run_trim(msa_dir=msa_dir, output_dir=tmp_path / "out", tool="clipkit", seq_type="AA", nt_dir=nt_dir, clipkit_method="gappy", threads=1)
 
     assert payload["status"] == "success"
     aa_out = list(_SeqIO.parse(str(tmp_path / "out" / "seqs" / "faa" / "gene1.fa"), "fasta"))

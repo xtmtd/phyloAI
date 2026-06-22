@@ -7,6 +7,7 @@ import io
 import json
 import math
 import shutil
+import shlex
 import subprocess
 import time
 from collections import Counter
@@ -21,6 +22,7 @@ from rich.progress import Progress
 
 from phyloai.core.env import TOOL_REGISTRY, ToolEnv
 from phyloai.core.file_matching import logical_msa_locus_name, pair_msa_and_tree_maps
+from phyloai.core.schema import write_result_json
 from phyloai.core.sequence_normalization import (
     AA_STANDARD,
     NT_STANDARD,
@@ -211,7 +213,7 @@ def _compute_msa_metrics(
     msa: list[list[str]],
     seq_type: str,
     total_taxa_pool: int,
-    skip_freq: bool,
+    skip_freq_statistics: bool,
 ) -> dict[str, Any]:
     valid = standard_chars(seq_type)
     ntaxa = len(msa)
@@ -347,7 +349,7 @@ def _compute_msa_metrics(
         result["GC_content"] = ""
 
     # --- Frequency statistics (only relevant chars per seq_type) ---
-    if not skip_freq:
+    if not skip_freq_statistics:
         result.update(_compute_frequencies(["".join(row) for row in msa], seq_type))
 
     return result
@@ -674,8 +676,8 @@ def _extract_tree_features(tree: Tree) -> dict[str, Any]:
 
 def _metric_worker(args: tuple) -> dict:
     (
-        stem, msa_path, tree_path, total_taxa_pool, seq_type, skip_freq,
-        pseudo_tree, fasttree_bin, skip_pairwise_identity, outgroup_list,
+        stem, msa_path, tree_path, total_taxa_pool, seq_type, skip_freq_statistics,
+        pseudo_tree_metrics, fasttree_bin, skip_pairwise_identity, outgroup_list,
         ref_tree_path, decimal_places,
     ) = args
 
@@ -688,15 +690,15 @@ def _metric_worker(args: tuple) -> dict:
             use_type = seq_type if seq_type != "auto" else auto_type
             result["DataType"] = use_type
 
-            msa_metrics = _compute_msa_metrics(msa_data, use_type, total_taxa_pool, skip_freq)
+            msa_metrics = _compute_msa_metrics(msa_data, use_type, total_taxa_pool, skip_freq_statistics)
             if skip_pairwise_identity:
                 msa_metrics["average_pairwise_identity"] = ""
             result.update(msa_metrics)
 
-            if pseudo_tree and fasttree_bin:
+            if pseudo_tree_metrics and fasttree_bin:
                 ft = _compute_pseudo_tree_metrics(msa_path, use_type, fasttree_bin)
                 result.update(ft)
-            elif pseudo_tree:
+            elif pseudo_tree_metrics:
                 result.update({k: "" for k in _PSEUDO_TREE_METRIC_NAMES})
 
             if tree_path is not None:
@@ -721,12 +723,12 @@ def _metric_worker(args: tuple) -> dict:
 def _build_csv_rows(
     results: list[dict],
     decimal_places: int,
-    skip_freq: bool,
-    pseudo_tree: bool,
+    skip_freq_statistics: bool,
+    pseudo_tree_metrics: bool,
 ) -> list[dict]:
     ordered = list(_METRICS_CSV_ORDER)
 
-    if not skip_freq:
+    if not skip_freq_statistics:
         # Determine which seq_types are actually present
         data_types_present = set()
         for row in results:
@@ -745,7 +747,7 @@ def _build_csv_rows(
                 if name not in ordered:
                     ordered.append(name)
 
-    if pseudo_tree:
+    if pseudo_tree_metrics:
         for name in _PSEUDO_TREE_METRIC_NAMES:
             if name not in ordered:
                 ordered.append(name)
@@ -801,16 +803,63 @@ def _write_metrics_csv(rows: list[dict], output_path: Path, table_format: str = 
         writer.writerows(rows)
 
 
-def _write_result_json(payload: dict, output_dir: Path) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with open(output_dir / "result.json", "w") as fh:
-        json.dump(payload, fh, indent=2)
+def _build_metrics_command(
+    msa_dir: Path | None,
+    tree_dir: Path | None,
+    seq_type: str,
+    threads: int,
+    output_dir: Path,
+    decimal_places: int,
+    skip_freq_statistics: bool,
+    pseudo_tree_metrics: bool,
+    fasttree_path: str,
+    skip_pairwise_identity: bool,
+    outgroup_list: Path | None,
+    ref_tree: Path | None,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+    table_format: str,
+) -> str:
+    parts = ["phyloai", "pretree", "metrics"]
+    if msa_dir:
+        parts.extend(["--msa-dir", str(msa_dir)])
+    if tree_dir:
+        parts.extend(["--tree-dir", str(tree_dir)])
+    parts.extend(["--seq-type", seq_type])
+    parts.extend(["--threads", str(threads)])
+    parts.extend(["--output-dir", str(output_dir)])
+    if decimal_places != 6:
+        parts.extend(["--round", str(decimal_places)])
+    if skip_freq_statistics:
+        parts.append("--skip-freq-statistics")
+    if pseudo_tree_metrics:
+        parts.append("--pseudo-tree-metrics")
+    if pseudo_tree_metrics and fasttree_path != "FastTree":
+        parts.extend(["--fasttree-path", fasttree_path])
+    if skip_pairwise_identity:
+        parts.append("--skip-pairwise-identity")
+    if outgroup_list:
+        parts.extend(["--outgroup-list", str(outgroup_list)])
+    if ref_tree:
+        parts.extend(["--ref-tree", str(ref_tree)])
+    if overwrite:
+        parts.append("--overwrite")
+    if quiet:
+        parts.append("--quiet")
+    if dry_run:
+        parts.append("--dry-run")
+    if table_format != "csv":
+        parts.extend(["--table-format", table_format])
+    return shlex.join(parts)
 
 
-def _write_log(log_data: dict, output_dir: Path) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with open(output_dir / "metrics.log", "w") as fh:
-        json.dump(log_data, fh, indent=2)
+_EMPTY_BATCH_DATA: dict[str, Any] = {
+    "summary": {"n_markers": 0, "n_success": 0, "n_errors": 0, "warnings": None},
+    "files": [],
+    "failed": [],
+    "skipped": [],
+}
 
 
 def run_metrics(
@@ -820,8 +869,8 @@ def run_metrics(
     threads: int = 4,
     output_dir: Path = Path("runs/pretree/metrics"),
     decimal_places: int = 6,
-    skip_freq: bool = False,
-    pseudo_tree: bool = False,
+    skip_freq_statistics: bool = False,
+    pseudo_tree_metrics: bool = False,
     fasttree_path: str = "FastTree",
     skip_pairwise_identity: bool = False,
     outgroup_list: Path | None = None,
@@ -835,29 +884,49 @@ def run_metrics(
 ) -> dict:
     t0 = time.monotonic()
     per_marker_stderr: list[str] = []
+    cmd_str = _build_metrics_command(msa_dir, tree_dir, seq_type, threads, output_dir, decimal_places, skip_freq_statistics, pseudo_tree_metrics, fasttree_path, skip_pairwise_identity, outgroup_list, ref_tree, overwrite, dry_run, quiet, table_format)
+
+    _params: dict[str, Any] = {
+        "msa_dir": str(msa_dir) if msa_dir else None,
+        "tree_dir": str(tree_dir) if tree_dir else None,
+        "seq_type": seq_type,
+        "threads": threads,
+        "output_dir": str(output_dir),
+        "round": decimal_places,
+        "skip_freq_statistics": skip_freq_statistics,
+        "pseudo_tree_metrics": pseudo_tree_metrics,
+        "fasttree_path": fasttree_path if pseudo_tree_metrics else None,
+        "skip_pairwise_identity": skip_pairwise_identity,
+        "outgroup_list": str(outgroup_list) if outgroup_list else None,
+        "ref_tree": str(ref_tree) if ref_tree else None,
+        "overwrite": overwrite,
+        "dry_run": dry_run,
+        "quiet": quiet,
+        "table_format": table_format,
+    }
 
     if not msa_dir and not tree_dir:
         return {
             "status": "error",
-            "command": "phyloai pretree metrics",
+            "command": cmd_str,
             "wall_time": 0.0,
             "tool_versions": {},
-            "params": {},
+            "params": _params,
             "key_results": {},
             "error": "At least one of --msa-dir or --tree-dir must be provided.",
-            "data": {},
+            "data": _EMPTY_BATCH_DATA,
         }
 
     if output_dir.exists() and any(output_dir.iterdir()) and not overwrite:
         return {
             "status": "error",
-            "command": "phyloai pretree metrics",
+            "command": cmd_str,
             "wall_time": time.monotonic() - t0,
             "tool_versions": {},
-            "params": {},
+            "params": _params,
             "key_results": {},
             "error": f"Output directory '{output_dir}' already exists and is non-empty. Use --overwrite to replace it.",
-            "data": {},
+            "data": _EMPTY_BATCH_DATA,
         }
 
     try:
@@ -865,26 +934,26 @@ def run_metrics(
     except ValueError as exc:
         return {
             "status": "error",
-            "command": "phyloai pretree metrics",
+            "command": cmd_str,
             "wall_time": time.monotonic() - t0,
             "tool_versions": {},
-            "params": {},
+            "params": _params,
             "key_results": {},
             "error": str(exc),
-            "data": {},
+            "data": _EMPTY_BATCH_DATA,
         }
     per_marker_stderr.extend(pair_warnings)
 
     if not paired:
         return {
             "status": "error",
-            "command": "phyloai pretree metrics",
+            "command": cmd_str,
             "wall_time": time.monotonic() - t0,
             "tool_versions": {},
-            "params": {},
+            "params": _params,
             "key_results": {},
             "error": "No paired MSA/tree files found.",
-            "data": {},
+            "data": _EMPTY_BATCH_DATA,
         }
 
     total_taxa_pool = 0
@@ -898,8 +967,8 @@ def run_metrics(
         plan = {
             "n_markers": n_markers,
             "stems": stems[:10] if n_markers > 10 else stems,
-            "pseudo_tree": pseudo_tree,
-            "skip_freq": skip_freq,
+            "pseudo_tree_metrics": pseudo_tree_metrics,
+            "skip_freq_statistics": skip_freq_statistics,
             "skip_pairwise_identity": skip_pairwise_identity,
             "threads": threads,
             "output_dir": str(output_dir),
@@ -907,13 +976,18 @@ def run_metrics(
         }
         return {
             "status": "success",
-            "command": "phyloai pretree metrics",
+            "command": cmd_str,
             "wall_time": time.monotonic() - t0,
             "tool_versions": {},
-            "params": {},
+            "params": _params,
             "key_results": {"dry_run": True, **plan},
             "error": None,
-            "data": {},
+            "data": {
+                "summary": {"n_markers": n_markers, "n_success": 0, "n_errors": 0, "warnings": None},
+                "files": [{"input": s, "status": "dry_run"} for s in stems],
+                "failed": [],
+                "skipped": [],
+            },
         }
 
     if overwrite and output_dir.exists():
@@ -949,8 +1023,8 @@ def run_metrics(
     worker_args = []
     for stem, (msa_p, tree_p) in paired.items():
         worker_args.append((
-            stem, msa_p, tree_p, total_taxa_pool, seq_type, skip_freq,
-            pseudo_tree, fasttree_path, skip_pairwise_identity, outgroup_list,
+            stem, msa_p, tree_p, total_taxa_pool, seq_type, skip_freq_statistics,
+            pseudo_tree_metrics, fasttree_path, skip_pairwise_identity, outgroup_list,
             ref_tree, decimal_places,
         ))
 
@@ -979,7 +1053,7 @@ def run_metrics(
     if progress and not do_parallel:
         progress.update(task, completed=len(worker_args), visible=False)
 
-    rows = _build_csv_rows(results, decimal_places, skip_freq, pseudo_tree)
+    rows = _build_csv_rows(results, decimal_places, skip_freq_statistics, pseudo_tree_metrics)
     metrics_path = output_dir / f"metrics{_table_suffix(table_format)}"
     _write_metrics_csv(rows, metrics_path, table_format=table_format)
 
@@ -992,46 +1066,37 @@ def run_metrics(
 
     wall_time = time.monotonic() - t0
 
-    log_data = {
-        "command": "phyloai pretree metrics",
-        "params": {
-            "msa_dir": str(msa_dir) if msa_dir else None,
-            "tree_dir": str(tree_dir) if tree_dir else None,
-            "seq_type": seq_type,
-            "threads": threads,
-            "decimal_places": decimal_places,
-            "skip_freq_statistics": skip_freq,
-            "pseudo_tree_metrics": pseudo_tree,
-            "fasttree_path": fasttree_path if pseudo_tree else None,
-            "skip_pairwise_identity": skip_pairwise_identity,
-            "outgroup_list": str(outgroup_list) if outgroup_list else None,
-            "ref_tree": str(ref_tree) if ref_tree else None,
-            "overwrite": overwrite,
-            "table_format": table_format,
-        },
-        "wall_time": wall_time,
-        "exit_code": 0,
-        "per_marker_stderr": per_marker_stderr,
-    }
-    _write_log(log_data, output_dir)
-
-    payload = {
-        "status": "success" if n_errors == 0 else "partial",
-        "command": "phyloai pretree metrics",
-        "wall_time": wall_time,
-        "tool_versions": {},
-        "params": log_data["params"],
-        "key_results": {
+    data = {
+        "summary": {
             "n_markers": len(paired),
             "n_success": n_success,
             "n_errors": n_errors,
-            "errors": errors_list if errors_list else None,
             "warnings": per_marker_stderr if per_marker_stderr else None,
         },
-        "error": None,
-        "data": {},
+        "files": [
+            {"input": r["loci"], "status": "success"}
+            for r in results if "_error" not in r
+        ],
+        "failed": [
+            r.get("loci", "?")
+            for r in results if "_error" in r
+        ],
+        "skipped": [],
     }
-    _write_result_json(payload, output_dir)
+
+    payload = {
+        "status": "success" if n_errors == 0 else "partial",
+        "command": cmd_str,
+        "wall_time": wall_time,
+        "tool_versions": {},
+        "params": _params,
+        "key_results": {
+            "errors": errors_list if errors_list else None,
+        },
+        "error": None,
+        "data": data,
+    }
+    write_result_json(payload, output_dir)
 
     return payload
 

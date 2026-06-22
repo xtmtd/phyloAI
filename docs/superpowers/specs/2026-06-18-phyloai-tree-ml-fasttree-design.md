@@ -197,7 +197,6 @@ Invalid model for resolved seq_type exits with code 1.
 ```
 runs/tree/ml/fasttree/
 ├── result.json
-├── fasttree.log              # aggregated step log
 ├── checkpoint.json           # resume support
 ├── trees/
 │   ├── gene001.tre
@@ -212,9 +211,8 @@ runs/tree/ml/fasttree/
 ### 6.2 `--matrix` (Single Supermatrix Mode)
 
 ```
-runs/tree/ml/fasttree/
-├── result.json
-├── fasttree.log
+runs/tree/ml/fasttree/matrix/
+├── result.json               # data.tool_stderr inlined (single pattern)
 └── <matrix_stem>.tre
 ```
 
@@ -264,6 +262,8 @@ runs/tree/ml/fasttree/
       "mean_wall_time": 0.3,
       "mode": "--msa-dir"
     },
+    "cmd": ["FastTree", "-lg", "-cat", "20", "-gamma", "-boot", "1000", "matrix.aa.fa"],
+    "tool_stderr": "# single mode: stderr inlined; null for batch",
     "files": [
       {
         "input": "runs/pretree/trim/seqs/gene001.fa",
@@ -365,10 +365,9 @@ Resume behavior:
 
 ## 12. Logging
 
-- `fasttree.log`: aggregated step log with tool version, full command line, wall time, exit code
-- `logs/<locus>.log`: per-task FastTree stderr output (non-tree screen output)
-- Tree output (FastTree stdout) is captured and written to `.tre` files, not duplicated in logs
-- All log files follow the shared `core/logger.py` StepLogger convention
+- `logs/<locus>.log`: per-task FastTree stderr output for batch (`--msa-dir`) mode. Tree output (FastTree stdout) is captured and written to `.tre` files, not duplicated in logs.
+- **Single mode (`--matrix`):** FastTree stderr is inlined in `result.json` as `data.tool_stderr` (single pattern, JSON Output Standard Section 5.2). No external log file is written.
+- No top-level `fasttree.log` — wall time, exit code, and summary counts are in `result.json`.
 
 ---
 

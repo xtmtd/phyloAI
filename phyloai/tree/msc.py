@@ -280,6 +280,7 @@ def _assemble_wastral_result(
     mode: int,
     boot: int,
     extra_rounds: bool,
+    tool_stderr: str = "",
     tree_boot_type: str,
     tree_boot_min: float | None,
     tree_boot_max: float | None,
@@ -289,6 +290,7 @@ def _assemble_wastral_result(
     tool_args: str | None,
     overwrite: bool,
     dry_run: bool,
+    quiet: bool = False,
     n_input_trees: int,
     input_path: Path,
     cmd: list[str],
@@ -338,6 +340,10 @@ def _assemble_wastral_result(
             cmd_parts.extend(["--tool-args", tool_args])
     if overwrite:
         cmd_parts.append("--overwrite")
+    if outgroup:
+        cmd_parts.extend(["--outgroup", outgroup])
+    if dry_run:
+        cmd_parts.append("--dry-run")
     cmd_str = " ".join(cmd_parts)
 
     input_data: dict[str, Any] = {
@@ -366,6 +372,8 @@ def _assemble_wastral_result(
             "overwrite": overwrite,
             "tool_args": tool_args,
             "wastral_path": wastral_path,
+            "dry_run": dry_run,
+            "quiet": quiet,
         },
         "key_results": {
             "mode": mode,
@@ -382,6 +390,8 @@ def _assemble_wastral_result(
             "input": input_data,
             "output_tree": str(output_dir / "wastral.tre"),
             "cmd": cmd,
+            "tool_stderr": tool_stderr,
+            "tool_log": "wastral.log",
             "skipped": skipped,
             "warnings": warnings_list,
             **({"freq_quad_csv": str(output_dir / "freqQuad.csv")} if _has_boot_3(boot, tool_args) else {}),
@@ -556,10 +566,12 @@ def run_wastral(
             threads=threads, wastral_path=wastral_path, tool_args=tool_args,
             overwrite=overwrite,
             dry_run=dry_run,
+            quiet=quiet,
             n_input_trees=n_input_trees,
             input_path=input_path, cmd=cmd, wall_time=0.0,
             skipped=skipped, warnings_list=warnings_list,
             is_error=False, error_msg=None,
+            tool_stderr="",
         )
 
     # --- Execution (cwd = output_dir so freqQuad.csv lands in output dir) ---
@@ -573,6 +585,7 @@ def run_wastral(
             stderr=subprocess.PIPE,
             text=True,
         )
+        (output_dir / "wastral.log").write_text(proc.stderr or "")
     except Exception as exc:
         return _assemble_wastral_result(
             run_start=run_start,
@@ -586,14 +599,13 @@ def run_wastral(
             threads=threads, wastral_path=wastral_path, tool_args=tool_args,
             overwrite=overwrite,
             dry_run=dry_run,
+            quiet=quiet,
             n_input_trees=n_input_trees,
             input_path=input_path, cmd=cmd, wall_time=0.0,
             skipped=skipped, warnings_list=warnings_list,
             is_error=True, error_msg=str(exc),
+            tool_stderr="",
         )
-
-    # Save wASTRAL stderr for diagnostics (matches approved design)
-    (output_dir / "wastral.log").write_text(proc.stderr)
 
     wall_time = _time.monotonic() - run_start
 
@@ -610,11 +622,13 @@ def run_wastral(
             threads=threads, wastral_path=wastral_path, tool_args=tool_args,
             overwrite=overwrite,
             dry_run=dry_run,
+            quiet=quiet,
             n_input_trees=n_input_trees,
             input_path=input_path, cmd=cmd, wall_time=wall_time,
             skipped=skipped, warnings_list=warnings_list,
             is_error=True,
             error_msg=f"wastral exited with code {proc.returncode}: {proc.stderr[:200]}",
+            tool_stderr=proc.stderr,
         )
 
     # Verify output tree was produced
@@ -631,11 +645,13 @@ def run_wastral(
             threads=threads, wastral_path=wastral_path, tool_args=tool_args,
             overwrite=overwrite,
             dry_run=dry_run,
+            quiet=quiet,
             n_input_trees=n_input_trees,
             input_path=input_path, cmd=cmd, wall_time=wall_time,
             skipped=skipped, warnings_list=warnings_list,
             is_error=True,
             error_msg="wastral did not produce output tree",
+            tool_stderr=proc.stderr,
         )
 
     payload = _assemble_wastral_result(
@@ -650,23 +666,12 @@ def run_wastral(
         threads=threads, wastral_path=wastral_path, tool_args=tool_args,
         overwrite=overwrite,
         dry_run=dry_run,
+        quiet=quiet,
         n_input_trees=n_input_trees,
         input_path=input_path, cmd=cmd, wall_time=wall_time,
-        skipped=skipped, warnings_list=warnings_list,
-        is_error=False, error_msg=None,
-    )
-
-    import datetime as _dt
-    log_path = output_dir / "msc.log"
-    now_local = _dt.datetime.now().isoformat(timespec="seconds")
-    with open(log_path, "a") as lf:
-        lf.write(f"{now_local} | phyloai tree msc | exit=0\n")
-        lf.write(f"command: {' '.join(cmd)}\n")
-        for tool, ver in payload["tool_versions"].items():
-            lf.write(f"{tool}: {ver}\n")
-        lf.write(f"wall_time: {payload['wall_time']:.2f}s\n")
-        lf.write(f"n_input_trees: {n_input_trees}\n")
-        if result_tree := payload["data"].get("result_tree"):
-            lf.write(f"result_tree: {result_tree}\n")
+            skipped=skipped, warnings_list=warnings_list,
+            is_error=False, error_msg=None,
+            tool_stderr="",
+        )
 
     return payload

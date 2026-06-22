@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import platform
 import shlex
 import shutil
@@ -207,9 +206,9 @@ def _resolved_align_params(
     nt_dir: Path | None,
     threads: int,
     tool_args: str | None,
-    mafft_executable: str,
-    magus_executable: str,
-    trimal_executable: str,
+    mafft_path: str,
+    magus_path: str,
+    trimal_path: str,
     quiet: bool,
 ) -> dict[str, Any]:
     return {
@@ -221,10 +220,10 @@ def _resolved_align_params(
         "nt_dir": str(nt_dir) if nt_dir is not None else None,
         "threads": int(threads),
         "tool_args": tool_args,
-        "mafft_executable": mafft_executable,
-        "magus_executable": magus_executable,
-        "trimal_executable": trimal_executable,
-        "quiet": bool(quiet),
+        "mafft_path": mafft_path,
+        "magus_path": magus_path,
+        "trimal_path": trimal_path,
+        "quiet": quiet,
     }
 
 
@@ -241,10 +240,21 @@ def reconstruct_align_result(
     wall_time: float,
     skipped_inputs: list[dict[str, str]],
     scan_warnings: list[str],
+    file_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    file_results: list[dict[str, Any]] = []
+    file_results_out: list[dict[str, Any]] = []
     failed: list[dict[str, str]] = []
     n_backtrans = 0
+
+    _method = params.get("method", "")
+    _mafft_exe = params.get("mafft_path", "mafft")
+    _magus_exe = params.get("magus_path", "magus")
+    _seq_type = params.get("seq_type", "AA")
+    _tool_args = params.get("tool_args")
+
+    _wall_map: dict[str, float] = {}
+    if file_results:
+        _wall_map = {r["input"]: r.get("wall_time", 0.0) for r in file_results}
 
     for task in checkpoint.tasks:
         if task.status != "success":
@@ -261,47 +271,60 @@ def reconstruct_align_result(
         if nt_path is not None and nt_path.exists():
             n_backtrans += 1
 
-        file_results.append(
+        input_path = Path(task.input)
+        if _method in MAFFT_METHODS:
+            cmd_list = _build_mafft_cmd(input_path, aa_path, _method, executable=_mafft_exe)
+        else:
+            work_dir = aa_path.parent / f".{input_path.stem}.magus"
+            cmd_list = _build_magus_cmd(input_path, aa_path, work_dir, _seq_type, _tool_args, executable=_magus_exe)
+
+        file_results_out.append(
             {
                 "input": task.input,
                 "output_aa": str(aa_path),
                 "output_nt": str(nt_path) if nt_path else None,
                 "n_taxa": n_taxa,
                 "alignment_length": alignment_length,
-                "wall_time": 0.0,
+                "wall_time": _wall_map.get(task.input, 0.0),
                 "warnings": [],
+                "cmd": cmd_list,
+                "log_file": f"logs/{input_path.stem}.log",
             }
         )
+        log_path = aa_path.parent.parent / "logs" / f"{input_path.stem}.log"
+        if not log_path.exists():
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text("# resumed from checkpoint — original stderr unavailable\n")
 
-    aligned_lengths = [r["alignment_length"] for r in file_results if r["alignment_length"]]
-    aligned_taxa = [r["n_taxa"] for r in file_results if r["n_taxa"]]
+    aligned_lengths = [r["alignment_length"] for r in file_results_out if r["alignment_length"]]
+    aligned_taxa = [r["n_taxa"] for r in file_results_out if r["n_taxa"]]
     mean_len = round(sum(aligned_lengths) / len(aligned_lengths), 1) if aligned_lengths else 0.0
     mean_taxa = round(sum(aligned_taxa) / len(aligned_taxa), 1) if aligned_taxa else 0.0
     skipped = list(skipped_inputs) + failed
 
     return {
-        "status": "success" if file_results else "error",
+        "status": "success" if file_results_out else "error",
         "command": checkpoint.command,
         "wall_time": wall_time,
         "tool_versions": tool_versions,
         "params": params,
         "key_results": {
-            "n_aligned": len(file_results),
+            "n_aligned": len(file_results_out),
             "n_skipped": len(skipped),
             "method": params.get("method"),
             "backtrans": params.get("backtrans", False),
             "mean_alignment_length": mean_len,
             "mean_n_taxa": mean_taxa,
         },
-        "error": None if file_results else "No genes were aligned.",
+        "error": None if file_results_out else "No genes were aligned.",
         "data": {
             "summary": {
                 "n_input_files": len(checkpoint.tasks) + len(skipped_inputs),
-                "n_aligned": len(file_results),
+                "n_aligned": len(file_results_out),
                 "n_backtrans": n_backtrans,
                 "n_skipped": len(skipped),
             },
-            "files": file_results,
+            "files": file_results_out,
             "skipped": skipped,
             "warnings": list(scan_warnings),
         },
@@ -331,7 +354,7 @@ def _align_one(
         cmd = _build_magus_cmd(gene_path, out_aa, work_dir, seq_type, tool_args, executable=magus_executable)
 
     if dry_run:
-        return {"status": "dry_run", "input": str(gene_path), "cmd": cmd}
+        return {"status": "dry_run", "input": str(gene_path), "cmd": cmd, "tool_cmd": " ".join(cmd), "warnings": [], "wall_time": 0.0}
 
     start = time.monotonic()
     try:
@@ -348,6 +371,7 @@ def _align_one(
                     "status": "skipped",
                     "input": str(gene_path),
                     "reason": f"mafft exited with code {proc.returncode}: {proc.stderr[:200]}",
+                    "tool_cmd": " ".join(cmd),
                     "tool_stdout": proc.stdout,
                     "tool_stderr": proc.stderr,
                     "wall_time": wall_time,
@@ -372,6 +396,7 @@ def _align_one(
                     "status": "skipped",
                     "input": str(gene_path),
                     "reason": f"magus exited with code {proc.returncode}: {proc.stderr[:200]}",
+                    "tool_cmd": " ".join(cmd),
                     "tool_stdout": proc.stdout,
                     "tool_stderr": proc.stderr,
                     "wall_time": wall_time,
@@ -383,6 +408,7 @@ def _align_one(
             "status": "skipped",
             "input": str(gene_path),
             "reason": str(exc),
+            "tool_cmd": " ".join(cmd),
             "tool_stdout": "",
             "tool_stderr": "",
             "wall_time": time.monotonic() - start,
@@ -395,6 +421,7 @@ def _align_one(
             "input": str(gene_path),
             "reason": "; ".join(warnings),
             "output_aa": str(out_aa),
+            "tool_cmd": " ".join(cmd),
             "tool_stdout": stdout,
             "tool_stderr": stderr,
             "wall_time": wall_time,
@@ -692,6 +719,36 @@ def run_align(
         dry_run=dry_run,
     )
 
+    _cmd_parts = [
+        "phyloai", "pretree", "align",
+        "--seq-dir", str(seq_dir),
+        "--output-dir", str(output_dir),
+        "--method", method,
+        "--seq-type", seq_type,
+        "--threads", str(threads),
+    ]
+    if backtrans:
+        _cmd_parts.append("--backtrans")
+    if nt_dir is not None:
+        _cmd_parts += ["--nt-dir", str(nt_dir)]
+    if tool_args is not None:
+        _cmd_parts += ["--tool-args", tool_args]
+    if mafft_path is not None:
+        _cmd_parts += ["--mafft-path", str(mafft_path)]
+    if magus_path is not None:
+        _cmd_parts += ["--magus-path", str(magus_path)]
+    if trimal_path is not None:
+        _cmd_parts += ["--trimal-path", str(trimal_path)]
+    if overwrite:
+        _cmd_parts.append("--overwrite")
+    if resume:
+        _cmd_parts.append("--resume")
+    if dry_run:
+        _cmd_parts.append("--dry-run")
+    if quiet:
+        _cmd_parts.append("--quiet")
+    full_command = " ".join(_cmd_parts)
+
     resolved = _resolved_align_params(
         seq_dir=seq_dir,
         output_dir=output_dir,
@@ -701,9 +758,9 @@ def run_align(
         nt_dir=nt_dir,
         threads=threads,
         tool_args=tool_args,
-        mafft_executable=mafft_exe,
-        magus_executable=magus_exe,
-        trimal_executable=trimal_exe,
+        mafft_path=mafft_exe,
+        magus_path=magus_exe,
+        trimal_path=trimal_exe,
         quiet=quiet,
     )
 
@@ -713,6 +770,7 @@ def run_align(
     else:
         aa_out_dir = output_dir / "seqs"
         nt_out_dir = None
+    logs_dir = output_dir / "logs"
 
     skipped: list[dict[str, str]] = list(scan_skipped)
     checkpoint = None
@@ -728,7 +786,7 @@ def run_align(
         if checkpoint.status == "success":
             return reconstruct_align_result(
                 checkpoint=checkpoint,
-                params=checkpoint.params,
+                params={**checkpoint.params, "overwrite": overwrite, "resume": resume, "dry_run": dry_run},
                 tool_versions=_detect_tool_versions(
                     method=method,
                     backtrans=backtrans,
@@ -747,7 +805,7 @@ def run_align(
             save_checkpoint_atomic(checkpoint, ckpt_path)
             return reconstruct_align_result(
                 checkpoint=checkpoint,
-                params=checkpoint.params,
+                params={**checkpoint.params, "overwrite": overwrite, "resume": resume, "dry_run": dry_run},
                 tool_versions=_detect_tool_versions(
                     method=method,
                     backtrans=backtrans,
@@ -776,14 +834,12 @@ def run_align(
         aa_out_dir.mkdir(parents=True, exist_ok=True)
         if nt_out_dir is not None:
             nt_out_dir.mkdir(parents=True, exist_ok=True)
+        logs_dir.mkdir(parents=True, exist_ok=True)
 
     if not resume and not dry_run:
         checkpoint = build_initial_checkpoint(
             step="pretree.align",
-            command=(
-                f"phyloai pretree align --seq-dir {seq_dir} --method {method} "
-                f"--seq-type {seq_type} --threads {threads}"
-            ),
+            command=full_command,
             params=resolved,
             inputs=found,
             output_for=lambda p: aa_out_dir / f"{p.stem}.fa",
@@ -808,7 +864,6 @@ def run_align(
         (g, aa_out_dir, method, seq_type, tool_args, dry_run, mafft_exe, magus_exe)
         for g in found
     ]
-    all_tool_results: list[dict[str, Any]] = []
     n_backtrans = 0
     do_backtrans = bool(backtrans and nt_dir and not dry_run)
 
@@ -844,7 +899,6 @@ def run_align(
 
                 if result["status"] == "skipped":
                     skipped.append({"path": result["input"], "reason": result.get("reason", "unknown")})
-                    all_tool_results.append(result)
                     if _ckpt_write:
                         task_id = Path(result["input"]).stem
                         if task_id in _to_run_set:
@@ -857,14 +911,20 @@ def run_align(
                 # AA alignment succeeded. Run this gene's backtrans inline so each
                 # gene is a single complete, resumable unit (AA + NT together).
                 file_results.append(result)
-                all_tool_results.append(result)
                 if do_backtrans:
                     n_backtrans += _run_backtrans_for_gene(
                         result, nt_dir=nt_dir, nt_out_dir=nt_out_dir, trimal_exe=trimal_exe
                     )
-                    bt_tool = result.pop("_bt_tool_result", None)
-                    if bt_tool is not None:
-                        all_tool_results.append(bt_tool)
+                    result.pop("_bt_tool_result", None)
+
+                if not dry_run:
+                    log_path = logs_dir / f"{gene_path.stem}.log"
+                    _out = result.get("tool_stdout", "").strip()
+                    _err = result.get("tool_stderr", "").strip()
+                    if _out and _err:
+                        log_path.write_text(f"{_out}\n{_err}")
+                    else:
+                        log_path.write_text(_out or _err)
 
                 if _ckpt_write:
                     task_id = Path(result["input"]).stem
@@ -884,9 +944,6 @@ def run_align(
     if interrupted:
         raise KeyboardInterrupt
 
-    if not dry_run and all_tool_results:
-        _write_align_log(output_dir, all_tool_results)
-
     if not dry_run and not file_results:
         if checkpoint is not None:
             checkpoint.status = "error"
@@ -900,7 +957,7 @@ def run_align(
         save_checkpoint_atomic(checkpoint, ckpt_path, fsync=True)
         return reconstruct_align_result(
             checkpoint=checkpoint,
-            params=resolved,
+            params={**resolved, "overwrite": overwrite, "resume": resume, "dry_run": dry_run},
             tool_versions=_detect_tool_versions(
                 method=method,
                 backtrans=backtrans,
@@ -911,6 +968,7 @@ def run_align(
             wall_time=time.monotonic() - run_start,
             skipped_inputs=skipped,
             scan_warnings=list(global_warnings),
+            file_results=file_results,
         )
 
     n_aligned = len(file_results)
@@ -925,10 +983,7 @@ def run_align(
 
     payload: dict[str, Any] = {
         "status": "success",
-        "command": (
-            f"phyloai pretree align --seq-dir {seq_dir} --method {method} "
-            f"--seq-type {seq_type} --threads {threads}"
-        ),
+        "command": full_command,
         "wall_time": time.monotonic() - run_start,
         "tool_versions": _detect_tool_versions(
             method=method,
@@ -950,6 +1005,9 @@ def run_align(
             "magus_path": str(magus_path) if magus_path else None,
             "trimal_path": str(trimal_path) if trimal_path else None,
             "overwrite": overwrite,
+            "resume": resume,
+            "dry_run": dry_run,
+            "quiet": quiet,
         },
         "key_results": {
             "n_aligned": n_aligned,
@@ -972,7 +1030,8 @@ def run_align(
                     "input": r["input"],
                     "output_aa": r.get("output_aa"),
                     "output_nt": r.get("output_nt"),
-                    "cmd": r.get("cmd"),
+                    "cmd": r.get("cmd") if isinstance(r.get("cmd"), list) else shlex.split(r.get("tool_cmd", "")),
+                    "log_file": f"logs/{Path(r['input']).stem}.log",
                     "n_taxa": r.get("n_taxa", 0),
                     "alignment_length": r.get("alignment_length", 0),
                     "wall_time": r.get("wall_time", 0.0),
@@ -985,24 +1044,6 @@ def run_align(
         },
     }
     return payload
-
-
-def _write_align_log(output_dir: Path, file_results: list[dict[str, Any]]) -> None:
-    log_path = output_dir / "align.log"
-    with open(log_path, "a") as fh:
-        for res in file_results:
-            ts = datetime.datetime.now().isoformat(timespec="seconds")
-            stderr = res.get("tool_stderr", "")
-            fh.write(
-                f"{'='*60}\n"
-                f"timestamp:  {ts}\n"
-                f"input:      {res.get('input')}\n"
-                f"cmd:        {res.get('tool_cmd', '')}\n"
-                f"returncode: {'0' if res['status'] == 'success' else 'non-zero'}\n"
-                f"wall_time:  {res.get('wall_time', 0.0):.2f}s\n"
-            )
-            if stderr:
-                fh.write(f"--- stderr ---\n{stderr}\n")
 
 
 def render_align_summary_table(summary: dict[str, Any]) -> "Table":

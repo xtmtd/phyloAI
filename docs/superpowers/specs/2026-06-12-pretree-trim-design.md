@@ -240,7 +240,7 @@ All checks run before any file processing. Failures exit immediately.
 
 ### Per-gene error handling
 
-- Tool exits non-zero → gene skipped; stderr recorded in `result.json` and `trim.log`
+- Tool exits non-zero → gene skipped; stderr recorded in `logs/<gene>.log`
 - Output file validation fails (empty alignment, zero records, unequal lengths) → gene skipped
 - Trimming removes all columns (output sequence length = 0) → gene skipped; reason: `all_columns_trimmed`
 - All genes skipped → exit 2
@@ -294,18 +294,23 @@ Follows `docs/superpowers/specs/2026-06-12-checkpoint-resume-design.md` exactly.
 **Mode 1/2 (AA-only or NT-only):**
 ```
 runs/pretree/trim/
+├── result.json
+├── checkpoint.json
 ├── seqs/
 │   ├── gene1.fa
 │   ├── gene2.fa
 │   └── ...
-├── trim.log
-├── checkpoint.json
-└── result.json
+└── logs/
+    ├── gene1.log
+    ├── gene2.log
+    └── ...
 ```
 
 **Mode 3/4 (CODON or AA+NT dual output):**
 ```
 runs/pretree/trim/
+├── result.json
+├── checkpoint.json
 ├── seqs/
 │   ├── faa/
 │   │   ├── gene1.fa
@@ -313,9 +318,10 @@ runs/pretree/trim/
 │   └── fna/
 │       ├── gene1.fa
 │       └── ...
-├── trim.log
-├── checkpoint.json
-└── result.json
+└── logs/
+    ├── gene1.log
+    ├── gene2.log
+    └── ...
 ```
 
 All output files use `.fa` suffix regardless of input suffix, consistent with `pretree align`.
@@ -324,7 +330,9 @@ All output files use `.fa` suffix regardless of input suffix, consistent with `p
 
 ## 10. Logging
 
-`trim.log` content per gene entry:
+`trim` is a batch pipeline command. Each gene's tool stderr is written to `<output-dir>/logs/<gene>.log`. The `result.json` references these via `data.files[].log_file`.
+
+Per-gene log entry content:
 - Fully resolved command (including allowed `--tool-args` tokens)
 - Tool version
 - Wall time
@@ -332,12 +340,7 @@ All output files use `.fa` suffix regardless of input suffix, consistent with `p
 - Full stderr
 - Stdout only when diagnostic (trimAl/BMGE/ClipKIT primary output is always a file)
 
-On `--resume`: append to existing log with timestamp separator:
-```
-=== RESUME 2026-06-12T14:32:01 ===
-```
-
-On `--overwrite`: log file deleted and recreated with the output directory.
+On `--resume`: per-task log files are appended with a `=== RESUME ... ===` separator. On `--overwrite`: the `logs/` directory is deleted and recreated.
 
 ---
 
@@ -387,9 +390,11 @@ On `--overwrite`: log file deleted and recreated with the output directory.
     "warnings": [
       "BMGE does not support AA+NT mode directly; automatically switched to CODON mode using --nt-dir"
     ],
-    "per_gene": [
+    "files": [
       {
         "gene": "gene1",
+        "cmd": ["trimal", "-in", "gene1.fa", "-out", "gene1_trimmed.fa", "-automated1"],
+        "log_file": "logs/gene1.log",
         "length_before": 412,
         "length_after": 287,
         "columns_removed": 125,

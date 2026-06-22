@@ -447,12 +447,17 @@ def fasttree_command(
 
     if dry_run:
         if not quiet:
-            click.echo(
-                f"Dry run: {payload['data']['summary']['n_input_files']} input(s) would be processed."
-            )
-            for item in payload["data"].get("files", []):
-                if "cmd" in item:
-                    click.echo(" ".join(item["cmd"]))
+            if batch_mode:
+                click.echo(
+                    f"Dry run: {payload['data']['summary']['n_input_files']} input(s) would be processed."
+                )
+                for item in payload["data"].get("files", []):
+                    if "cmd" in item:
+                        click.echo(" ".join(item["cmd"]))
+            else:
+                click.echo("Dry run: single matrix mode would be processed.")
+                if payload["data"].get("cmd"):
+                    click.echo(" ".join(payload["data"]["cmd"]))
         return
 
     result_path = output_dir / "result.json"
@@ -460,10 +465,15 @@ def fasttree_command(
     with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
 
-    summary = payload["data"]["summary"]
-    n_failed = summary.get("n_failed", 0)
-    n_trees = summary.get("n_trees", 0)
-    n_skipped = summary.get("n_skipped", 0)
+    if batch_mode:
+        summary = payload["data"]["summary"]
+        n_failed = summary.get("n_failed", 0)
+        n_trees = summary.get("n_trees", 0)
+        n_skipped = summary.get("n_skipped", 0)
+    else:
+        n_trees = 1 if payload["data"].get("output") else 0
+        n_failed = 0 if n_trees else 1
+        n_skipped = 0
 
     if not quiet:
         click.echo(
@@ -706,12 +716,17 @@ def iqtree_command(
 
     if dry_run:
         if not quiet:
-            click.echo(
-                f"Dry run: {payload['data']['summary']['n_input_files']} input(s) would be processed."
-            )
-            for item in payload["data"].get("files", []):
-                if "cmd" in item:
-                    click.echo(" ".join(item["cmd"]))
+            if batch_mode:
+                click.echo(
+                    f"Dry run: {payload['data']['summary']['n_input_files']} input(s) would be processed."
+                )
+                for item in payload["data"].get("files", []):
+                    if "cmd" in item:
+                        click.echo(" ".join(item["cmd"]))
+            else:
+                click.echo("Dry run: single matrix mode would be processed.")
+                if payload["data"].get("cmd"):
+                    click.echo(" ".join(payload["data"]["cmd"]))
         return
 
     result_path = output_dir / "result.json"
@@ -719,10 +734,15 @@ def iqtree_command(
     with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
 
-    summary = payload["data"]["summary"]
-    n_failed = summary.get("n_failed", 0)
-    n_trees = summary.get("n_trees", 0)
-    n_skipped = summary.get("n_skipped", 0)
+    if batch_mode:
+        summary = payload["data"]["summary"]
+        n_failed = summary.get("n_failed", 0)
+        n_trees = summary.get("n_trees", 0)
+        n_skipped = summary.get("n_skipped", 0)
+    else:
+        n_trees = 1 if payload["data"].get("output") else 0
+        n_failed = 0 if n_trees else 1
+        n_skipped = 0
 
     if not quiet:
         click.echo(f"Trees: {n_trees} | Failed: {n_failed} | Skipped: {n_skipped}")
@@ -931,7 +951,6 @@ def msc_command(
         click.echo(
             f"Species tree saved to {output_dir / 'wastral.tre'}"
         )
-        click.echo(f"Log saved to {output_dir / 'msc.log'}", err=True)
         click.echo(f"Results saved to {result_path}", err=True)
 
 
@@ -1116,21 +1135,42 @@ def cf_command(
             exit_code = 1
         try:
             import json as _json
-            import datetime as _dt
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            # cf.log
-            log_path = output_dir / "cf.log"
-            now_local = _dt.datetime.now().isoformat(timespec="seconds")
-            with open(log_path, "a") as lf:
-                lf.write(f"{now_local} | phyloai tree cf | --cf {cf} | exit={exit_code}\n")
-                lf.write(f"command: phyloai tree cf --cf {cf} --ref-tree {ref_tree}\n")
-                lf.write(f"error: {error_msg}\n")
-
             # result.json
+            _prefix = prefix or {"gcf": "gCF", "scf": "sCF", "scfl": "sCFl", "gcf+scf": "gCFsCF", "qcf": "qCF"}.get(cf, cf)
+            _cmd_parts = ["phyloai", "tree", "cf", "--cf", cf]
+            _cmd_parts.extend(["--ref-tree", str(ref_tree)])
+            if tree is not None:
+                _cmd_parts.extend(["--tree", str(tree)])
+            elif tree_dir is not None:
+                _cmd_parts.extend(["--tree-dir", str(tree_dir)])
+            if matrix is not None:
+                _cmd_parts.extend(["--matrix", str(matrix)])
+            if partitions is not None:
+                _cmd_parts.extend(["--partitions", str(partitions)])
+            if model is not None:
+                _cmd_parts.extend(["--model", model])
+            if cf not in ("gcf", "qcf"):
+                _cmd_parts.extend(["--scf-quartets", str(scf_quartets)])
+            if lpp:
+                _cmd_parts.append("--lpp")
+            _cmd_parts.extend(["--prefix", _prefix])
+            _cmd_parts.extend(["-o", str(output_dir)])
+            _cmd_parts.extend(["-t", str(threads)])
+            if overwrite:
+                _cmd_parts.append("--overwrite")
+            if iqtree_path:
+                _cmd_parts.extend(["--iqtree-path", str(iqtree_path)])
+            if wastral_path:
+                _cmd_parts.extend(["--wastral-path", str(wastral_path)])
+            if dry_run:
+                _cmd_parts.append("--dry-run")
+            _cmd_str = " ".join(_cmd_parts)
+
             result = {
                 "status": "error",
-                "command": f"phyloai tree cf --cf {cf} --ref-tree {ref_tree}",
+                "command": _cmd_str,
                 "wall_time": 0.0,
                 "tool_versions": {},
                 "params": {
@@ -1143,7 +1183,7 @@ def cf_command(
                     "model": model,
                     "scf_quartets": scf_quartets if cf not in ("gcf", "qcf") else None,
                     "lpp": lpp,
-                    "prefix": prefix or ({"gcf":"gCF","scf":"sCF","scfl":"sCFl","gcf+scf":"gCFsCF","qcf":"qCF"}.get(cf, cf)),
+                    "prefix": _prefix,
                     "output_dir": str(output_dir),
                     "threads": threads,
                     "overwrite": overwrite,
@@ -1159,6 +1199,7 @@ def cf_command(
                     "input_mode": "--tree" if tree else "--tree-dir" if tree_dir else "--matrix",
                     "input": {},
                     "cmd": [],
+                    "tool_stderr": "",
                     "skipped": [],
                     "warnings": [],
                 },

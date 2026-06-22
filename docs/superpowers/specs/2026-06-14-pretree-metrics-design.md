@@ -319,8 +319,8 @@ Only computed when both MSA and tree exist for a given marker. For large taxa co
 | File            | Content                                                                 |
 |-----------------|-------------------------------------------------------------------------|
 | `metrics.csv` (or `.tsv`)  | One row per marker, columns = all computed metrics + `DataType`          |
-| `metrics.log`   | Per-step log (see Section 5.8)                                          |
 | `result.json`   | Structured result (see Section 8)                                       |
+| `logs/<marker>.log` | Per-marker stderr/warnings (batch log model)                        |
 
 File suffixes for tabular outputs follow the `--table-format` setting (default `csv`): `metrics.csv`, `metrics.basic_statistics.csv`, `correlation_matrix.csv` when `--table-format csv`; `metrics.tsv`, `metrics.basic_statistics.tsv`, `correlation_matrix.tsv` when `--table-format tsv`. All auxiliary tables produced in one run use a single consistent format.
 
@@ -334,16 +334,13 @@ Follows total design Section 9.6 requirements:
 - Explicit file paths: `Metrics saved to runs/pretree/metrics/metrics.csv`, `Plots saved to runs/pretree/metrics/plots/`, etc.
 - Warnings printed for taxon mismatches and unpaired files
 
-**Log file** (`metrics.log`):
+**Batch log files** (`logs/<marker>.log`):
+Each marker's tool stderr and warnings are written to `<output-dir>/logs/<marker>.log`. The `result.json` does NOT inline per-marker stderr. Per-marker log format:
 ```
-# phyloai pretree metrics --msa-dir ... --threads 4
-# Started: 2026-06-14T10:00:00
-# Parameters: seq_type=AA, skip_freq=False, pseudo_tree=False
-# Tool: FastTree 2.1.11 (if pseudo-tree enabled)
-# --- per-marker stderr/warnings collected below ---
-# Wall time: 142.3s
-# Exit code: 0
+# marker <marker_name> — phyloai pretree metrics
+# tool stderr/warnings follow
 ```
+On `--overwrite`: the `logs/` directory is deleted and recreated.
 
 **`--dry-run` output** (terminal only, no files):
 ```
@@ -536,10 +533,13 @@ phyloai pretree metrics correlate --csv metrics.csv
 
 ```
 runs/pretree/metrics/
-├── metrics.csv               (or metrics.tsv if --table-format tsv)
-├── metrics.log                         # log file
 ├── result.json                         # structured result
+├── metrics.csv               (or metrics.tsv if --table-format tsv)
 ├── metrics.basic_statistics.csv (or .tsv)  # per-metric summary statistics
+├── logs/                               # per-marker stderr (batch log model)
+│   ├── gene1.log
+│   ├── gene2.log
+│   └── ...
 ├── plots/                              # distribution plots (all metrics)
 │   ├── num_taxa.pdf
 │   ├── num_sites.pdf

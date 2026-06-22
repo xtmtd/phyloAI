@@ -68,16 +68,18 @@ With `--dry-run --resume`, the command does not execute tools. It reports how ma
 
 ## 4. Checkpoint File Model
 
-Each resumable command writes `checkpoint.json` in its output directory, alongside `result.json` and the command log.
+Each resumable command writes `checkpoint.json` in its output directory, alongside `result.json`. Per-task tool stderr lives in `logs/<locus>.log` (batch model); single-mode commands inline stderr in `result.json`. No separate top-level step log file is written.
 
 Example layout for `pretree align`:
 
 ```text
 runs/pretree/align/
-├── seqs/
-├── align.log
+├── result.json
 ├── checkpoint.json
-└── result.json
+├── seqs/
+└── logs/
+    ├── gene1.log
+    └── gene2.log
 ```
 
 `result.json` remains the final structured command result. `checkpoint.json` is a recovery manifest, not a reporting artifact.

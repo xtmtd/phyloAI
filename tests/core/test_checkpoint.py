@@ -26,7 +26,7 @@ def test_save_checkpoint_atomic_writes_valid_json(tmp_path: Path) -> None:
     checkpoint = Checkpoint(
         schema_version=1,
         step="pretree.align",
-        command="phyloai pretree align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
         status="running",
         params_hash="sha256:abc",
         params={"method": "linsi"},
@@ -74,7 +74,7 @@ def test_validate_resume_params_rejects_mismatch() -> None:
     checkpoint = Checkpoint(
         schema_version=1,
         step="pretree.align",
-        command="phyloai pretree align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
         status="running",
         params_hash=canonical_params_hash(params),
         params=params,
@@ -126,7 +126,7 @@ def test_summarize_resume_tasks_counts_invalid_successes(tmp_path: Path) -> None
     checkpoint = Checkpoint(
         schema_version=1,
         step="pretree.align",
-        command="phyloai pretree align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
         status="running",
         params_hash="sha256:abc",
         params={},

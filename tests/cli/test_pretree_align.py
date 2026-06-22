@@ -132,7 +132,6 @@ def test_align_writes_result_json(tmp_path: Path) -> None:
     assert payload["key_results"]["n_aligned"] == 2
     assert (out_dir / "seqs" / "gene1.fa").exists()
     assert (out_dir / "seqs" / "gene2.fa").exists()
-    assert (out_dir / "align.log").exists()
 
 
 def test_align_quiet_suppresses_rich_output(tmp_path: Path) -> None:

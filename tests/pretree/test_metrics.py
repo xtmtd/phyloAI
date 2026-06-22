@@ -35,6 +35,8 @@ from phyloai.pretree.metrics import (
     run_metrics,
 )
 
+from tests.helpers import validate_result_json, validate_params_completeness
+
 # ---------------------------------------------------------------------------
 # Helpers for test data
 # ---------------------------------------------------------------------------
@@ -276,60 +278,60 @@ class TestComputeMsaMetrics:
 
     def test_basic_counts(self):
         msa = self._msa_data(_AA_SEQS)
-        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq_statistics=True)
         assert result["num_taxa"] == 3
         assert result["num_sites"] == 8
         assert result["taxa_occupancy"] == 1.0
 
     def test_proportion_gaps(self):
         msa = self._msa_data(_AA_SEQS)
-        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq_statistics=True)
         assert 0.0 < result["proportion_gaps"] < 1.0
 
     def test_num_patterns(self):
         msa = self._msa_data(_AA_SEQS)
-        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq_statistics=True)
         assert result["num_patterns"] >= 1
 
     def test_num_singletons(self):
         msa = self._msa_data(_NT_SEQS)
-        result = _compute_msa_metrics(msa, "NT", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "NT", total_taxa_pool=3, skip_freq_statistics=True)
         assert result["num_singletons"] >= 0
 
     def test_rcfv(self):
         msa = self._msa_data(_AA_SEQS)
-        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq_statistics=True)
         assert result["rcfv"] >= 0.0
 
     def test_nrcfv(self):
         msa = self._msa_data(_AA_SEQS)
-        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq_statistics=True)
         assert result["nrcfv"] >= 0.0
 
     def test_gc_content_nt(self):
         msa = self._msa_data(_NT_SEQS)
-        result = _compute_msa_metrics(msa, "NT", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "NT", total_taxa_pool=3, skip_freq_statistics=True)
         assert isinstance(result["GC_content"], float)
 
     def test_gc_content_aa_empty(self):
         msa = self._msa_data(_AA_SEQS)
-        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq_statistics=True)
         assert result["GC_content"] == ""
 
     def test_frequency_statistics(self):
         msa = self._msa_data(_AA_SEQS)
-        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq=False)
+        result = _compute_msa_metrics(msa, "AA", total_taxa_pool=3, skip_freq_statistics=False)
         for label in "ARNDCQEGHILKMFPSTWYV":
             assert f"freq{label}" in result
 
     def test_empty_msa(self):
-        result = _compute_msa_metrics([], "AA", total_taxa_pool=0, skip_freq=True)
+        result = _compute_msa_metrics([], "AA", total_taxa_pool=0, skip_freq_statistics=True)
         assert result["num_sites"] == 0
 
     def test_proportion_invariant(self):
         # All sequences identical
         msa = self._msa_data(["AAAA", "AAAA", "AAAA"])
-        result = _compute_msa_metrics(msa, "NT", total_taxa_pool=3, skip_freq=True)
+        result = _compute_msa_metrics(msa, "NT", total_taxa_pool=3, skip_freq_statistics=True)
         assert result["proportion_invariant"] == 1.0
 
 
@@ -399,13 +401,13 @@ class TestRunMetrics:
             msa_dir=msa_dir,
             tree_dir=tree_dir,
             output_dir=out_dir,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
         assert result["status"] == "success"
-        assert result["key_results"]["n_markers"] == 2
-        assert result["key_results"]["n_success"] == 2
+        assert result["data"]["summary"]["n_markers"] == 2
+        assert result["data"]["summary"]["n_success"] == 2
 
     def test_tree_only(self, tmp_path):
         tree_dir = tmp_path / "trees"
@@ -417,7 +419,7 @@ class TestRunMetrics:
         result = run_metrics(
             tree_dir=tree_dir,
             output_dir=out_dir,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -454,7 +456,7 @@ class TestRunMetrics:
         run_metrics(
             msa_dir=msa_dir,
             output_dir=out_dir,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -482,11 +484,11 @@ class TestRunMetrics:
             msa_dir=msa_dir,
             tree_dir=tree_dir,
             output_dir=out_dir,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
-        warnings = result["key_results"].get("warnings") or []
+        warnings = result["data"]["summary"].get("warnings") or []
         assert any("taxa" in w.lower() for w in warnings)
 
 
@@ -922,6 +924,13 @@ def e2e_data(tmp_path):
 
 
 class TestIntegrationCLI:
+    _EXPECTED_METRICS_PARAMS = {
+        "msa_dir", "tree_dir", "seq_type", "threads", "output_dir",
+        "round", "skip_freq_statistics", "pseudo_tree_metrics",
+        "fasttree_path", "skip_pairwise_identity", "outgroup_list",
+        "ref_tree", "overwrite", "dry_run", "quiet", "table_format",
+    }
+
     def test_metrics_csv_output(self, e2e_data):
         tmp_path, msa_dir, tree_dir = e2e_data
         out = tmp_path / "output"
@@ -929,14 +938,15 @@ class TestIntegrationCLI:
             msa_dir=msa_dir,
             tree_dir=tree_dir,
             output_dir=out,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
         assert result["status"] == "success"
         assert (out / "metrics.csv").exists()
         assert (out / "result.json").exists()
-        assert (out / "metrics.log").exists()
+        validate_result_json(result)
+        validate_params_completeness(result, self._EXPECTED_METRICS_PARAMS)
 
     def test_overwrite_flag(self, e2e_data):
         tmp_path, msa_dir, tree_dir = e2e_data
@@ -949,7 +959,7 @@ class TestIntegrationCLI:
             tree_dir=tree_dir,
             output_dir=out,
             overwrite=True,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -961,7 +971,7 @@ class TestIntegrationCLI:
         result = run_metrics(
             tree_dir=tree_dir,
             output_dir=out,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -985,7 +995,7 @@ class TestIntegrationCLI:
             msa_dir=msa_dir,
             tree_dir=tree_dir,
             output_dir=out,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -1004,14 +1014,14 @@ class TestIntegrationCLI:
         result = run_metrics(
             tree_dir=tree_dir,
             output_dir=out,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
 
         assert result["status"] == "success"
-        assert result["key_results"]["n_markers"] == 1
-        assert result["key_results"]["n_errors"] == 0
+        assert result["data"]["summary"]["n_markers"] == 1
+        assert result["data"]["summary"]["n_errors"] == 0
         with open(out / "metrics.csv") as f:
             rows = list(csv.DictReader(f))
         assert [row["loci"] for row in rows] == ["gene"]
@@ -1022,7 +1032,7 @@ class TestIntegrationCLI:
         result = run_metrics(
             msa_dir=msa_dir,
             output_dir=out,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -1037,7 +1047,7 @@ class TestIntegrationCLI:
         result = run_metrics(
             msa_dir=msa_dir,
             output_dir=out,
-            skip_freq=False,
+            skip_freq_statistics=False,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -1054,7 +1064,7 @@ class TestIntegrationCLI:
             msa_dir=msa_dir,
             tree_dir=tree_dir,
             output_dir=out,
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -1155,7 +1165,7 @@ class TestTableFormatTSV:
             tree_dir=tree_dir,
             output_dir=out,
             table_format="tsv",
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -1163,7 +1173,6 @@ class TestTableFormatTSV:
         assert (out / "metrics.tsv").exists()
         assert not (out / "metrics.csv").exists()
         assert (out / "result.json").exists()
-        assert (out / "metrics.log").exists()
         content = (out / "metrics.tsv").read_text()
         assert "\t" in content
 
@@ -1202,7 +1211,7 @@ class TestTableFormatTSV:
             tree_dir=tree_dir,
             output_dir=out,
             table_format="tsv",
-            skip_freq=True,
+            skip_freq_statistics=True,
             skip_pairwise_identity=True,
             quiet=True,
         )
@@ -1364,3 +1373,40 @@ class TestTableFormatTSV:
             ],
         )
         assert result.exit_code == 1
+
+    def test_result_json_command_has_valid_flags(self, e2e_data):
+        """Verify result.json command field uses valid CLI flag names."""
+        from click.testing import CliRunner
+        from phyloai.cli.main import cli
+
+        tmp_path, msa_dir, tree_dir = e2e_data
+        out = tmp_path / "output_flags"
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            [
+                "pretree", "metrics",
+                "--msa-dir", str(msa_dir),
+                "--tree-dir", str(tree_dir),
+                "--output-dir", str(out),
+                "--skip-freq-statistics",
+                "--pseudo-tree-metrics",
+                "--round", "4",
+                "--skip-pairwise-identity",
+                "--quiet",
+            ],
+        )
+        assert result.exit_code == 0
+        result_json = out / "result.json"
+        assert result_json.exists()
+        payload = json.loads(result_json.read_text())
+        validate_result_json(payload)
+        validate_params_completeness(payload, TestIntegrationCLI._EXPECTED_METRICS_PARAMS)
+        cmd = payload["command"]
+        assert "--skip-freq-statistics" in cmd
+        assert "--pseudo-tree-metrics" in cmd
+        assert "--round" in cmd
+        tokens = set(cmd.split())
+        assert "--skip-freq" not in tokens
+        assert "--pseudo-tree" not in tokens
+        assert "--decimal-places" not in tokens

@@ -122,18 +122,24 @@ After each tool run, PhyloAI validates the generated MSA with the shared `core` 
 
 ```
 runs/pretree/align/
+├── result.json
+├── checkpoint.json
 ├── seqs/
 │   ├── gene1.fa
 │   ├── gene2.fa
 │   └── ...
-├── align.log
-└── result.json
+└── logs/
+    ├── gene1.log
+    ├── gene2.log
+    └── ...
 ```
 
 ### 4.2 Mode 3 (AA + backtrans)
 
 ```
 runs/pretree/align/
+├── result.json
+├── checkpoint.json
 ├── seqs/
 │   ├── faa/
 │   │   ├── gene1.fa
@@ -141,8 +147,10 @@ runs/pretree/align/
 │   └── fna/
 │       ├── gene1.fa
 │       └── ...
-├── align.log
-└── result.json
+└── logs/
+    ├── gene1.log
+    ├── gene2.log
+    └── ...
 ```
 
 All output files use `.fa` suffix regardless of input suffix or sequence type.
@@ -155,18 +163,18 @@ Follows main design Section 9.5: if `--output-dir` exists and is non-empty, exit
 
 ## 5. Logging
 
-`align` is a pipeline command and writes a log file `align.log` to the output directory (alongside `result.json`), following the shared pipeline logging convention.
+`align` is a batch pipeline command. Each gene's tool stderr is written to `<output-dir>/logs/<locus>.log`. The `result.json` references these via `data.files[].log_file` but does not inline stderr.
 
-Each gene's log entry appended to `align.log` contains:
+Each `logs/<locus>.log` contains:
 - Tool name and version
 - Full resolved command (including allowed `--tool-args` tokens)
-- stderr when present; stdout only when it is diagnostic text rather than the primary alignment output
+- Full stderr
 - Wall time
 - Exit code
 
-For MAFFT, stdout is the aligned FASTA data stream and is already written to `seqs/`, so it is not duplicated in `align.log` or retained in per-gene success records.
+For MAFFT, stdout is the aligned FASTA data stream and is already written to `seqs/`, so it is NOT duplicated in logs or `result.json`.
 
-Log entries are separated by a timestamp header. On `--overwrite` runs the log file is also deleted and recreated.
+Log entries are separated by a timestamp header. On `--overwrite` runs the `logs/` directory is deleted and recreated. On `--resume`, per-task log files are appended with a `=== RESUME ... ===` separator.
 
 ---
 
@@ -247,6 +255,8 @@ Log entries are separated by a timestamp header. On `--overwrite` runs the log f
         "input": "raw_aa/gene1.fa",
         "output_aa": "seqs/gene1.fa",
         "output_nt": null,
+        "cmd": ["mafft", "--maxiterate", "1000", "--localpair", "--thread", "1", "gene1.fa"],
+        "log_file": "logs/gene1.log",
         "n_taxa": 50,
         "alignment_length": 423,
         "wall_time": 1.2,
@@ -354,22 +364,20 @@ Unless `--quiet` is set:
 
 The main design (`2026-06-07-phyloai-design.md`) requires one correction:
 
-**Section 9.4** example directory structure for `pretree align` should continue to use the unified `seqs/` convention:
+**Section 9.4** example directory structure for `pretree align` should continue to use the unified `seqs/` convention, with per-locus logs under `logs/` and a `checkpoint.json` for resume support:
 
 ```
 runs/pretree/align/
+├── result.json
+├── checkpoint.json
 ├── seqs/
 │   ├── gene1.fa
 │   └── ...
-├── align.log
-└── result.json
+└── logs/
+    └── gene1.log
 ```
 
-The log file location is the shared pipeline convention: `align.log` lives inside the output directory alongside `result.json`.
-
-Section 9.6 should not require full stdout for commands where stdout is primary data already saved elsewhere. For `pretree align`, MAFFT stdout is the aligned FASTA and is saved under `seqs/`; `align.log` records command metadata and stderr without duplicating that data stream.
-
-Section 10 should note the Phase 2 tool-specific exception that MAGUS is Linux-only because the pip-distributed MAGUS bundle includes Linux binaries.
+Section 9.6 should not require full stdout for commands where stdout is primary data already saved elsewhere. For `pretree align`, MAFFT stdout is the aligned FASTA and is saved under `seqs/`; per-locus log files record command metadata and stderr without duplicating that data stream.
 
 ---
 

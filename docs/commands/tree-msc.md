@@ -56,10 +56,8 @@ phyloai tree msc --tree-dir ./genetrees/ --outgroup Oryza_sativa
 
 ```
 runs/tree/msc/
-├── result.json            # PhyloAI structured results
+├── result.json            # PhyloAI structured results (stderr inline in data.tool_stderr)
 ├── wastral.tre            # Species tree output (newick)
-├── wastral.log            # wASTRAL stderr diagnostic output
-├── msc.log                # PhyloAI execution log
 ├── merged.trees           # Merged input (--tree-dir mode only)
 └── freqQuad.csv           # Quartet frequency data (--boot 3 only)
 ```
@@ -76,8 +74,7 @@ runs/tree/msc/
 ## Notes
 
 - wASTRAL must be installed and on PATH (or use `--wastral-path`).
-- wastral stderr is saved to `wastral.log` for diagnostics.
-- `msc.log` records the phyloai execution metadata (command, versions, wall time).
+- wASTRAL stderr is inlined in `result.json` as `data.tool_stderr`. No separate log file is written.
 - `--boot 2` computes quartet support + local-PP and embeds values in the output tree; no separate data file is written. Use `--boot 3` for `freqQuad.csv`.
 - `--tree-dir` mode merges all valid gene tree files into one input file saved as `merged.trees`.
 - `--tool-args` passes extra flags verbatim to wastral. `-i` and `-o` are blocked. Strategy flags override phyloAI defaults.

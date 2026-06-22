@@ -198,7 +198,7 @@ Fixed flags (not user-configurable):
 
 wASTRAL generates raw `wastral.tre`. PhyloAI post-processes this to map qCF values onto the reference tree topology (§4.6).
 
-Output files: `<P>.cf.tree` (mapped qCF tree), `wastral.log`, `cf.log`.
+Output files: `<P>.cf.tree` (mapped qCF tree), `wastral.tre` (raw wASTRAL output, intermediate).
 
 ### 4.6 qCF Value Mapping
 
@@ -280,7 +280,6 @@ This is the same `_merge_gene_trees()` pattern shared with `tree msc`.
 ```
 runs/tree/cf/
 ├── result.json
-├── cf.log
 ├── gCF.cf.stat
 ├── gCF.cf.branch
 ├── gCF.cf.tree
@@ -294,7 +293,6 @@ runs/tree/cf/
 ```
 runs/tree/cf/
 ├── result.json
-├── cf.log
 ├── sCF.cf.stat
 ├── sCF.cf.branch
 ├── sCF.cf.tree
@@ -307,7 +305,6 @@ runs/tree/cf/
 ```
 runs/tree/cf/
 ├── result.json
-├── cf.log
 ├── sCFl.cf.stat
 ├── sCFl.cf.branch
 ├── sCFl.cf.tree
@@ -323,7 +320,6 @@ runs/tree/cf/
 ```
 runs/tree/cf/
 ├── result.json
-├── cf.log
 ├── gCFsCF.cf.stat
 ├── gCFsCF.cf.branch
 ├── gCFsCF.cf.tree
@@ -337,10 +333,8 @@ runs/tree/cf/
 ```
 runs/tree/cf/
 ├── result.json
-├── cf.log
 ├── qCF.cf.tree              # mapped qCF tree
 ├── wastral.tre              # raw wASTRAL output (intermediate)
-├── wastral.log
 └── merged.trees             # if --tree-dir used
 ```
 
@@ -390,7 +384,9 @@ runs/tree/cf/
     "input_mode": "--tree",
     "input": {"path": "/path/to/merged.trees"},
     "cmd": ["iqtree3", "-t", "/path/to/species.nwk", "--gcf", "/path/to/merged.trees",
-            "--prefix", "gCF", "-T", "5"]
+            "--prefix", "gCF", "-T", "5"],
+    "tool_log": "gCF.log",
+    "tool_stderr": "# IQ-TREE3 stderr (single pattern, JSON Output Standard Section 5.2)"
   }
 }
 ```
@@ -415,14 +411,14 @@ runs/tree/cf/
   "key_results": {
     "cf_type": "qcf",
     "cf_tree": "runs/tree/cf/qCF.cf.tree",
-    "wastral_log": "runs/tree/cf/wastral.log",
     "prefix": "qCF"
   },
   "data": {
     "input_mode": "--tree",
     "input": {"path": "/path/to/merged.trees"},
     "cmd": ["wastral", "-i", "/path/to/merged.trees", "-o", "wastral.tre",
-            "-u", "2", "-c", "/path/to/species.nwk", "-C", "--mode", "4", "-t", "4"]
+            "-u", "2", "-c", "/path/to/species.nwk", "-C", "--mode", "4", "-t", "4"],
+    "tool_stderr": "# wASTRAL stderr (single pattern, JSON Output Standard Section 5.2)"
   }
 }
 ```
@@ -450,8 +446,9 @@ runs/tree/cf/
 | `cf_type` | `--cf` mode value |
 | `cf_stat` | Path to `.cf.stat` file (IQ-TREE3 modes only) |
 | `cf_tree` | Path to `.cf.tree` annotated tree |
-| `wastral_log` | Path to `wastral.log` (qcf mode only) |
 | `prefix` | Resolved prefix value |
+
+`data.tool_stderr` captures the tool's raw stderr (single pattern). For IQ-TREE3 modes, `data.tool_log` references the tool's native `.log` file (e.g., `gCF.log`), which is preserved in the output directory as a tool-native artifact and is NOT part of the PhyloAI log model.
 
 ---
 
@@ -482,10 +479,9 @@ runs/tree/cf/
 ## 10. Logging
 
 - **IQ-TREE3 modes:** the tool's native `.log` file (e.g., `gCF.log`) is preserved in the output directory. IQ-TREE3 writes its own log containing version info, command, and progress.
-- **qCF mode:** wASTRAL's stdout and stderr are captured and written to `wastral.log` (emulates `2> wastral.log` pattern from wASTRAL docs).
-- **All modes:** `result.json` is written alongside tool output files.
-- **Module log:** `cf.log` is written to the output directory, containing timestamp, command, tool versions, wall time, input tree count, and output file paths (matching the `msc.log` pattern from `tree msc`).
-- **Terminal output:** During execution, subprocess stdout/stderr is streamed to the terminal in real-time via `subprocess.Popen` + `select`-based line reading, so users can monitor long-running computations. Output is also captured for log files. When `--quiet` is set, only errors are shown.
+- **qCF mode:** wASTRAL stderr is inlined in `result.json` as `data.tool_stderr` (single pattern, JSON Output Standard Section 5.2).
+- **All modes:** `result.json` is written alongside tool output files. No separate `cf.log` or `wastral.log` is written — summary info is in `result.json`.
+- **Terminal output:** During execution, subprocess stdout/stderr is streamed to the terminal in real-time via `subprocess.Popen` + `select`-based line reading, so users can monitor long-running computations. Output is also captured for `data.tool_stderr`. When `--quiet` is set, only errors are shown.
 
 ### 10.1 Path Resolution
 
@@ -531,7 +527,7 @@ phyloai/tree/cf.py
 ├── _build_iqtree_cf_cmd()    # Build IQ-TREE3 command for any IQ-TREE3 mode
 ├── _run_iqtree_cf()          # Execute IQ-TREE3, collect output metadata
 ├── _build_wastral_qcf_cmd()  # Build wASTRAL command for qCF
-├── _run_wastral_qcf()        # Execute wASTRAL, save log, map qCF to ref tree
+├── _run_wastral_qcf()        # Execute wASTRAL, capture stderr to data.tool_stderr, map qCF to ref tree
 ├── _map_qcf_to_tree()        # Map qCF values from wastral.tre onto ref-tree
 └── _merge_gene_trees()       # Merge --tree-dir into merged.trees (shared with msc.py)
 ```
@@ -614,7 +610,7 @@ The `tree` group in `_TreeGroup.list_commands()` should include `"cf"` in its re
 - [ ] `result.json` written with correct schema
 - [ ] `.cf.stat`, `.cf.tree`, `.cf.branch`, `.cf.tree.nex` produced (IQ-TREE3 modes)
 - [ ] `.log` preserved (IQ-TREE3 modes)
-- [ ] `wastral.log` + `wastral.tre` + `<prefix>.cf.tree` produced (qcf mode)
+- [ ] `wastral.tre` + `<prefix>.cf.tree` produced (qcf mode); stderr inlined in `data.tool_stderr`
 - [ ] `merged.trees` produced (`--tree-dir` mode)
 - [ ] `tool_versions` populated correctly per mode
 - [ ] qCF tree annotations follow `support/q1` convention

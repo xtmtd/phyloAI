@@ -111,7 +111,7 @@ If `--outgroup TAXON` is given, that taxon's record is moved to position 0
 [9]  Write each variant matrix via core/formats.py + corresponding .partitions file
 [10] Compute stats on every variant: gap_ratio, character summary, site patterns
 [11] Rich display: Overview + Character Summary + Site Patterns
-[12] Write result.json + concat.log
+[12] Write result.json (tool_stderr inlined per JSON Output Standard Section 5.2)
 ```
 
 ---
@@ -130,7 +130,6 @@ If `--outgroup TAXON` is given, that taxon's record is moved to position 0
 | `<prefix>.cds12.partitions` | `--exclude-codon3` | Partition file for cds12 matrix |
 | `dropped_alignments.csv` | Any MSA dropped | CSV with columns: `filename,n_taxa,occupancy_ratio,total_taxa` |
 | `result.json` | `not --dry-run` | Structured result |
-| `concat.log` | `not --dry-run` | Step log |
 
 Output directory structure:
 
@@ -145,8 +144,7 @@ runs/pretree/concat/
 ├── matrix.cds12.fa             # if --exclude-codon3
 ├── matrix.cds12.partitions     # if --exclude-codon3
 ├── dropped_alignments.csv      # if any dropped
-├── result.json                # if not --dry-run
-└── concat.log                 # if not --dry-run
+└── result.json                # if not --dry-run
 ```
 
 ### 4.1 Partition files (RAxML-style)
@@ -249,6 +247,8 @@ files are written):
   },
   "error": null,
   "data": {
+    "cmd": [],
+    "tool_stderr": "",
     "character_summary": {
       "gap_ratio": 0.12,
       "ambiguous_ratio": 0.01,
@@ -444,7 +444,7 @@ validates parameters then delegates to `run_concat()`.
 - [ ] `--outgroup Sp_X` moves that taxon to position 0 in all variant matrices
 - [ ] Rich screen display shows Overview + Character Summary + Site Patterns
 - [ ] `result.json` includes dropped MSAs, per-taxon, per-gene occupancy
-- [ ] `concat.log` written with wall time, exit code, and summary counts
+- [ ] `data.tool_stderr` recorded in `result.json` (single mode, JSON Output Standard Section 5.2)
 - [ ] `--dry-run` validates inputs and computes an in-memory summary without writing, deleting, or replacing any files or directories
 - [ ] `--quiet` suppresses terminal output but still writes `result.json`
 - [ ] Non-empty output directory without `--overwrite` → exit code 1

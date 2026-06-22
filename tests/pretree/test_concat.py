@@ -345,7 +345,7 @@ def test_render_concat_panels_shows_all_overview_fields() -> None:
 
     overview = {
         "prefix": "matrix",
-        "to_format": "fasta",
+        "to": "fasta",
         "n_taxa": 10,
         "n_msa_input": 50,
         "n_msa_used": 45,
@@ -399,7 +399,7 @@ def test_render_concat_panels_hides_recoding_when_none() -> None:
 
     overview = {
         "prefix": "matrix",
-        "to_format": "fasta",
+        "to": "fasta",
         "n_taxa": 5,
         "n_msa_input": 10,
         "n_msa_used": 10,
@@ -448,7 +448,7 @@ def test_run_concat_basic(tmp_path: Path) -> None:
         taxa_occupancy=0.5,
         recoding=None,
         outgroup=None,
-        to_format="fasta",
+        to="fasta",
         translate_codon=False,
         exclude_codon3=False,
         dry_run=False,
@@ -462,7 +462,6 @@ def test_run_concat_basic(tmp_path: Path) -> None:
     content = (output_dir / "matrix.fa").read_text()
     assert ">A" in content
     assert "ACGTGGCC" in content
-    assert (output_dir / "concat.log").exists()
 
 
 def test_run_concat_with_recoding_and_warnings(tmp_path: Path) -> None:
@@ -476,7 +475,7 @@ def test_run_concat_with_recoding_and_warnings(tmp_path: Path) -> None:
     payload = run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.0, recoding="RY-nucleotide",
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=False, overwrite=False,
     )
@@ -501,7 +500,7 @@ def test_run_concat_occupancy_filtering(tmp_path: Path) -> None:
     payload = run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.5, recoding=None,
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=False, overwrite=False,
     )
@@ -522,7 +521,7 @@ def test_run_concat_outgroup_reordering(tmp_path: Path) -> None:
     run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.0, recoding=None,
-        outgroup="C", to_format="fasta",
+        outgroup="C", to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=False, overwrite=False,
     )
@@ -543,7 +542,7 @@ def test_run_concat_dry_run_writes_no_files(tmp_path: Path) -> None:
     payload = run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.0, recoding=None,
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=True, overwrite=False,
     )
@@ -552,7 +551,6 @@ def test_run_concat_dry_run_writes_no_files(tmp_path: Path) -> None:
     assert payload["key_results"]["n_taxa"] == 2
     assert not (output_dir / "matrix.fa").exists()
     assert not (output_dir / "result.json").exists()
-    assert not (output_dir / "concat.log").exists()
 
 
 def test_run_concat_dry_run_overwrite_does_not_delete_existing_output(tmp_path: Path) -> None:
@@ -570,7 +568,7 @@ def test_run_concat_dry_run_overwrite_does_not_delete_existing_output(tmp_path: 
     payload = run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.0, recoding=None,
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=True, overwrite=True,
     )
@@ -590,7 +588,7 @@ def test_run_concat_dry_run_reports_planned_variants(tmp_path: Path) -> None:
     payload = run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="CODON", taxa_occupancy=0.0, recoding="RY-nucleotide",
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=True, exclude_codon3=True,
         dry_run=True, overwrite=False,
     )
@@ -619,7 +617,7 @@ def test_run_concat_recoding_validation_rejects_aa_scheme_on_nt(tmp_path: Path) 
         run_concat(
             msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
             seq_type="NT", taxa_occupancy=0.0, recoding="Dayhoff-6",
-            outgroup=None, to_format="fasta",
+            outgroup=None, to="fasta",
             translate_codon=False, exclude_codon3=False,
             dry_run=False, overwrite=False,
         )
@@ -640,7 +638,7 @@ def test_run_concat_output_dir_conflict(tmp_path: Path) -> None:
         run_concat(
             msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
             seq_type="NT", taxa_occupancy=0.0, recoding=None,
-            outgroup=None, to_format="fasta",
+            outgroup=None, to="fasta",
             translate_codon=False, exclude_codon3=False,
             dry_run=False, overwrite=False,
         )
@@ -648,7 +646,7 @@ def test_run_concat_output_dir_conflict(tmp_path: Path) -> None:
     payload = run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.0, recoding=None,
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=False, overwrite=True,
     )
@@ -667,7 +665,7 @@ def test_run_concat_rejects_unknown_recoding_scheme(tmp_path: Path) -> None:
         run_concat(
             msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
             seq_type="NT", taxa_occupancy=0.0, recoding="NotARealScheme",
-            outgroup=None, to_format="fasta",
+            outgroup=None, to="fasta",
             translate_codon=False, exclude_codon3=False,
             dry_run=False, overwrite=False,
         )
@@ -686,7 +684,7 @@ def test_run_concat_validation_error_writes_result_json(tmp_path: Path) -> None:
         run_concat(
             msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
             seq_type="NT", taxa_occupancy=0.0, recoding="NotARealScheme",
-            outgroup=None, to_format="fasta",
+            outgroup=None, to="fasta",
             translate_codon=False, exclude_codon3=False,
             dry_run=False, overwrite=False,
         )
@@ -711,7 +709,7 @@ def test_run_concat_validation_error_leaves_no_partial_matrix(tmp_path: Path) ->
         run_concat(
             msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
             seq_type="NT", taxa_occupancy=0.0, recoding="NotARealScheme",
-            outgroup=None, to_format="fasta",
+            outgroup=None, to="fasta",
             translate_codon=False, exclude_codon3=False,
             dry_run=False, overwrite=False,
         )
@@ -768,7 +766,7 @@ def test_run_concat_writes_partitions_for_all_variants(tmp_path: Path) -> None:
     run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.5, recoding="RY-nucleotide",
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=False, overwrite=False,
     )
@@ -796,7 +794,7 @@ def test_run_concat_partitions_dry_run_no_files(tmp_path: Path) -> None:
     run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="NT", taxa_occupancy=0.0, recoding=None,
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=False, exclude_codon3=False,
         dry_run=True, overwrite=False,
     )
@@ -815,7 +813,7 @@ def test_run_concat_partitions_with_codon_variants(tmp_path: Path) -> None:
     run_concat(
         msa_dir=msa_dir, output_dir=output_dir, prefix="matrix",
         seq_type="CODON", taxa_occupancy=0.0, recoding=None,
-        outgroup=None, to_format="fasta",
+        outgroup=None, to="fasta",
         translate_codon=True, exclude_codon3=True,
         dry_run=False, overwrite=False,
     )

@@ -220,7 +220,7 @@ Rich tables, panels, and progress bars are rendered to the terminal unless `--qu
 ```json
 {
   "status": "success",
-  "command": "phyloai pretree stats --seq-dir ./aligned",
+  "command": "phyloai pretree stats --seq-dir ./aligned --seq-type auto --threads 4",
   "wall_time": 4.2,
   "tool_versions": {},
   "params": {

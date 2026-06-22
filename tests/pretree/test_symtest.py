@@ -228,7 +228,9 @@ def test_run_symtest_with_mock_iqtree(tmp_path, monkeypatch):
     assert payload["key_results"]["n_dropped"] == 1
 
     assert (output_dir / "result.json").exists()
-    assert (output_dir / "filter.log").exists()
+    assert isinstance(payload["data"]["cmd"], list)
+    assert isinstance(payload["data"]["tool_stderr"], str)
+    assert len(payload["data"]["results"]) == 3
     assert (output_dir / "retained_loci.csv").exists()
     assert (output_dir / "dropped_loci.csv").exists()
     assert (output_dir / "filter_decisions.csv").exists()

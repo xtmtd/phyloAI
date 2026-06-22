@@ -176,7 +176,7 @@ def test_tree_cf_tree_and_tree_dir_mutually_exclusive(tmp_path: Path) -> None:
 
 
 def test_tree_cf_lpp_non_qcf_writes_error_outputs(tmp_path: Path) -> None:
-    """--lpp with --cf gcf exits 1 and writes result.json + cf.log."""
+    """--lpp with --cf gcf exits 1 and writes result.json."""
     import json
 
     ref_tree = tmp_path / "ref.nwk"
@@ -205,13 +205,9 @@ def test_tree_cf_lpp_non_qcf_writes_error_outputs(tmp_path: Path) -> None:
     assert "data" in payload
     assert payload["params"]["lpp"] is True
 
-    cf_log = out_dir / "cf.log"
-    assert cf_log.exists()
-    assert "exit=1" in cf_log.read_text()
-
 
 def test_tree_cf_validation_error_writes_error_outputs(tmp_path: Path) -> None:
-    """Validation errors (e.g. scf with tree) exit !=0 and write result.json + cf.log."""
+    """Validation errors (e.g. scf with tree) exit !=0 and write result.json."""
     import json
 
     ref_tree = tmp_path / "ref.nwk"
@@ -237,7 +233,3 @@ def test_tree_cf_validation_error_writes_error_outputs(tmp_path: Path) -> None:
     assert "wall_time" in payload
     assert "key_results" in payload
     assert "data" in payload
-
-    cf_log = out_dir / "cf.log"
-    assert cf_log.exists()
-    assert "exit=1" in cf_log.read_text()

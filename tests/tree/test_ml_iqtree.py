@@ -1249,9 +1249,9 @@ def test_run_iqtree_single_dry_run(tmp_path: Path) -> None:
     )
 
     assert payload["status"] == "success"
-    assert payload["data"]["summary"]["mode"] == "--matrix"
-    assert len(payload["data"]["files"]) == 1
-    assert "cmd" in payload["data"]["files"][0]
+    assert isinstance(payload["data"]["cmd"], list)
+    assert "tool_stderr" in payload["data"]
+    assert "output" in payload["data"]
 
 
 def test_run_iqtree_batch_dry_run(tmp_path: Path) -> None:
@@ -1392,7 +1392,7 @@ def test_run_iqtree_pmsf_default_base_model_direct_api(tmp_path: Path) -> None:
         quiet=True,
     )
 
-    cmd = " ".join(payload["data"]["files"][0]["cmd"])
+    cmd = " ".join(payload["data"]["cmd"])
     assert "-m LG+C20+F+R4" in cmd
     assert payload["params"]["pmsf_base_model"] == "LG"
 

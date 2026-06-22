@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import shlex
 import shutil
 import subprocess
@@ -142,14 +141,16 @@ def _read_msa_col_count(path: Path) -> int:
     return 0
 
 
-def _make_success_result(msa_path: Path, aa_out: Path, nt_out: Path | None, *, cmd: str, wall_time: float, tool_stderr: str, warnings: list[str], length_before: int) -> dict[str, Any]:
+def _make_success_result(msa_path: Path, aa_out: Path, nt_out: Path | None, *, cmd: str, wall_time: float, tool_stderr: str, tool_stdout: str = "", warnings: list[str], length_before: int) -> dict[str, Any]:
+    combined = _merge_tool_output(tool_stdout, tool_stderr)
     return {
         "status": "success",
         "input": str(msa_path),
         "output_aa": str(aa_out),
         "output_nt": str(nt_out) if nt_out else None,
         "tool_cmd": cmd,
-        "tool_stderr": tool_stderr,
+        "tool_stderr": combined,
+        "tool_stdout": tool_stdout,
         "wall_time": wall_time,
         "warnings": warnings,
         "length_before": length_before,
@@ -210,6 +211,14 @@ def _run_cmd(cmd: list[str]) -> tuple[subprocess.CompletedProcess[str] | None, f
     return proc, time.monotonic() - start, None
 
 
+def _merge_tool_output(stdout: str, stderr: str) -> str:
+    out = stdout.strip()
+    err = stderr.strip()
+    if out and err:
+        return f"{out}\n{err}"
+    return out or err
+
+
 def _tool_failure_reason(tool_name: str, returncode: int, stderr: str) -> str:
     text = stderr.strip()
     if len(text) <= 600:
@@ -257,7 +266,7 @@ def _trim_one_trimal(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None, 
                 return {"status": "skipped", "input": str(msa_path), "reason": err or _tool_failure_reason("trimal", proc.returncode, proc.stderr), "tool_stderr": "" if proc is None else proc.stderr, "wall_time": wall, "tool_cmd": " ".join(cmd)}
             aa_out.parent.mkdir(parents=True, exist_ok=True)
             SeqIO.write(_translate_codon_msa(list(SeqIO.parse(str(target_nt), "fasta"))), str(aa_out), "fasta")
-            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stderr=proc.stderr, warnings=warnings, length_before=length_before)
+            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stdout=proc.stdout, tool_stderr=proc.stderr, warnings=warnings, length_before=length_before)
 
     if nt_path is not None and seq_type == "AA":
         aa_out.parent.mkdir(parents=True, exist_ok=True)
@@ -281,7 +290,7 @@ def _trim_one_trimal(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None, 
             wall = wall_aa + wall_nt
             if err_nt or proc_nt is None or proc_nt.returncode != 0:
                 return {"status": "skipped", "input": str(msa_path), "reason": err_nt or _tool_failure_reason("trimal (NT backtrans)", proc_nt.returncode, proc_nt.stderr), "tool_stderr": "" if proc_nt is None else proc_nt.stderr, "wall_time": wall, "tool_cmd": " ".join(cmd_nt)}
-            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd_nt), wall_time=wall, tool_stderr=proc_nt.stderr, warnings=[], length_before=length_before)
+            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd_nt), wall_time=wall, tool_stdout=proc_nt.stdout, tool_stderr=proc_nt.stderr, warnings=[], length_before=length_before)
 
     cmd = _build_trimal_cmd(msa_path, aa_out, method, executable)
     cmd.extend(_split_tool_args(tool_args, "trimal"))
@@ -291,7 +300,7 @@ def _trim_one_trimal(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None, 
     proc, wall, err = _run_cmd(cmd)
     if err or proc is None or proc.returncode != 0:
         return {"status": "skipped", "input": str(msa_path), "reason": err or _tool_failure_reason("trimal", proc.returncode, proc.stderr), "tool_stderr": "" if proc is None else proc.stderr, "wall_time": wall, "tool_cmd": " ".join(cmd)}
-    return _make_success_result(msa_path, aa_out, None, cmd=" ".join(cmd), wall_time=wall, tool_stderr=proc.stderr, warnings=[], length_before=length_before)
+    return _make_success_result(msa_path, aa_out, None, cmd=" ".join(cmd), wall_time=wall, tool_stdout=proc.stdout, tool_stderr=proc.stderr, warnings=[], length_before=length_before)
 
 
 def _infer_kept_columns(original_records: list[SeqRecord], trimmed_records: list[SeqRecord]) -> list[int]:
@@ -361,7 +370,7 @@ def _trim_one_bmge(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None, se
                 return {"status": "skipped", "input": str(msa_path), "reason": str(exc), "tool_stderr": proc.stderr, "wall_time": wall, "tool_cmd": " ".join(cmd)}
             nt_out.parent.mkdir(parents=True, exist_ok=True)
             SeqIO.write(_project_columns_onto_nt_msa(codon_records, kept_cols), str(nt_out), "fasta")
-        return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stderr=proc.stderr, warnings=warnings, length_before=length_before)
+        return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stdout=proc.stdout, tool_stderr=proc.stderr, warnings=warnings, length_before=length_before)
 
 
 def _trim_one_clipkit(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None, nt_path: Path | None, mode: str, seq_type: str, tool_args: str | None, dry_run: bool, executable: str = "clipkit") -> dict[str, Any]:
@@ -387,7 +396,7 @@ def _trim_one_clipkit(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None,
                 return {"status": "skipped", "input": str(msa_path), "reason": err or _tool_failure_reason("clipkit", proc.returncode, proc.stderr), "tool_stderr": "" if proc is None else proc.stderr, "wall_time": wall, "tool_cmd": " ".join(cmd)}
             shutil.copy2(tmp_aa, aa_out)
             SeqIO.write(_project_columns_onto_nt_msa(list(SeqIO.parse(str(nt_path), "fasta")), _parse_clipkit_log(log)), str(nt_out), "fasta")
-            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stderr=proc.stderr, warnings=[], length_before=length_before)
+            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stdout=proc.stdout, tool_stderr=proc.stderr, warnings=[], length_before=length_before)
     if seq_type == "CODON":
         nt_primary = nt_out or aa_out
         if dry_run:
@@ -408,7 +417,7 @@ def _trim_one_clipkit(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None,
                 return {"status": "skipped", "input": str(msa_path), "reason": err or _tool_failure_reason("clipkit", proc.returncode, proc.stderr), "tool_stderr": "" if proc is None else proc.stderr, "wall_time": wall, "tool_cmd": " ".join(cmd)}
             aa_out.parent.mkdir(parents=True, exist_ok=True)
             SeqIO.write(_translate_codon_msa(list(SeqIO.parse(str(nt_primary), "fasta"))), str(aa_out), "fasta")
-            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stderr=proc.stderr, warnings=warnings, length_before=length_before)
+            return _make_success_result(msa_path, aa_out, nt_out, cmd=" ".join(cmd), wall_time=wall, tool_stdout=proc.stdout, tool_stderr=proc.stderr, warnings=warnings, length_before=length_before)
     cmd = _build_clipkit_cmd(msa_path, aa_out, mode, False, None, executable)
     cmd.extend(_split_tool_args(tool_args, "clipkit"))
     if dry_run:
@@ -417,7 +426,7 @@ def _trim_one_clipkit(msa_path: Path, aa_out_dir: Path, nt_out_dir: Path | None,
     proc, wall, err = _run_cmd(cmd)
     if err or proc is None or proc.returncode != 0:
         return {"status": "skipped", "input": str(msa_path), "reason": err or _tool_failure_reason("clipkit", proc.returncode, proc.stderr), "tool_stderr": "" if proc is None else proc.stderr, "wall_time": wall, "tool_cmd": " ".join(cmd)}
-    return _make_success_result(msa_path, aa_out, None, cmd=" ".join(cmd), wall_time=wall, tool_stderr=proc.stderr, warnings=[], length_before=length_before)
+    return _make_success_result(msa_path, aa_out, None, cmd=" ".join(cmd), wall_time=wall, tool_stdout=proc.stdout, tool_stderr=proc.stderr, warnings=[], length_before=length_before)
 
 
 def verify_trim_outputs(aa_path: Path, nt_path: Path | None) -> bool:
@@ -446,12 +455,12 @@ def _detect_seq_type_from_files(files: list[Path], max_files: int = 3) -> str:
 
 
 def _trim_one_worker(args: tuple[Path, Path, Path | None, Path | None, str, str, str, str, str, float, str | None, bool, str, str, str, str]) -> dict[str, Any]:
-    msa_path, aa_out_dir, nt_out_dir, nt_path, tool, seq_type, trimal_method, clipkit_mode, bmge_matrix, bmge_entropy, tool_args, dry_run, trimal_exe, java_exe, bmge_jar, clipkit_exe = args
+    msa_path, aa_out_dir, nt_out_dir, nt_path, tool, seq_type, trimal_method, clipkit_method, bmge_matrix, bmge_entropy, tool_args, dry_run, trimal_exe, java_exe, bmge_jar, clipkit_exe = args
     if tool == "trimal":
         return _trim_one_trimal(msa_path, aa_out_dir, nt_out_dir, nt_path, trimal_method, seq_type, tool_args, dry_run, trimal_exe)
     if tool == "bmge":
         return _trim_one_bmge(msa_path, aa_out_dir, nt_out_dir, seq_type, bmge_matrix, bmge_entropy, tool_args, dry_run, java_exe, bmge_jar)
-    return _trim_one_clipkit(msa_path, aa_out_dir, nt_out_dir, nt_path, clipkit_mode, seq_type, tool_args, dry_run, clipkit_exe)
+    return _trim_one_clipkit(msa_path, aa_out_dir, nt_out_dir, nt_path, clipkit_method, seq_type, tool_args, dry_run, clipkit_exe)
 
 
 def _validate_executable_path(path: Path, tool_name: str) -> Path:
@@ -516,7 +525,7 @@ def _detect_trim_tool_versions(tool: str, trimal_path: Path | None, bmge_path: P
     return {tool: detect(tool)}
 
 
-def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: str = "auto", nt_dir: Path | None = None, trimal_method: str = "automated1", bmge_matrix: str | None = None, bmge_entropy: float = 0.5, clipkit_mode: str = "smart-gap", trimal_path: Path | None = None, bmge_path: Path | None = None, clipkit_path: Path | None = None, threads: int = 4, tool_args: str | None = None, overwrite: bool = False, resume: bool = False, dry_run: bool = False, quiet: bool = False, progress_callback: Callable[[Path], None] | None = None) -> dict[str, Any]:
+def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: str = "auto", nt_dir: Path | None = None, trimal_method: str = "automated1", bmge_matrix: str | None = None, bmge_entropy: float = 0.5, clipkit_method: str = "smart-gap", trimal_path: Path | None = None, bmge_path: Path | None = None, clipkit_path: Path | None = None, threads: int = 4, tool_args: str | None = None, overwrite: bool = False, resume: bool = False, dry_run: bool = False, quiet: bool = False, progress_callback: Callable[[Path], None] | None = None) -> dict[str, Any]:
     from phyloai.core.checkpoint import load_checkpoint, save_checkpoint_atomic, validate_resume_params
     from phyloai.pretree.checkpoint_helpers import build_initial_checkpoint, mark_task, plan_resume
 
@@ -552,12 +561,19 @@ def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: st
     is_dual = nt_dir is not None or resolved_seq_type == "CODON"
     aa_out_dir = output_dir / "seqs" / "faa" if is_dual else output_dir / "seqs"
     nt_out_dir = output_dir / "seqs" / "fna" if is_dual else None
+    logs_dir = output_dir / "logs"
     trimal_exe, java_exe, bmge_jar, clipkit_exe = _resolve_trim_tool_paths(tool, trimal_path, bmge_path, clipkit_path, dry_run)
-    params = {
-        "msa_dir": str(msa_dir), "nt_dir": str(nt_dir) if nt_dir else None, "seq_type": seq_type,
-        "effective_seq_type": "CODON" if bmge_mode4 else resolved_seq_type, "tool": tool,
-        "trimal_method": effective_trimal_method, "bmge_matrix": bmge_matrix, "bmge_entropy": bmge_entropy,
-        "clipkit_mode": clipkit_mode, "threads": threads, "tool_args": tool_args, "output_dir": str(output_dir),
+    params: dict[str, Any] = {
+        "msa_dir": str(msa_dir), "nt_dir": str(nt_dir) if nt_dir else None, "seq_type": resolved_seq_type,
+        "tool": tool, "threads": threads, "tool_args": tool_args, "output_dir": str(output_dir),
+        "overwrite": overwrite, "dry_run": dry_run, "resume": resume, "quiet": quiet,
+        "trimal_method": effective_trimal_method if tool == "trimal" else None,
+        "trimal_path": str(trimal_path) if tool == "trimal" and trimal_path else None,
+        "bmge_matrix": bmge_matrix if tool == "bmge" else None,
+        "bmge_entropy": bmge_entropy if tool == "bmge" else None,
+        "bmge_path": str(bmge_path) if tool == "bmge" and bmge_path else None,
+        "clipkit_method": clipkit_method if tool == "clipkit" else None,
+        "clipkit_path": str(clipkit_path) if tool == "clipkit" and clipkit_path else None,
     }
 
     checkpoint = None
@@ -589,7 +605,7 @@ def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: st
             nt_out_dir.mkdir(parents=True, exist_ok=True)
         checkpoint = build_initial_checkpoint(
             step="pretree.trim",
-            command=f"phyloai pretree trim --msa-dir {msa_dir} --tool {tool} --seq-type {seq_type} --threads {threads}",
+            command=_build_trim_command(params),
             params=params,
             inputs=found,
             output_for=lambda path: aa_out_dir / f"{path.stem}.fa",
@@ -613,13 +629,15 @@ def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: st
             if checkpoint is not None and not dry_run:
                 mark_task(checkpoint, msa_path.stem, status="failed", reason="nt_pairing_missing")
             continue
-        worker_args.append((effective_msa or msa_path, aa_out_dir, nt_out_dir, nt_path_for_gene, tool, "CODON" if bmge_mode4 else resolved_seq_type, effective_trimal_method, clipkit_mode, bmge_matrix, bmge_entropy, tool_args, dry_run, trimal_exe, java_exe, bmge_jar, clipkit_exe))
+        worker_args.append((effective_msa or msa_path, aa_out_dir, nt_out_dir, nt_path_for_gene, tool, "CODON" if bmge_mode4 else resolved_seq_type, effective_trimal_method, clipkit_method, bmge_matrix, bmge_entropy, tool_args, dry_run, trimal_exe, java_exe, bmge_jar, clipkit_exe))
 
     file_results: list[dict[str, Any]] = []
     all_results: list[dict[str, Any]] = []
     dry_cmds: list[str] = []
     last_flush = time.monotonic()
     ckpt_write = checkpoint is not None and to_run_ids and not dry_run
+    if not dry_run:
+        logs_dir.mkdir(parents=True, exist_ok=True)
     to_run_set = set(to_run_ids or [])
     if ckpt_write:
         runnable_ids = {Path(args[0]).stem for args in worker_args}
@@ -657,6 +675,8 @@ def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: st
                     nt_out = Path(result["output_nt"]) if result.get("output_nt") else None
                     if verify_trim_outputs(aa_out, nt_out):
                         file_results.append(result)
+                        if not dry_run:
+                            (logs_dir / f"{gene_path.stem}.log").write_text(result.get("tool_stderr", ""))
                         if ckpt_write and task_id in to_run_set:
                             mark_task(checkpoint, task_id, status="success", reason=None)
                     else:
@@ -675,12 +695,58 @@ def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: st
         save_checkpoint_atomic(checkpoint, ckpt_path, fsync=True)
     if interrupted:
         raise KeyboardInterrupt
-    if not dry_run and all_results:
-        _write_trim_log(output_dir, all_results)
     file_results = resume_success_results + file_results
+    if resume_success_results and not dry_run:
+        log_dir = output_dir / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        for res in resume_success_results:
+            if not res.get("tool_stderr"):
+                locus = Path(res["input"]).stem
+                log_path = log_dir / f"{locus}.log"
+                if not log_path.exists():
+                    log_path.write_text("# resumed from checkpoint — original stderr unavailable\n")
     if not dry_run and not file_results:
         raise ValueError("No genes were trimmed: all input files failed or were skipped.")
     return _build_trim_payload(file_results=file_results, skipped=skipped, params=params, global_warnings=warnings, wall_time=time.monotonic() - start, tool_versions={} if dry_run else _detect_trim_tool_versions(tool, trimal_path, bmge_path, clipkit_path), dry_run_cmds=dry_cmds if dry_run else None)
+
+
+def _build_trim_command(params: dict[str, Any]) -> str:
+    parts = ["phyloai", "pretree", "trim"]
+    parts.extend(["--msa-dir", str(params["msa_dir"])])
+    parts.extend(["--output-dir", str(params["output_dir"])])
+    parts.extend(["--tool", str(params["tool"])])
+    parts.extend(["--seq-type", str(params["seq_type"])])
+    parts.extend(["--threads", str(params["threads"])])
+    if params.get("nt_dir"):
+        parts.extend(["--nt-dir", str(params["nt_dir"])])
+    tool = params.get("tool", "")
+    if tool == "trimal":
+        if params.get("trimal_method"):
+            parts.extend(["--trimal-method", str(params["trimal_method"])])
+        if params.get("trimal_path"):
+            parts.extend(["--trimal-path", str(params["trimal_path"])])
+    elif tool == "bmge":
+        parts.extend(["--bmge-entropy", str(params["bmge_entropy"])])
+        if params.get("bmge_matrix"):
+            parts.extend(["--bmge-matrix", str(params["bmge_matrix"])])
+        if params.get("bmge_path"):
+            parts.extend(["--bmge-path", str(params["bmge_path"])])
+    elif tool == "clipkit":
+        if params.get("clipkit_method"):
+            parts.extend(["--clipkit-method", str(params["clipkit_method"])])
+        if params.get("clipkit_path"):
+            parts.extend(["--clipkit-path", str(params["clipkit_path"])])
+    if params.get("tool_args"):
+        parts.extend(["--tool-args", params["tool_args"]])
+    if params.get("overwrite"):
+        parts.append("--overwrite")
+    if params.get("resume"):
+        parts.append("--resume")
+    if params.get("dry_run"):
+        parts.append("--dry-run")
+    if params.get("quiet"):
+        parts.append("--quiet")
+    return " ".join(parts)
 
 
 def _build_trim_payload(*, file_results: list[dict[str, Any]], skipped: list[dict[str, str]], params: dict[str, Any], global_warnings: list[str], wall_time: float, tool_versions: dict[str, str], dry_run_cmds: list[str] | None = None) -> dict[str, Any]:
@@ -692,15 +758,31 @@ def _build_trim_payload(*, file_results: list[dict[str, Any]], skipped: list[dic
 
     removed = [round((r["length_before"] - r["length_after"]) / r["length_before"] * 100, 1) for r in file_results if r.get("length_before")]
     is_dry = dry_run_cmds is not None
+    files = []
+    for r in file_results:
+        locus = Path(r["input"]).stem
+        tool_cmd = r.get("tool_cmd", "")
+        entry = {
+            "gene": locus,
+            "length_before": r.get("length_before", 0),
+            "length_after": r.get("length_after", 0),
+            "columns_removed": r.get("length_before", 0) - r.get("length_after", 0),
+            "outputs": [out for out in [r.get("output_aa"), r.get("output_nt")] if out],
+            "log_file": f"logs/{locus}.log",
+        }
+        if tool_cmd:
+            entry["cmd"] = shlex.split(tool_cmd)
+            entry["wall_time"] = r.get("wall_time", 0.0)
+        files.append(entry)
     return {
         "status": "success" if file_results or is_dry else "error",
-        "command": f"phyloai pretree trim --msa-dir {params['msa_dir']} --tool {params['tool']} --seq-type {params['seq_type']}",
+        "command": _build_trim_command(params),
         "wall_time": wall_time,
         "tool_versions": tool_versions,
         "params": params,
         "key_results": {"total_genes": len(file_results) + len(skipped), "trimmed_genes": len(file_results), "skipped_genes": len(skipped), "skipped_reasons": _count_reasons(skipped), "length_before": stats(before), "length_after": stats(after), "columns_removed_pct": stats(removed)},
         "error": None if file_results or is_dry else "No genes were trimmed.",
-        "data": {"mode": _determine_mode(params), "summary": {"n_input_files": len(file_results) + len(skipped) if not is_dry else len(file_results) + len(skipped) + len(dry_run_cmds), "n_trimmed": len(file_results), "n_skipped": len(skipped)}, "skipped": [{"gene": Path(s["path"]).stem, "reason": s["reason"]} for s in skipped], "warnings": global_warnings, "dry_run_cmds": dry_run_cmds or [], "per_gene": [{"gene": Path(r["input"]).stem, "length_before": r.get("length_before", 0), "length_after": r.get("length_after", 0), "columns_removed": r.get("length_before", 0) - r.get("length_after", 0), "outputs": [out for out in [r.get("output_aa"), r.get("output_nt")] if out]} for r in file_results]},
+        "data": {"mode": _determine_mode(params), "summary": {"n_input_files": len(file_results) + len(skipped) if not is_dry else len(file_results) + len(skipped) + len(dry_run_cmds), "n_trimmed": len(file_results), "n_skipped": len(skipped)}, "skipped": [{"gene": Path(s["path"]).stem, "reason": s["reason"]} for s in skipped], "warnings": global_warnings, "dry_run_cmds": dry_run_cmds or [], "files": files},
     }
 
 
@@ -719,6 +801,8 @@ def _results_from_checkpoint_successes(checkpoint: Checkpoint, exclude: set[str]
                 "input": task.input,
                 "output_aa": str(aa_path),
                 "output_nt": str(nt_path) if nt_path else None,
+                "tool_cmd": "",
+                "tool_stderr": "",
                 "length_before": _read_msa_col_count(Path(task.input)),
                 "length_after": _read_msa_col_count(aa_path),
                 "wall_time": 0.0,
@@ -737,24 +821,13 @@ def _count_reasons(skipped: list[dict[str, str]]) -> dict[str, int]:
 
 
 def _determine_mode(params: dict[str, Any]) -> str:
-    if params.get("effective_seq_type") == "CODON":
+    if params.get("nt_dir") and params.get("bmge_matrix") is not None:
         return "CODON"
     if params.get("nt_dir"):
         return "AA+NT"
-    if params.get("effective_seq_type") == "NT":
+    if params.get("seq_type") == "NT":
         return "NT-only"
     return "AA-only"
-
-
-def _write_trim_log(output_dir: Path, tool_results: list[dict[str, Any]]) -> None:
-    log_path = output_dir / "trim.log"
-    with open(log_path, "a") as fh:
-        for res in tool_results:
-            fh.write(f"{'=' * 60}\ntimestamp:  {datetime.datetime.now().isoformat(timespec='seconds')}\ninput:      {res.get('input')}\ncmd:        {res.get('tool_cmd', res.get('cmd', ''))}\nstatus:     {res.get('status')}\nwall_time:  {res.get('wall_time', 0.0):.2f}s\n")
-            if res.get("reason"):
-                fh.write(f"reason:     {res['reason']}\n")
-            if res.get("tool_stderr"):
-                fh.write(f"--- stderr ---\n{res['tool_stderr']}\n")
 
 
 def render_trim_summary_table(summary: dict[str, Any]) -> Table:

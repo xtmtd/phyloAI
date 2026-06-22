@@ -339,7 +339,6 @@ runs/tree/ml/iqtree/
 │   ├── <gene2>.iqtree
 │   └── <gene2>.log
 ├── checkpoint.json
-├── iqtree.log                     # PhyloAI run log
 └── result.json
 ```
 
@@ -360,8 +359,7 @@ runs/tree/ml/iqtree/
 ├── <prefix_or_stem>.sitelh           # if -wslr
 ├── <prefix_or_stem>.ufboot           # if --boot
 ├── ... (all IQ-TREE native outputs)
-├── iqtree.log                        # PhyloAI run log
-└── result.json
+└── result.json                       # data.tool_stderr inlined (single pattern)
 ```
 
 Single mode uses `--prefix` if provided, otherwise the matrix file stem.
@@ -450,6 +448,8 @@ For `--modelfinder MF` (model-only) tasks, `output_tree` is `None`; success is d
       "mean_wall_time": 12.3,
       "mode": "--msa-dir"
     },
+    "cmd": ["iqtree3", "-s", "matrix.aa.fa", "--prefix", "matrix.aa", "-m", "MFP", "-B", "1000", "-T", "5"],
+    "tool_stderr": "# single mode: stderr inlined; null for batch",
     "files": [
       {
         "input": "/path/to/gene1.fa",

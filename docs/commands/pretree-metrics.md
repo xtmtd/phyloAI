@@ -83,7 +83,7 @@ phyloai pretree metrics correlate \
 | `--skip-pairwise-identity` | off | Skip `average_pairwise_identity`; recommended for markers with many taxa. |
 | `--round` | `6` | Decimal places for numeric CSV values; range 0-12. |
 | `--table-format` | `csv` | Table format for auxiliary tabular outputs: `csv` or `tsv`. All auxiliary tables (`metrics`, `basic_statistics`, `correlation_matrix`) use the same format. |
-| `--output-dir`, `-o` | `runs/pretree/metrics` | Output directory for the metrics table, plots, correlation outputs, `result.json`, and `metrics.log`. |
+| `--output-dir`, `-o` | `runs/pretree/metrics` | Output directory for the metrics table, plots, correlation outputs, and `result.json`. |
 | `--threads`, `-t` | `4` | Worker process count; must be at least 1. |
 | `--dry-run` | off | Validate inputs and show planned work without writing files. |
 | `--overwrite` | off | Delete and recreate a non-empty output directory. |
@@ -162,7 +162,6 @@ All auxiliary tables follow `--table-format` (default `csv`, producing `.csv` fi
 | `correlate/correlation_heatmap.pdf` | Default compact correlation heatmap from core numeric metrics. |
 | `correlate/correlation_matrix.csv` (or `.tsv`) | Correlation matrix with metric names as row and column labels. |
 | `result.json` | Structured status, parameters, key counts, warnings, and data paths. |
-| `metrics.log` | Per-run parameters, warning collection, wall time, and exit code. |
 
 ### Important `metrics.csv` columns
 

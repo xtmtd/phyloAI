@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-21 (renamed concordance → cf, updated tree cf CLI surface)  
+**Last updated:** 2026-06-21 (extracted JSON output details to `2026-06-21-phyloai-json-output-standard.md`; Section 9.4 slimmed to reference)  
 **Status:** Approved for implementation
 
 ---
@@ -41,7 +41,7 @@ phyloai/
 │   ├── runner.py       # unified external tool call interface, timeout, retry
 │   ├── formats.py      # format detection & conversion (FASTA/Nexus/Phylip/Phylip-PAML)
 │   ├── schema.py       # shared data structures (MSACollection, TreeSet, RunRecord)
-│   └── logger.py       # per-step log file writer for command output dirs
+│   └── logger.py       # per-task log writer under output-dir/logs/; single-mode stderr to result.json
 │
 ├── pretree/
 │   ├── convert.py      # format conversion between FASTA/Phylip/Nexus/Phylip-PAML
@@ -194,35 +194,53 @@ Summary:
 ```
 runs/
 ├── pretree/
-│   ├── align/
+│   ├── 1-convert/                 # utility: no log, no checkpoint
+│   │   ├── result.json
+│   │   └── seqs/
+│   ├── 2-align/                   # batch: per-locus logs under logs/
+│   │   ├── result.json
+│   │   ├── checkpoint.json
 │   │   ├── seqs/
-│   │   ├── align.log
+│   │   └── logs/
+│   │       └── <locus>.log
+│   ├── 3-stats/                   # utility: no log, no checkpoint
 │   │   └── result.json
-│   ├── trim/
+│   ├── 4-trim/                    # batch: per-locus logs under logs/
+│   │   ├── result.json
+│   │   ├── checkpoint.json
 │   │   ├── seqs/
-│   │   ├── trim.log
-│   │   └── result.json
-│   ├── metrics/
-│   │   ├── metrics.log
-│   │   └── result.json
-│   ├── filter/
+│   │   └── logs/
+│   │       └── <locus>.log
+│   ├── 5-metrics/                 # batch: no per-locus logs (pure Python)
+│   │   ├── result.json
+│   │   ├── metrics.csv
+│   │   └── logs/
+│   │       └── <marker>.log
+│   ├── 6-filter/                  # subcommands vary; batch write logs/
 │   │   ├── taper/
+│   │   │   ├── result.json
 │   │   │   ├── seqs/
-│   │   │   ├── filter.log
-│   │   │   └── result.json
+│   │   │   └── logs/
 │   │   ├── treeshrink/
 │   │   ├── metrics/
+│   │   ├── symtest/
 │   │   └── cluster/
-│   └── concat/
-│       ├── concat.log
-│       └── result.json
+│   └── concat/                    # single: stderr in result.json
+│       ├── result.json
+│       ├── matrix.fa
+│       └── matrix.partitions
 ├── tree/
 │   ├── ml/
-│   │   ├── iqtree/
-│   │   └── fasttree/
+│   │   ├── fasttree/              # batch: per-locus logs under gene_trees/logs/
+│   │   │   ├── result.json
+│   │   │   ├── gene_trees/
+│   │   │   │   ├── trees/
+│   │   │   │   └── logs/
+│   │   │   └── ml/                # single (--matrix): stderr in result.json
+│   │   └── iqtree/                # batch or single; logs/ for batch
 │   ├── bi/phylobayes/
-│   ├── msc/
-│   └── cf/
+│   ├── msc/                       # single: tool_stderr in result.json
+│   └── cf/                        # single: tool_stderr in result.json
 ├── posttree/
 │   ├── topology/
 │   ├── dating/
@@ -235,7 +253,23 @@ runs/
     └── run_record.yaml
 ```
 
-Log file content per step: tool version, full command, stderr, wall time, exit code, and stdout only when stdout is diagnostic text. Commands must not duplicate large primary data streams in logs. Pipelines writing multiple outputs under a subdirectory (e.g., `seqs/`) place the log in the output directory root alongside `result.json`.
+### 6.1 `result.json` — the single source of truth
+
+Every non-`doctor` command writes exactly one `result.json` at its output directory root. The `result.json` is the only file the report module and MCP server read. There is no separate top-level `<step>.log` file.
+
+### 6.2 Tool stderr handling
+
+How tool stderr is preserved depends on the command's execution mode:
+
+**Batch mode** (align, trim, filter, fasttree, iqtree — commands that invoke external tools per task): Each batch task writes its tool stderr to `<output-dir>/logs/<locus>.log`. The `result.json` references these files via `data.files[].log_file` but does not inline stderr. This keeps `result.json` compact and lets users `grep` individual locus logs when debugging. Pure-Python batch commands (`metrics`, `filter metrics`, `filter cluster`) invoke no external tools and omit `cmd`/`log_file` per the JSON Output Standard.
+
+**Single mode** (concat, msc, cf): The tool's full stderr is inlined in `result.json` as `data.tool_stderr`. There is no external log file. The single-invocation stderr volume is bounded and benefits from being directly queryable in JSON.
+
+**Utility commands** (convert, stats): No log files are written. These commands either do not invoke external tools or are read-only.
+
+### 6.3 Checkpoint files
+
+Batch pipeline commands (`align`, `trim`, `fasttree`, `iqtree`) write `checkpoint.json` alongside `result.json` for resume support. Single-mode and utility commands do not use checkpoints.
 
 ---
 
@@ -304,12 +338,12 @@ This section defines binding conventions for all subcommand implementations. Per
 
 ### 9.4 JSON Output Schema
 
-Every command writes a JSON result file to its output directory:
+Every command writes a JSON result file to its output directory. All fields up to and including `error` are required and genre-neutral. `data` is command-specific.
 
 ```json
 {
   "status": "success | error",
-  "command": "phyloai pretree align ...",
+  "command": "phyloai pretree align --seq-dir ./raw --method linsi --threads 8",
   "wall_time": 142.3,
   "tool_versions": {"mafft": "7.520"},
   "params": { },
@@ -319,16 +353,30 @@ Every command writes a JSON result file to its output directory:
 }
 ```
 
-- `params`: all resolved input parameters
-- `key_results`: quantitative outputs for report integration; empty `{}` for utility commands
-- `tool_versions`: version string for every external tool invoked
-- `error`: null on success; error message string on failure
-- `data`: command-specific detailed results
+**Field definitions:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `status` | yes | `"success"` or `"error"` |
+| `command` | yes | **Full CLI invocation string** with all resolved arguments (see 9.4.1) |
+| `wall_time` | yes | Total wall-clock seconds (float) |
+| `tool_versions` | yes | `{tool_name: version}` for every external tool invoked; `{}` if none |
+| `params` | yes | All resolved input parameters (see 9.4.2) |
+| `key_results` | yes | Quantitative outputs for report integration; `{}` for utility commands |
+| `error` | yes | `null` on success; error message string on failure |
+| `data` | yes | Command-specific detailed results (see `2026-06-21-phyloai-json-output-standard.md`) |
 
 All commands follow the same output convention:
 1. `result.json` always at output directory root
 2. Data files alongside `result.json`, or in `seqs/` subdirectory for sequence outputs
 3. Auxiliary files alongside `result.json`
+
+Detailed field semantics, batch/single structural patterns, per-module requirements, and testing assertions are in the **JSON Output Standard**: `docs/superpowers/specs/2026-06-21-phyloai-json-output-standard.md`. Key rules in brief:
+
+- `command`: full CLI invocation string with all resolved arguments.
+- `params`: all parameters in resolved form. Order unspecified; key by name.
+- `data`: follows either the **batch pattern** (`data.files[]` with per-task `cmd` and `log_file`) or the **single pattern** (`data.cmd`, `data.tool_stderr` inlined). Batch external-tool stderr is written to `logs/<locus>.log`, never inlined. Single-mode stderr is inlined; no external log file.
+- Tool stderr stores raw text only; summaries belong in `warnings` or `data.summary`.
 
 ### 9.5 Output Directory Conflict and Resume Policy
 
@@ -346,9 +394,15 @@ Detailed checkpoint schema: `docs/superpowers/specs/2026-06-12-checkpoint-resume
 - Resume-aware progress bars display remaining work, not historical work
 - Non-`doctor` commands always write structured output to `result.json`; no text/json stdout switch
 - `--quiet` suppresses all terminal output except errors
-- Pipeline commands write `<step>.log` to their output directory alongside `result.json`. Logs are appended on retry/resume. On `--overwrite`, the log is recreated
 - Every CLI command provides high-readability `--help` text
 - When a command writes output files, terminal output states what was saved and where
+
+**Tool stderr model** (see also Section 6.2):
+
+- **Batch commands** (align, trim, filter, fasttree, iqtree per-gene) that invoke external tools: each task's tool stderr is written to `<output-dir>/logs/<locus>.log`. The `result.json` references these via `data.files[].log_file`. Per-task stderr is NOT duplicated in `result.json`. Pure-Python batch commands (`metrics`, `filter metrics`, `filter cluster`) invoke no external tools per task; they omit both `files[].cmd` and `files[].log_file`.
+- **Single commands** (concat, msc, cf): tool stderr is inlined in `result.json` as `data.tool_stderr`. No external log file is written.
+- **Utility commands** (convert, stats): no log files are written.
+- On `--resume`: per-task log files are appended with a `=== RESUME ... ===` separator. On `--overwrite`: the `logs/` directory is deleted and recreated.
 
 ### 9.7 Shared File Matching Policy
 
@@ -390,7 +444,7 @@ PhyloAI generates tool flags for its own managed parameters (model, bootstrap, p
 
 ### 9.11 FASTA Line Wrapping Policy
 
-All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 characters. Applies to `pretree convert`, `pretree align`, `pretree trim`, and `pretree concat` outputs. PHYLIP and NEXUS outputs keep their format-specific serialization rules.
+All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 characters. Applies to `pretree convert`, `pretree align`, `pretree trim`, `pretree concat`, and `pretree filter` (all subcommands) outputs. PHYLIP and NEXUS outputs keep their format-specific serialization rules. Externally-tool-generated output files (e.g., raw TAPER stdout) are reformatted to 60-char wrapping by PhyloAI before saving.
 
 ---
 
@@ -422,9 +476,11 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 1. `result.json` output for all non-`doctor` commands
 2. Output directory follows Section 6
 3. Conflict policy follows Section 9.5
-4. Log file written as `<step>.log` for pipeline commands
+4. Tool stderr handled per Section 6.2 and 9.6 (batch: `logs/<locus>.log`; single: `data.tool_stderr` inlined; utility: no logs)
 5. JSON schema follows Section 9.4
 6. Exit codes follow Section 9.3
+
+Testing for `result.json` structural compliance follows the assertions in `docs/superpowers/specs/2026-06-21-phyloai-json-output-standard.md` Section 8.
 
 Modules within each phase can be developed in parallel. Phases are strictly sequential.
 

@@ -12,7 +12,7 @@ def test_build_initial_checkpoint_tree(tmp_path: Path) -> None:
 
     ck = build_initial_checkpoint(
         step="tree.ml.fasttree",
-        command="phyloai tree ml fasttree --msa-dir /data",
+        command="phyloai tree ml fasttree --msa-dir /data --output-dir /out --seq-type AA --model LG --mode normal --boot 1000 --cat 20 -t 4",
         params={"seq_type": "AA", "model": "lg"},
         inputs=inputs,
         trees_dir=trees_dir,
@@ -36,7 +36,7 @@ def test_mark_task_updates_checkpoint(tmp_path: Path) -> None:
     inputs = [Path("/data/gene1.fa")]
     ck = build_initial_checkpoint(
         step="tree.ml.fasttree",
-        command="cmd",
+        command="phyloai tree ml fasttree --msa-dir /data --output-dir /out --seq-type AA --model LG",
         params={},
         inputs=inputs,
         trees_dir=Path("/out/trees"),
@@ -97,7 +97,7 @@ def test_plan_resume_splits_tasks(tmp_path: Path) -> None:
     inputs = [Path("/data/g1.fa"), Path("/data/g2.fa"), Path("/data/g3.fa")]
     ck = build_initial_checkpoint(
         step="tree.ml.fasttree",
-        command="cmd",
+        command="phyloai tree ml fasttree --msa-dir /data --output-dir /out --seq-type AA --model LG",
         params={},
         inputs=inputs,
         trees_dir=tmp_path / "trees",
@@ -124,7 +124,7 @@ def test_plan_resume_all_succeeded_skips_all(tmp_path: Path) -> None:
     inputs = [Path("/data/g1.fa"), Path("/data/g2.fa")]
     ck = build_initial_checkpoint(
         step="tree.ml.fasttree",
-        command="cmd",
+        command="phyloai tree ml fasttree --msa-dir /data --output-dir /out --seq-type AA --model LG",
         params={},
         inputs=inputs,
         trees_dir=tmp_path / "trees",
