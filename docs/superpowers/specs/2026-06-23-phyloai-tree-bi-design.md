@@ -248,9 +248,9 @@ For N chains, run:
 - **All chains:** `bpcomp -x <burnin> -o convergence/bpcomp_all chains/chain1 chains/chain2 ...`
 - **All pairwise combinations:** `bpcomp -x <burnin> -o convergence/bpcomp_chain1_chain2 chains/chain1 chains/chain2` (etc.)
 
-Output files per invocation (per pb_mpi manual section 6.2): `<basename>.bpcomp` (summary), `<basename>.bplist` (bipartition list), `<basename>.con.tre` (consensus tree).
+Output files per invocation (per pb_mpi manual section 6.2): `<basename>.bpdiff` (summary), `<basename>.bplist` (bipartition list), `<basename>.con.tre` (consensus tree). PhyloAI's parser reads `.bpdiff` for the maxdiff/meandiff summary.
 
-Parse from `.bpcomp`: `maxdiff` and `meandiff` lines.
+Parse from `.bpdiff`: `maxdiff` and `meandiff` lines.
 
 ### 4.3 tracecomp Invocations
 
