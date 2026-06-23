@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any
 
 from phyloai.core.env import ToolEnv
+from phyloai.core.iqtree import (
+    _resolve_iqtree_path,
+    _detect_iqtree_version,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -378,46 +382,6 @@ def _build_wastral_qcf_cmd(
         "--mode", "4",
         "-t", str(threads),
     ]
-
-
-# ---- Tool resolution & version detection ------------------------------
-
-
-def _resolve_iqtree_path(iqtree_path: str | None, dry_run: bool) -> str:
-    """Resolve iqtree3 executable path (always returns absolute)."""
-    if iqtree_path:
-        p = Path(iqtree_path).resolve()
-        if not p.exists():
-            raise ValueError(f"--iqtree-path does not exist: {iqtree_path}")
-        if not os.access(str(p), os.X_OK):
-            raise ValueError(f"--iqtree-path is not executable: {iqtree_path}")
-        return str(p)
-    if dry_run:
-        return "iqtree3"
-    try:
-        env = ToolEnv()
-        return str(env.require("iqtree3"))
-    except FileNotFoundError:
-        raise FileNotFoundError(
-            "iqtree3 not found. Install from https://github.com/iqtree/iqtree3/releases "
-            "or use --iqtree-path."
-        )
-
-
-def _detect_iqtree_version(executable: str) -> dict[str, str]:
-    """Detect iqtree3 version via --version."""
-    try:
-        proc = subprocess.run(
-            [executable, "--version"],
-            capture_output=True, text=True, timeout=10,
-        )
-        output = proc.stdout + proc.stderr
-        m = _re.search(r"version\s+(\S+)", output)
-        if m:
-            return {"iqtree3": m.group(1)}
-    except Exception:
-        pass
-    return {"iqtree3": "unknown"}
 
 
 def _resolve_wastral_path(wastral_path: str | None, dry_run: bool) -> str:
