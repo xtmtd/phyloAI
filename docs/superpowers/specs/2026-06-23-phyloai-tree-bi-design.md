@@ -88,13 +88,13 @@ To stop a forever-running chain: use Ctrl+C (phyloai sends soft-stop), or direct
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `--resume [CHAINS]` | optional str | Resume existing chains from their current state. No value = resume all chains found in `output-dir/chains/`. Comma-separated names = resume only those chains (e.g. `--resume chain1,chain3`). Resume uses the native pb_mpi mechanism: `mpirun -np <threads> pb_mpi <chainname>` (no `-d` or model flags; pb_mpi reads from `.chain` file). The `--nsamples` limit from the original run is respected if the chain has not yet reached it; resumed chains also run forever if `--nsamples -1`. |
+| `--resume [CHAINS]` | optional str | Resume existing chains from their current state. No value = resume all chains listed in `run_state.json`. Comma-separated names = resume only those chains (e.g. `--resume chain1,chain3`). Resume uses the native pb_mpi mechanism: `mpirun -np <threads> pb_mpi <chainname>` (no `-d` or model flags; pb_mpi reads from `.chain` file). The `--nsamples` target from the original run (stored in `run_state.json`) is enforced by phyloai: chains already at target are skipped; running chains receive a soft-stop when they reach the target. Click implementation: `@click.option('--resume', default=None, is_flag=False, flag_value='__ALL__', help='...')` — absent = `None`, bare `--resume` = `'__ALL__'`, `--resume chain1,chain2` = `'chain1,chain2'`. |
 
 #### Tool
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `--pb-path` | Path | None | Directory containing `pb_mpi`, `bpcomp`, `tracecomp`, and `readpb_mpi`. Overrides PATH lookup for all four tools simultaneously. |
+| `--pb-path` | Path | None | Directory containing PhyloBayes tools. Overrides PATH lookup for `pb_mpi`, `bpcomp`, and `tracecomp` (required by this command) and optionally `readpb_mpi` if present. Does not require `readpb_mpi` to exist. |
 | `--dry-run` | flag | False | Print all commands without executing. |
 | `-q, --quiet` | flag | False | Suppress terminal output (progress display and convergence statistics). |
 | `--help` | — | — | Show help and exit. |
@@ -161,8 +161,9 @@ click.rich_click.OPTION_GROUPS["phyloai tree bi"] = [
 2. Detect tools: `pb_mpi`, `bpcomp`, `tracecomp`, `mpirun` via `ToolEnv`. `require()` raises `FileNotFoundError` (exit code 3) if any is missing. `readpb_mpi` is registered but not required at this stage.
 3. Prepare output directory: if `--overwrite`, delete and recreate. If directory exists and is non-empty without `--overwrite`, raise `ValueError` (exit code 1) — unless `--resume` is set or `--chain-names` adds new chains only.
 4. Create subdirectories: `output_dir/chains/`, `output_dir/convergence/`.
-5. Build and launch all chain processes in parallel (`subprocess.Popen`), working directory = `output_dir/chains/`.
-6. Enter monitoring loop.
+5. Write `output_dir/run_state.json` (fresh run only; not overwritten on resume). This file persists parameters needed for resume (see Section 3.4).
+6. Build and launch all chain processes in parallel (`subprocess.Popen`), working directory = `output_dir/chains/`.
+7. Enter monitoring loop.
 
 ### 3.2 Chain Commands
 
@@ -186,11 +187,32 @@ mpirun -np <threads> pb_mpi <chainname>
 
 No `-d` or model flags. pb_mpi reads all settings from the existing `.chain` file.
 
-### 3.3 Monitoring Loop
+### 3.3 run_state.json
+
+Written at fresh launch to `output_dir/run_state.json`. Never overwritten on resume.
+
+```json
+{
+  "chain_names": ["chain1", "chain2", "chain3"],
+  "matrix": "/abs/path/matrix.phy",
+  "model_flags": ["-cat", "-gtr", "-dgam", "4"],
+  "sample_freq": 1,
+  "nsamples": 10000,
+  "threads": 4
+}
+```
+
+On `--resume`:
+1. Read `run_state.json` to obtain `nsamples` and `chain_names`.
+2. For each chain to resume: read its `.trace` file to get current length. If `nsamples != -1` and `current_length >= nsamples`, skip that chain (already complete) and print `"chain1: already at target (6420 >= 10000 samples), skipping"`.
+3. Launch remaining chains with resume command.
+4. If `nsamples != -1`: monitor loop schedules a soft-stop for each chain once its trace length reaches `nsamples` (checked on each 60-second poll). This enforces the original target even though the native pb_mpi resume command has no `until` argument.
+
+### 3.4 Monitoring Loop
 
 The main thread runs a monitoring loop while chain subprocesses are alive:
 
-**Every 60 seconds:** Poll each chain's `.trace` file (count lines minus header) to update the progress display.
+**Every 60 seconds:** Poll each chain's `.trace` file to update the progress display. Trace length = number of complete, newline-terminated non-header lines. Return 0 if file is absent, header-only, or contains only blank/partial lines. Never return negative values.
 
 **Every `--monitor-freq` new samples** (measured as: `min_chain_length - last_check_length >= monitor_freq`): trigger a convergence check (Section 4).
 
@@ -210,20 +232,22 @@ Check fires when `min(chain_lengths) - last_check_min >= monitor_freq`.
 
 ### 4.2 bpcomp Invocations
 
+All convergence commands run with working directory `output_dir` (not `output_dir/chains/`). Chain files are referenced as `chains/chain1`, trace files as `chains/chain1.trace`, and outputs written to `convergence/<basename>`.
+
 For N chains, run:
-- **All chains:** `bpcomp -x <burnin> -o ../convergence/bpcomp_all chains/chain1 chains/chain2 ...`
-- **All pairwise combinations:** `bpcomp -x <burnin> -o ../convergence/bpcomp_chain1_chain2 chains/chain1 chains/chain2` (etc.)
+- **All chains:** `bpcomp -x <burnin> -o convergence/bpcomp_all chains/chain1 chains/chain2 ...`
+- **All pairwise combinations:** `bpcomp -x <burnin> -o convergence/bpcomp_chain1_chain2 chains/chain1 chains/chain2` (etc.)
 
-Output files per invocation: `<basename>.bpdiff`, `<basename>.bplist`, `<basename>.con.tre`.
+Output files per invocation (per pb_mpi manual section 6.2): `<basename>.bpcomp` (summary), `<basename>.bplist` (bipartition list), `<basename>.con.tre` (consensus tree).
 
-Parse from `.bpdiff`: `maxdiff` and `meandiff` lines.
+Parse from `.bpcomp`: `maxdiff` and `meandiff` lines.
 
 ### 4.3 tracecomp Invocations
 
-- **All chains:** `tracecomp -x <burnin> chains/chain1.trace chains/chain2.trace ... > ../convergence/tracecomp_all.contdiff`
-- **All pairwise combinations:** `tracecomp -x <burnin> chains/chain1.trace chains/chain2.trace > ../convergence/tracecomp_chain1_chain2.contdiff` (etc.)
+- **All chains:** `tracecomp -x <burnin> chains/chain1.trace chains/chain2.trace ...` (output written to stdout, captured to `convergence/tracecomp_all.contdiff` via subprocess stdout pipe)
+- **All pairwise combinations:** same pattern, output captured to `convergence/tracecomp_chain1_chain2.contdiff` (etc.)
 
-Note: `tracecomp` takes `.trace` filenames (with extension), `bpcomp` takes chain names (without extension).
+Note: `tracecomp` takes `.trace` filenames (with extension), `bpcomp` takes chain names (without extension). Both run from `output_dir`.
 
 Parse from `.contdiff`: extract `effsize` (minimum across all parameters) and `rel_diff` (maximum across all parameters).
 
@@ -245,9 +269,11 @@ The command does **not** auto-stop chains.
 
 ### 4.5 trace_plots.pdf Generation
 
-On each convergence check (unless `--no-plot`), read all `.trace` files and regenerate `convergence/trace_plots.pdf` using `matplotlib`. One page per parameter column found in the trace file (e.g. `loglik`, `length`, `alpha`, `Nmode`, `statent`, `statalpha`, `rrent`, `rrmean`). Each page shows one line per chain (distinct colors), x-axis = iteration, y-axis = parameter value. A vertical dashed line marks the current burn-in position.
+On each convergence check (unless `--no-plot`), read all `.trace` files and regenerate `convergence/trace_plots.pdf` using `matplotlib`. **All parameter columns** in the trace file are plotted — one page per column, derived dynamically from the header row (skipping `iter` and `time`). Each page shows one line per chain (distinct colors), x-axis = iteration, y-axis = parameter value. A vertical dashed line marks the current burn-in position.
 
-File is overwritten on each update. Users can open it in any PDF viewer; refreshing the viewer shows the latest state.
+The parameter set is determined at first check from the header of any available `.trace` file; all chains are expected to share the same columns.
+
+PDF generation runs after convergence statistics are printed (non-blocking relative to chain supervision). File is overwritten on each update. Users can open it in any PDF viewer; refreshing shows the latest state.
 
 If `matplotlib` is not installed, skip silently and print once: `"matplotlib not available; trace plots disabled."`.
 
@@ -292,7 +318,7 @@ Uses `rich.live.Live` for the upper progress section; convergence statistics are
 ───────────────────────────────────────────────────────────────────────────────────
 ```
 
-Status symbols: `✓ good`, `~ ok`, `✗ not converged`.
+Status labels use ASCII for compatibility: `[good]`, `[ok]`, `[not converged]`. Rich renders these as plain text; no Unicode glyphs required.
 
 ### 5.2 Ctrl+C Soft-Stop
 
@@ -326,7 +352,7 @@ runs/tree/bi/
 │   └── chain3.{trace,...}
 │
 ├── convergence/
-│   ├── trace_plots.pdf              # Trace parameter plots (updated each check)
+│   ├── trace_plots.pdf              # All trace parameters, one page per column (updated each check)
 │   ├── bpcomp_all.bpdiff            # All-chain bpcomp summary
 │   ├── bpcomp_all.bplist            # All-chain bipartition list
 │   ├── bpcomp_all.con.tre           # Consensus tree from all chains
@@ -438,7 +464,7 @@ Follows the JSON output standard (`2026-06-21-phyloai-json-output-standard.md`).
 
 **Notes:**
 - `data.chain_cmds` records the actual argv lists executed (fresh run format or resume format).
-- `data.tool_stderr` captures each chain's stderr (pb_mpi writes most output to stdout which goes to terminal; stderr is typically empty or contains error messages only).
+- `data.tool_stderr` contains merged stdout+stderr per chain (per JSON standard section 5.3: field name is legacy but content is merged output). pb_mpi writes diagnostics to stdout; both streams are captured and written to `chains/<chainname>.log`. The `tool_stderr` field in result.json holds this merged content (or references the log file if content is large). The JSON standard `tool_log` field may also be used: `"tool_logs": {"chain1": "chains/chain1.log", ...}`.
 - `data.interrupted`: `true` if stopped via Ctrl+C before reaching `--nsamples`; `false` if chains exited normally.
 - `status: "success"` for both normal exit and Ctrl+C soft-stop. `status: "error"` only if pb_mpi exits with non-zero return code.
 - `tool_versions.pb_mpi/bpcomp/tracecomp`: detected by searching for version-bearing files (e.g. `pb_mpiManual*.pdf`, `VERSION`, `CHANGELOG`) in the tool's parent directory using glob + regex. Falls back to `null` if not found.
@@ -492,11 +518,14 @@ When a pb tool is found, attempt to detect version by:
 ```python
 if pb_path:
     tool_paths = {
-        "pb_mpi":     pb_path / "pb_mpi",
-        "bpcomp":     pb_path / "bpcomp",
-        "tracecomp":  pb_path / "tracecomp",
-        "readpb_mpi": pb_path / "readpb_mpi",
+        "pb_mpi":    pb_path / "pb_mpi",
+        "bpcomp":    pb_path / "bpcomp",
+        "tracecomp": pb_path / "tracecomp",
     }
+    # readpb_mpi registered only if present; not required for tree bi
+    readpb = pb_path / "readpb_mpi"
+    if readpb.exists():
+        tool_paths["readpb_mpi"] = readpb
 else:
     tool_paths = {}
 env = ToolEnv(tool_paths=tool_paths)
@@ -596,3 +625,15 @@ The `params` dict is built from these exact parameter names at the top of `run_b
 - **JSON standard** (`2026-06-21-phyloai-json-output-standard.md`): `bi` conforms with a multi-chain extension of the single pattern.
 - **doctor design** (`2026-06-18-phyloai-doctor-design.md`): add PhyloBayes MPI tool group.
 - **posttree**: `readpb_mpi` is registered in `TOOL_REGISTRY` here but not required; its use will be defined in the posttree spec.
+- **doctor design** (`2026-06-18-phyloai-doctor-design.md`): the registry table and doctor output section must be updated to include `bpcomp`, `tracecomp`, `readpb_mpi`, and `mpirun` in a new "PhyloBayes MPI" group. The existing `pb_mpi` entry moves into that group. Doctor tests must be updated accordingly.
+
+### Stale References to Update During Implementation
+
+The following references in existing specs conflict with this design and must be updated:
+
+| Spec | Stale reference | Correct value |
+|------|----------------|---------------|
+| `2026-06-07-phyloai-design.md` line ~241 | output path `runs/tree/bi/phylobayes/` | `runs/tree/bi/` |
+| `2026-06-07-phyloai-design.md` CLI example | `phyloai tree bi phylobayes --matrix ...` | `phyloai tree bi --matrix ...` |
+| `2026-06-17-phyloai-tree-design.md` lines ~41-43 | `bi` as a Click Group with `phylobayes` subcommand | `bi` as a direct `@tree.command()` |
+| `2026-06-17-phyloai-tree-design.md` lines ~61-62 | CLI hierarchy showing `bi phylobayes` | `tree bi [OPTIONS]` |
