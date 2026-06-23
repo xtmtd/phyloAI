@@ -93,3 +93,4 @@ Fish loads completions from that directory automatically in new shells, so you d
 | `phyloai tree ml iqtree`   | Infer ML trees with IQ-TREE3: homogeneous, heterogeneous, partitioned, and ModelFinder workflows. | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
 | `phyloai tree msc`   | Multispecies coalescent species tree inference with wASTRAL. | [docs/commands/tree-msc.md](docs/commands/tree-msc.md) |
 | `phyloai tree cf`    | Concordance factor computation: gCF, sCF, sCFl (IQ-TREE3) and qCF (wASTRAL). | [docs/commands/tree-cf.md](docs/commands/tree-cf.md) |
+| `phyloai posttree topology` | Tree topology tests (AU / KH / SH / WKH / WSH / c-ELW) comparing candidate trees against a supermatrix. | [docs/commands/posttree-topology.md](docs/commands/posttree-topology.md) |

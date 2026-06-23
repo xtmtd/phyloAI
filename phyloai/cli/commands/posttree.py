@@ -7,8 +7,12 @@ import shutil
 from pathlib import Path
 
 import click
+from rich.console import Console
+from rich.table import Table
 
 from phyloai.core.iqtree import IQTREE_COMPATIBLE_EXTENSIONS
+
+console = Console()
 
 
 class _PosttreeGroup(click.Group):
@@ -26,115 +30,100 @@ def _fail(message: str, exit_code: int = 1) -> None:
     raise click.exceptions.Exit(exit_code)
 
 
-_TOPOLOGY_HELP = """
-Tree topology tests (AU / KH / SH / WKH / WSH / c-ELW).
-
-Compares a set of candidate trees against a supermatrix alignment using
-IQ-TREE's built-in topology test framework.
-
-\\b
-PURPOSE
-  This command tests whether alternative topologies are significantly worse
-  than the best-scoring candidate. It does NOT infer new trees — use
-  `phyloai tree ml iqtree` for ML tree inference and model selection.
-
-\\b
-INPUT
-  --matrix             Single supermatrix alignment (FASTA/PHYLIP/NEXUS/CLUSTAL).
-  --candidate-trees    Accepts either one tree-list file (one NEWICK tree per
-                       line) or multiple individual NEWICK tree files passed
-                       in order. Multiple files are merged by PhyloAI into
-                       candidate.trees before invoking IQ-TREE.
-
-\\b
-MODEL SOURCE  (exactly one required)
-  --model-expr          Complete IQ-TREE -m expression (e.g. LG+F+R4, C20+F+R4).
-  --partitions PATH     Previously optimized partition model (e.g. .best_model.nex).
-                        Maps to IQ-TREE -p.
-  --guide-tree PATH     Guide tree for PMSF models. Maps to IQ-TREE -ft.
-
-  PhyloAI does NOT expose ModelFinder here because topology tests are run
-  after model inference — you should already have a preferred model.
-
-\\b
-DEFAULT TESTS
-  PhyloAI generates standard topology-test flags:
-
-      -n 0 -zb <replicates> -zw -au
-
-  This produces: bp-RELL, KH, SH, weighted KH, weighted SH, c-ELW, and AU.
-  Each test is individually suppressible via --tool-args.
-
-\\b
-ADVANCED IQ-TREE ARGS
-  --tool-args TEXT    Additional IQ-TREE strategy parameters. Blocked flags:
-                      -s, -z (managed by --matrix and --candidate-trees).
-  --iqtree-path PATH  Explicit path to iqtree3 executable.
-
-  PhyloAI-built flags are suppressed when the same flag appears in
-  --tool-args (suppress-if-present).  Overrideable: -m, -p, -ft, -n, -zb,
-  -zw, -au, -T, --prefix.
-
-\\b
-EXAMPLES
-
-  # Homogeneous unpartitioned model
-  phyloai posttree topology --matrix raw.fa --candidate-trees trees \\
-      --model-expr LG+F+R4 --replicates 10000 -t 20
-
-  # Heterogeneous model
-  phyloai posttree topology --matrix raw.fa --candidate-trees trees \\
-      --model-expr C20+F+R4 -t 20
-
-  # PMSF model with guide tree
-  phyloai posttree topology --matrix raw.fa --candidate-trees trees \\
-      --model-expr LG+C20+F+R4 --guide-tree guide.tree -t 4
-
-  # Previously optimized partition model
-  phyloai posttree topology --matrix raw.fa --candidate-trees trees \\
-      --partitions raw.best_model.nex -t 20
-
-  # Multiple individual tree files (merged by PhyloAI)
-  phyloai posttree topology --matrix raw.fa \\
-      --candidate-trees h1.nwk --candidate-trees h2.nwk \\
-      --candidate-trees h3.nwk --model-expr LG+F+R4 -t 20
-
-  # Custom exchangeabilities + site frequencies via --tool-args
-  phyloai posttree topology --matrix raw.fa --candidate-trees trees \\
-      --model-expr custom.exchangeabilities+R4 \\
-      --tool-args "-fs custom.sitefreq" -t 30
-
-\\b
-INPUT FORMAT AND SEQUENCE TYPE
-  --input-format only affects PhyloAI's own matrix preflight validation;
-  it is NOT passed to IQ-TREE.  IQ-TREE's --seqtype flag can be passed
-  via --tool-args when needed (e.g. --tool-args "--seqtype AA").
-
-\\b
-INTERPRETATION
-  KH / SH / WKH / WSH / AU are p-values.  Trees with p < 0.05 are rejected
-  by that test.  bp-RELL and c-ELW are weights (not p-values).  The AU test
-  is generally considered the most reliable.
-"""
+def _write_error_result_json(
+    output_dir: Path,
+    command: str,
+    error_msg: str,
+    error_category: str = "input",
+) -> None:
+    """Write a spec-compliant error result.json before exiting on validation failure."""
+    result_path = output_dir / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "status": "error",
+        "command": command,
+        "wall_time": 0.0,
+        "tool_versions": {},
+        "params": {},
+        "key_results": {},
+        "error": error_msg,
+        "error_category": error_category,
+        "data": {"cmd": [], "tool_stderr": "", "tests": [], "warnings": [error_msg]},
+    }
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
 
 
-@posttree.command("topology", help=_TOPOLOGY_HELP)
+def _display_tests_table(tests: list[dict], quiet: bool = False) -> None:
+    """Render the USER TREES results as a Rich table."""
+    if not tests or quiet:
+        return
+
+    # Collect all available columns across rows
+    score_cols = ["bp_rell", "p_kh", "p_sh", "p_wkh", "p_wsh", "c_elw", "p_au"]
+    available = []
+    for col in score_cols:
+        if any(t.get(col) is not None for t in tests):
+            available.append(col)
+
+    table = Table(title="Topology Test Results")
+    table.add_column("Tree", justify="right", style="cyan")
+    table.add_column("logL", justify="right")
+    table.add_column("deltaL", justify="right")
+
+    col_styles = {
+        "bp_rell": ("bp-RELL", "magenta"),
+        "p_kh": ("p-KH", "green"),
+        "p_sh": ("p-SH", "green"),
+        "p_wkh": ("p-WKH", "green"),
+        "p_wsh": ("p-WSH", "green"),
+        "c_elw": ("c-ELW", "yellow"),
+        "p_au": ("p-AU", "red"),
+    }
+    for col in available:
+        label, style = col_styles[col]
+        table.add_column(label, justify="right", style=style)
+
+    for t in tests:
+        tid = t.get("tree_id")
+        row = [
+            str(tid) if tid is not None else "?",
+            f"{t.get('log_likelihood', '-'):.3f}" if t.get("log_likelihood") is not None else "-",
+            f"{t.get('delta_likelihood', '-'):.3f}" if t.get("delta_likelihood") is not None else "-",
+        ]
+        for col in available:
+            val = t.get(col)
+            sign = t.get(col + "_sign", "")
+            if val is not None and sign:
+                row.append(f"{val:.4f} {sign}")
+            elif val is not None:
+                row.append(f"{val:.4f}")
+            else:
+                row.append("-")
+        table.add_row(*row)
+
+    console.print()
+    console.print(table)
+
+
+@posttree.command("topology")
 @click.option(
     "--matrix", type=click.Path(path_type=Path), default=None,
     help="Single supermatrix alignment (FASTA/PHYLIP/NEXUS/CLUSTAL).  Maps to IQ-TREE -s.",
 )
 @click.option(
     "--candidate-trees", "candidate_trees_raw",
-    multiple=True, type=click.Path(path_type=Path),
+    type=str,
     help=(
-        "Candidate tree input. Accepts either one tree-list file (one NEWICK tree "
-        "per line) or multiple individual NEWICK tree files (merged in order by PhyloAI)."
+        "Candidate tree input. One tree-list file (one NEWICK tree per line), "
+        "or multiple individual NEWICK tree files separated by commas "
+        "(e.g. h1.nwk,h2.nwk,h3.nwk). Multiple files are merged in order by PhyloAI."
     ),
 )
 @click.option(
     "--input-format",
-    type=click.Choice(["auto", "fasta", "phylip-relaxed", "nexus", "clustal"]),
-    default="auto",
+    type=click.Choice(["auto", "fasta", "phylip-relaxed", "nexus"]),
+    default="auto", show_default=True,
     help="PhyloAI-side matrix format hint for preflight validation. Not passed to IQ-TREE.",
 )
 @click.option(
@@ -184,7 +173,7 @@ INTERPRETATION
               help="Suppress terminal output except errors.")
 def topology_command(
     matrix: Path | None,
-    candidate_trees_raw: tuple[Path, ...],
+    candidate_trees_raw: str | None,
     input_format: str,
     model_expr: str | None,
     partitions: Path | None,
@@ -200,10 +189,122 @@ def topology_command(
     dry_run: bool,
     quiet: bool,
 ) -> None:
-    """Tree topology tests (AU / KH / SH / WKH / WSH / c-ELW)."""
+    """Tree topology tests (AU / KH / SH / WKH / WSH / c-ELW).
+
+    Tests whether alternative topologies are significantly worse than the
+    best-scoring candidate. Does NOT infer new trees — use
+    `phyloai tree ml iqtree` for ML tree inference and model selection.
+
+    PhyloAI does NOT expose ModelFinder here because topology tests are run
+    after model inference — you should already have a preferred model.
+
+    Default tests: -n 0 -zb <replicates> -zw -au
+    (bp-RELL, KH, SH, weighted KH, weighted SH, c-ELW, AU).
+
+    KH / SH / WKH / WSH / AU are p-values (< 0.05 = rejected).
+    bp-RELL and c-ELW are weights (not p-values). Recommended: AU, WSH, WKH.
+
+    Examples:
+
+      # Homogeneous model
+
+      phyloai posttree topology --matrix raw.fa --candidate-trees trees --model-expr LG+F+R4
+
+      # Heterogeneous model
+
+      phyloai posttree topology --matrix raw.fa --candidate-trees trees --model-expr C20+F+R4
+
+      # PMSF model with guide tree
+
+      phyloai posttree topology --matrix raw.fa --candidate-trees trees --model-expr LG+C20+F+R4 --guide-tree guide.tree
+
+      # Partition model
+
+      phyloai posttree topology --matrix raw.fa --candidate-trees trees --partitions raw.best_model.nex
+
+      # Multiple individual tree files (comma-separated, merged by PhyloAI)
+
+      phyloai posttree topology --matrix raw.fa --candidate-trees h1.nwk,h2.nwk,h3.nwk --model-expr LG+F+R4
+
+      # Custom exchangeabilities + site frequencies via --tool-args
+
+      phyloai posttree topology --matrix raw.fa --candidate-trees trees --model-expr custom.exchangeabilities+R4 --tool-args "-fs custom.sitefreq"
+    """
     from phyloai.posttree.topology import run_topology
 
-    # ---- Manual validation (exit code 1 for all user input errors) ----
+    try:
+        _run_topology_impl(
+            matrix=matrix,
+            candidate_trees_raw=candidate_trees_raw,
+            input_format=input_format,
+            model_expr=model_expr,
+            partitions=partitions,
+            guide_tree=guide_tree,
+            replicates=replicates,
+            prefix=prefix,
+            output_dir=output_dir,
+            threads=threads,
+            iqtree_path=iqtree_path,
+            tool_args=tool_args,
+            overwrite=overwrite,
+            resume=resume,
+            dry_run=dry_run,
+            quiet=quiet,
+        )
+    except click.exceptions.Exit as e:
+        # Build a best-effort command string for the error result.json
+        err_cmd_parts = ["phyloai", "posttree", "topology"]
+        if matrix:
+            err_cmd_parts.extend(["--matrix", str(matrix)])
+        if candidate_trees_raw:
+            err_cmd_parts.extend(["--candidate-trees", candidate_trees_raw])
+        err_cmd_parts.extend(["--input-format", input_format])
+        if model_expr:
+            err_cmd_parts.extend(["--model-expr", model_expr])
+        if partitions:
+            err_cmd_parts.extend(["--partitions", str(partitions)])
+        if guide_tree:
+            err_cmd_parts.extend(["--guide-tree", str(guide_tree)])
+        err_cmd_parts.extend(["--replicates", str(replicates)])
+        err_cmd_parts.extend(["-o", str(output_dir)])
+        err_cmd_parts.extend(["-t", str(threads)])
+        if iqtree_path:
+            err_cmd_parts.extend(["--iqtree-path", iqtree_path])
+        if tool_args:
+            err_cmd_parts.extend(["--tool-args", tool_args])
+        if overwrite:
+            err_cmd_parts.append("--overwrite")
+        if resume:
+            err_cmd_parts.append("--resume")
+        if dry_run:
+            err_cmd_parts.append("--dry-run")
+        if quiet:
+            err_cmd_parts.append("-q")
+        err_cmd = shlex.join(err_cmd_parts)
+        _write_error_result_json(output_dir.resolve(), err_cmd, str(e), "input")
+        raise
+
+
+def _run_topology_impl(
+    *,
+    matrix: Path | None,
+    candidate_trees_raw: str | None,
+    input_format: str,
+    model_expr: str | None,
+    partitions: Path | None,
+    guide_tree: Path | None,
+    replicates: int,
+    prefix: str | None,
+    output_dir: Path,
+    threads: int,
+    iqtree_path: str | None,
+    tool_args: str | None,
+    overwrite: bool,
+    resume: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    from phyloai.posttree.topology import run_topology
 
     if matrix is None:
         _fail("--matrix is required", exit_code=1)
@@ -221,8 +322,12 @@ def topology_command(
             exit_code=1,
         )
 
-    # Candidate trees (existence / non-empty / readability)
-    candidate_trees_list = list(candidate_trees_raw)
+    # Candidate trees: parse comma-separated individual tree files, or a single
+    # tree-list file.  Strip whitespace from each segment.
+    raw_parts = [p.strip() for p in candidate_trees_raw.split(",")]
+    if not raw_parts or all(p == "" for p in raw_parts):
+        _fail("--candidate-trees must contain at least one non-empty path", exit_code=1)
+    candidate_trees_list = [Path(p) for p in raw_parts]
     for i, ct in enumerate(candidate_trees_list):
         if not ct.is_file():
             _fail(f"--candidate-trees #{i + 1} is not a regular file: {ct}", exit_code=1)
@@ -332,6 +437,7 @@ def topology_command(
         resume=resume,
         dry_run=dry_run,
         quiet=quiet,
+        stream_output=True,
     )
 
     # ---- Write / display ----
@@ -360,6 +466,7 @@ def topology_command(
 
     if not quiet:
         kr = payload["key_results"]
+        click.echo()
         click.echo(f"Status: {payload['status']}")
         click.echo(f"Wall time: {payload['wall_time']:.1f}s")
         if kr.get("n_candidate_trees"):
@@ -368,3 +475,4 @@ def topology_command(
             click.echo(f"Best tree: #{kr['best_tree_id']}")
         if kr.get("n_rejected_au_0_05") is not None:
             click.echo(f"Rejected (AU < 0.05): {kr['n_rejected_au_0_05']}")
+        _display_tests_table(payload["data"].get("tests", []))

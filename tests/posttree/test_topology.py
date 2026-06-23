@@ -357,6 +357,8 @@ class TestRunTopology:
         assert len(result["params"]["candidate_trees"]) == 2
 
     def test_validation_error_returns_error_payload(self, tmp_path: Path) -> None:
+        from tests.helpers import validate_result_json
+
         result = run_topology(
             matrix=tmp_path / "nope.fa",
             candidate_trees=[],
@@ -365,6 +367,10 @@ class TestRunTopology:
         )
         assert result["status"] == "error"
         assert result["error"] is not None
+        validate_result_json(result)
+        assert result["command"].startswith("phyloai ")
+        assert isinstance(result["params"], dict) and result["params"]
+        assert isinstance(result["data"], dict)
 
     @pytest.mark.skipif(
         not shutil.which("iqtree3"),

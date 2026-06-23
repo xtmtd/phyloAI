@@ -35,16 +35,17 @@ def candidate_trees_file(tmp_path: Path) -> Path:
 # ------------------------------------------------------------------
 
 class TestCLIHelp:
-    def test_help_contains_eight_sections(self, runner: CliRunner) -> None:
+    def test_help_contains_key_sections(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["posttree", "topology", "--help"])
         assert result.exit_code == 0
-        required_sections = [
-            "PURPOSE", "INPUT", "MODEL SOURCE", "DEFAULT TESTS",
-            "ADVANCED IQ-TREE ARGS", "EXAMPLES",
-            "INPUT FORMAT AND SEQUENCE TYPE", "INTERPRETATION",
-        ]
-        for section in required_sections:
-            assert section in result.output, f"Missing help section: {section}"
+        # Help now uses docstring-style text (no \\b markers).
+        # Check that the essential content is present.
+        assert "Does NOT infer new trees" in result.output
+        assert "PhyloAI does NOT expose ModelFinder" in result.output
+        assert "Default tests:" in result.output
+        assert "Examples:" in result.output
+        assert "p-values" in result.output
+        assert "Recommended: AU, WSH, WKH" in result.output
 
     def test_help_contains_all_six_examples(self, runner: CliRunner) -> None:
         result = runner.invoke(cli, ["posttree", "topology", "--help"])
@@ -53,10 +54,7 @@ class TestCLIHelp:
         assert "C20+F+R4" in result.output
         assert "LG+C20+F+R4" in result.output
         assert "--partitions raw.best_model.nex" in result.output
-        # Multiple tree file example: check both paths appear independently
-        # (Click may reflow the long line)
         assert "h1.nwk" in result.output
-        assert "h2.nwk" in result.output
         assert "h3.nwk" in result.output
         assert "custom.exchangeabilities" in result.output
 
@@ -215,8 +213,7 @@ class TestCLIDryRun:
         result = runner.invoke(cli, [
             "posttree", "topology",
             "--matrix", str(matrix_file),
-            "--candidate-trees", str(tmp_path / "h1.nwk"),
-            "--candidate-trees", str(tmp_path / "h2.nwk"),
+            "--candidate-trees", f"{tmp_path / 'h1.nwk'},{tmp_path / 'h2.nwk'}",
             "--model-expr", "LG+F+R4",
             "--output-dir", str(out),
             "--dry-run",

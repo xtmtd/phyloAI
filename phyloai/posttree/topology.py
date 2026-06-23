@@ -109,6 +109,15 @@ def _validate_inputs(
         elif not _os.access(str(gt), _os.R_OK):
             errors.append(f"--guide-tree is not readable: {guide_tree}")
 
+    if partitions:
+        pt = Path(partitions)
+        if not pt.exists():
+            errors.append(f"--partitions does not exist: {partitions}")
+        elif not pt.is_file():
+            errors.append(f"--partitions is not a regular file: {partitions}")
+        elif not _os.access(str(pt), _os.R_OK):
+            errors.append(f"--partitions is not readable: {partitions}")
+
     return errors
 
 
@@ -256,6 +265,15 @@ _USER_TREES_COLUMNS = [
 ]
 
 
+def _is_valid_tree_id(token: str) -> bool:
+    """Return True if *token* looks like a USER TREES tree-id integer."""
+    try:
+        int(token)
+        return True
+    except ValueError:
+        return False
+
+
 def _parse_user_trees_table(iqtree_path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     """Parse the USER TREES section of an .iqtree report.
 
@@ -311,6 +329,10 @@ def _parse_user_trees_table(iqtree_path: Path) -> tuple[list[dict[str, Any]], li
             continue  # separator line
 
         tokens = stripped.split()
+        # Guard: a valid data row must start with a parseable integer (tree_id).
+        # IQ-TREE footer prose (e.g. "Trees marked with ...") is not a data row.
+        if not tokens or not _is_valid_tree_id(tokens[0]):
+            break
         row: dict[str, Any] = {"raw_line": line}
 
         # Pre-fill with None
@@ -401,26 +423,24 @@ def _assemble_topology_result(
     """
     wall_time = round(_time.time() - run_start, 2)
 
-    # Reconstruct CLI command string from resolved params
+    # Reconstruct CLI command string from resolved params (all flags always
+    # included so the result is reproducible and spec-compliant).
     cmd_parts = ["phyloai", "posttree", "topology"]
     cmd_parts.extend(["--matrix", str(matrix)])
     for ct in candidate_trees_raw:
         cmd_parts.extend(["--candidate-trees", str(ct)])
-    if params.get("input_format") and params["input_format"] != "auto":
-        cmd_parts.extend(["--input-format", params["input_format"]])
+    cmd_parts.extend(["--input-format", params.get("input_format", "auto")])
     if params.get("model_expr"):
         cmd_parts.extend(["--model-expr", params["model_expr"]])
     if params.get("partitions"):
         cmd_parts.extend(["--partitions", params["partitions"]])
     if params.get("guide_tree"):
         cmd_parts.extend(["--guide-tree", params["guide_tree"]])
-    if params.get("replicates") != 10000:
-        cmd_parts.extend(["--replicates", str(params["replicates"])])
+    cmd_parts.extend(["--replicates", str(params.get("replicates", 10000))])
     if params.get("prefix") and params["prefix"] != matrix.stem:
         cmd_parts.extend(["--prefix", params["prefix"]])
     cmd_parts.extend(["-o", str(output_dir)])
-    if params.get("threads") != 4:
-        cmd_parts.extend(["-t", str(params["threads"])])
+    cmd_parts.extend(["-t", str(params.get("threads", 4))])
     if params.get("iqtree_path"):
         cmd_parts.extend(["--iqtree-path", params["iqtree_path"]])
     if params.get("tool_args"):
@@ -433,7 +453,7 @@ def _assemble_topology_result(
         cmd_parts.append("--dry-run")
     if params.get("quiet"):
         cmd_parts.append("-q")
-    command = " ".join(cmd_parts)
+    command = shlex.join(cmd_parts)
 
     iqtree_log = output_dir / f"{prefix}.log"
     iqtree_report = output_dir / f"{prefix}.iqtree"
@@ -468,6 +488,18 @@ def _assemble_topology_result(
         ]
         if au_vals:
             n_rejected_au = sum(1 for v in au_vals if v < 0.05)
+        # Also count rows rejected by sign alone (p_au missing/rounded but
+        # IQ-TREE still emitted a "-" rejection sign). Spec defines rejection
+        # as p_au < 0.05 OR p_au_sign == "-".
+        sign_rejections = {
+            t.get("tree_id") for t in tests
+            if t.get("p_au_sign") == "-"
+        }
+        numeric_rejections = {
+            t.get("tree_id") for t in tests
+            if t.get("p_au") is not None and t["p_au"] < 0.05
+        }
+        n_rejected_au = len(numeric_rejections | sign_rejections)
 
     # Model source tracking — reflect which source actually supplied the
     # -m/-p flag in the final IQ-TREE command, accounting for suppress-if-present.
@@ -497,8 +529,6 @@ def _assemble_topology_result(
     data: dict[str, Any] = {
         "cmd": effective_cmd,
         "tool_stderr": tool_stderr,
-        "log_iqtree": str(iqtree_report.name) if iqtree_report.exists() else None,
-        "tool_log": str(iqtree_log.name) if iqtree_log.exists() else None,
         "optimized_trees": optimized_trees,
         "merged_candidate_trees": (
             str(candidate_trees_effective.name)
@@ -508,9 +538,12 @@ def _assemble_topology_result(
         "tests": tests,
         "warnings": warnings,
     }
-    # Remove None values so validate_result_json does not fail on
-    # isinstance checks when file paths are absent (e.g. dry-run).
-    data = {k: v for k, v in data.items() if v is not None}
+    # Only include optional file-path fields when the files actually exist,
+    # so validate_result_json does not trip on None-valued strings.
+    if iqtree_report.exists():
+        data["log_iqtree"] = str(iqtree_report.name)
+    if iqtree_log.exists():
+        data["tool_log"] = str(iqtree_log.name)
 
     return {
         "status": "success" if returncode == 0 else "error",
@@ -528,6 +561,119 @@ def _assemble_topology_result(
 # ===================================================================
 # Main entry point
 # ===================================================================
+
+
+def _build_partial_result(
+    *,
+    matrix: Path,
+    candidate_trees: list[Path],
+    input_format: str,
+    model_expr: str | None,
+    partitions: str | None,
+    guide_tree: str | None,
+    replicates: int,
+    prefix: str | None,
+    output_dir: Path,
+    threads: int,
+    iqtree_path: str | None,
+    tool_args: str | None,
+    overwrite: bool,
+    resume: bool,
+    dry_run: bool,
+    quiet: bool,
+    errors: list[str],
+    status: str = "error",
+    error_category: str = "input",
+    tool_versions: dict[str, str] | None = None,
+    wall_time: float = 0.0,
+    data_extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a spec-compliant error result payload with populated params and command.
+
+    The global JSON standard (Section 9.4) requires `command`, `params`,
+    `key_results`, and `data` on all results including error payloads.
+    """
+    resolved_matrix = str(matrix) if isinstance(matrix, Path) else str(matrix)
+
+    candidate_trees_str = [str(ct) for ct in candidate_trees]
+
+    # Build command string from available resolved args (best effort)
+    cmd_parts = ["phyloai", "posttree", "topology"]
+    if isinstance(matrix, Path):
+        cmd_parts.extend(["--matrix", resolved_matrix])
+    for ct in candidate_trees:
+        cmd_parts.extend(["--candidate-trees", str(ct)])
+    cmd_parts.extend(["--input-format", input_format])
+    if model_expr:
+        cmd_parts.extend(["--model-expr", model_expr])
+    if partitions:
+        cmd_parts.extend(["--partitions", str(partitions)])
+    if guide_tree:
+        cmd_parts.extend(["--guide-tree", str(guide_tree)])
+    cmd_parts.extend(["--replicates", str(replicates)])
+    if prefix:
+        cmd_parts.extend(["--prefix", prefix])
+    cmd_parts.extend(["-o", str(output_dir)])
+    cmd_parts.extend(["-t", str(threads)])
+    if iqtree_path:
+        cmd_parts.extend(["--iqtree-path", iqtree_path])
+    if tool_args:
+        cmd_parts.extend(["--tool-args", tool_args])
+    if overwrite:
+        cmd_parts.append("--overwrite")
+    if resume:
+        cmd_parts.append("--resume")
+    if dry_run:
+        cmd_parts.append("--dry-run")
+    if quiet:
+        cmd_parts.append("-q")
+
+    resolved_output_dir = str(output_dir)
+    resolved_prefix = prefix if prefix else (matrix.stem if isinstance(matrix, Path) else "matrix")
+
+    params: dict[str, Any] = {
+        "matrix": resolved_matrix,
+        "candidate_trees": candidate_trees_str,
+        "candidate_trees_mode": "tree-list" if len(candidate_trees) <= 1 else "individual-files",
+        "candidate_trees_effective": candidate_trees_str[0] if candidate_trees_str else "",
+        "input_format": input_format,
+        "model_expr": model_expr,
+        "partitions": partitions,
+        "guide_tree": guide_tree,
+        "replicates": replicates,
+        "prefix": resolved_prefix,
+        "output_dir": resolved_output_dir,
+        "threads": threads,
+        "iqtree_path": iqtree_path,
+        "tool_args": tool_args,
+        "overwrite": overwrite,
+        "resume": resume,
+        "dry_run": dry_run,
+        "quiet": quiet,
+    }
+
+    data: dict[str, Any] = {
+        "cmd": [],
+        "tool_stderr": "",
+        "merged_candidate_trees": None,
+        "tests": [],
+        "warnings": list(errors),
+    }
+    if data_extra:
+        data.update(data_extra)
+
+    return {
+        "status": status,
+        "command": shlex.join(cmd_parts),
+        "wall_time": wall_time,
+        "tool_versions": tool_versions or {},
+        "params": params,
+        "key_results": {},
+        "error": "; ".join(errors),
+        "error_category": error_category,
+        "data": data,
+    }
+
 
 def run_topology(
     *,
@@ -547,6 +693,7 @@ def run_topology(
     resume: bool = False,
     dry_run: bool = False,
     quiet: bool = False,
+    stream_output: bool = False,
 ) -> dict[str, Any]:
     """Run IQ-TREE tree topology tests.
 
@@ -568,17 +715,27 @@ def run_topology(
         guide_tree=guide_tree,
     )
     if errors:
-        return {
-            "status": "error",
-            "command": "",
-            "wall_time": 0.0,
-            "tool_versions": {},
-            "params": {},
-            "key_results": {},
-            "error": "; ".join(errors),
-            "error_category": "input",
-            "data": {"cmd": [], "tool_stderr": "", "tests": [], "warnings": errors},
-        }
+        return _build_partial_result(
+            matrix=matrix,
+            candidate_trees=candidate_trees,
+            input_format=input_format,
+            model_expr=model_expr,
+            partitions=partitions,
+            guide_tree=guide_tree,
+            replicates=replicates,
+            prefix=prefix,
+            output_dir=output_dir or Path("runs/posttree/topology"),
+            threads=threads,
+            iqtree_path=iqtree_path,
+            tool_args=tool_args,
+            overwrite=overwrite,
+            resume=resume,
+            dry_run=dry_run,
+            quiet=quiet,
+            errors=errors,
+            status="error",
+            error_category="input",
+        )
 
     # --- Resolve paths ---
     if output_dir is None:
@@ -588,6 +745,15 @@ def run_topology(
         output_dir.mkdir(parents=True, exist_ok=True)
 
     matrix = matrix.resolve()
+
+    # Resolve user-provided file paths to absolute so IQ-TREE can find them
+    # regardless of subprocess cwd.
+    resolved_partitions = None
+    if partitions:
+        resolved_partitions = str(Path(partitions).resolve())
+    resolved_guide_tree = None
+    if guide_tree:
+        resolved_guide_tree = str(Path(guide_tree).resolve())
 
     candidate_trees_raw = [ct.resolve() for ct in candidate_trees]
     if len(candidate_trees) == 1:
@@ -608,17 +774,27 @@ def run_topology(
     try:
         iqtree_exe = _resolve_iqtree_path(iqtree_path, dry_run)
     except (ValueError, FileNotFoundError) as e:
-        return {
-            "status": "error",
-            "command": "",
-            "wall_time": 0.0,
-            "tool_versions": {},
-            "params": {},
-            "key_results": {},
-            "error": str(e),
-            "error_category": "env",
-            "data": {"cmd": [], "tool_stderr": "", "tests": [], "warnings": [str(e)]},
-        }
+        return _build_partial_result(
+            matrix=matrix,
+            candidate_trees=candidate_trees,
+            input_format=input_format,
+            model_expr=model_expr,
+            partitions=partitions,
+            guide_tree=guide_tree,
+            replicates=replicates,
+            prefix=prefix,
+            output_dir=output_dir,
+            threads=threads,
+            iqtree_path=iqtree_path,
+            tool_args=tool_args,
+            overwrite=overwrite,
+            resume=resume,
+            dry_run=dry_run,
+            quiet=quiet,
+            errors=[str(e)],
+            status="error",
+            error_category="env",
+        )
     tool_versions = (
         _detect_iqtree_version(iqtree_exe)
         if not dry_run
@@ -633,8 +809,8 @@ def run_topology(
         "candidate_trees_effective": str(candidate_trees_effective),
         "input_format": input_format,
         "model_expr": model_expr,
-        "partitions": partitions,
-        "guide_tree": guide_tree,
+        "partitions": resolved_partitions,
+        "guide_tree": resolved_guide_tree,
         "replicates": replicates,
         "prefix": resolved_prefix,
         "output_dir": str(output_dir),
@@ -654,8 +830,8 @@ def run_topology(
         candidate_trees=candidate_trees_effective,
         prefix=resolved_prefix,
         model_expr=model_expr,
-        partitions=partitions,
-        guide_tree=guide_tree,
+        partitions=resolved_partitions,
+        guide_tree=resolved_guide_tree,
         replicates=replicates,
         threads=threads,
         tool_args=tool_args,
@@ -682,12 +858,28 @@ def run_topology(
 
     # --- Execute IQ-TREE ---
     try:
-        proc = subprocess.run(
-            effective_cmd,
-            capture_output=True,
-            text=True,
-            cwd=str(output_dir),
-        )
+        if stream_output and not quiet:
+            child = subprocess.Popen(
+                effective_cmd,
+                stdout=None,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(output_dir),
+            )
+            _, stderr_text = child.communicate()
+            proc_returncode = child.returncode
+            tool_stderr_out = stderr_text.strip() if stderr_text else ""
+        else:
+            proc = subprocess.run(
+                effective_cmd,
+                capture_output=True,
+                text=True,
+                cwd=str(output_dir),
+            )
+            proc_returncode = proc.returncode
+            tool_stderr_out = ""
+            if proc.stderr:
+                tool_stderr_out += proc.stderr.strip()
     except FileNotFoundError:
         return _assemble_topology_result(
             run_start=run_start,
@@ -708,14 +900,6 @@ def run_topology(
             error_category="env",
         )
 
-    merged_output = ""
-    if proc.stdout:
-        merged_output += proc.stdout
-    if proc.stderr:
-        if merged_output and not merged_output.endswith("\n"):
-            merged_output += "\n"
-        merged_output += proc.stderr
-
     return _assemble_topology_result(
         run_start=run_start,
         iqtree_exe=iqtree_exe,
@@ -726,11 +910,11 @@ def run_topology(
         candidate_trees_mode=candidate_trees_mode,
         candidate_trees_effective=candidate_trees_effective,
         effective_cmd=effective_cmd,
-        tool_stderr=merged_output,
+        tool_stderr=tool_stderr_out,
         output_dir=output_dir,
         prefix=resolved_prefix,
-        returncode=proc.returncode,
+        returncode=proc_returncode,
         dry_run=False,
         warnings=[],
-        error_category="tool" if proc.returncode != 0 else None,
+        error_category="tool" if proc_returncode != 0 else None,
     )

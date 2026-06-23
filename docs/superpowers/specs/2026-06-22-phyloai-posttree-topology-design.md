@@ -64,15 +64,15 @@ The parent design originally sketched this command with `--hypotheses`. This spe
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--matrix` | Path | required | Single supermatrix alignment. Maps to IQ-TREE `-s`. |
-| `--candidate-trees` | Path(s), repeatable | required | Candidate tree input. Accepts either one tree-list file containing one NEWICK tree per line, or multiple individual NEWICK tree files passed in order. Maps to IQ-TREE `-z` after optional merge. |
-| `--input-format` | `auto\|fasta\|phylip-relaxed\|nexus\|clustal` | `auto` | Optional PhyloAI-side matrix format hint for preflight validation. Not passed to IQ-TREE. |
+| `--candidate-trees` | str | required | Candidate tree input. Accepts either one tree-list file path (one NEWICK tree per line), or multiple individual NEWICK tree file paths separated by commas (e.g. `h1.nwk,h2.nwk,h3.nwk`). Maps to IQ-TREE `-z` after optional merge. |
+| `--input-format` | `auto\|fasta\|phylip-relaxed\|nexus` | `auto` | Optional PhyloAI-side matrix format hint for preflight validation. Not passed to IQ-TREE. |
 
 Supported matrix extensions follow IQ-TREE-compatible formats already used by `tree ml iqtree`: `.fa`, `.fas`, `.fasta`, `.faa`, `.fna`, `.phy`, `.phylip`, `.nex`, `.nxs`, `.nexus`, `.aln`.
 
 Candidate tree input has two forms:
 
-1. One `--candidate-trees candidate.trees` argument: treat it as the final IQ-TREE tree-list file and pass it directly to `-z`.
-2. Multiple `--candidate-trees h1.nwk --candidate-trees h2.nwk ...` arguments: read files in CLI order, write `candidate.trees` under `--output-dir`, and pass that merged file to `-z`.
+1. A single `--candidate-trees candidate.trees` argument (no commas): treat it as the final IQ-TREE tree-list file and pass it directly to `-z`.
+2. A comma-separated list `--candidate-trees h1.nwk,h2.nwk,...`: treat each segment as an individual NEWICK tree file, read them in order, write a merged `candidate.trees` under `--output-dir`, and pass that merged file to `-z`.
 
 The merged `candidate.trees` file preserves user order exactly. Empty files, directories, and unreadable files are user input errors. The merged file contains one NEWICK tree per line.
 
@@ -195,14 +195,12 @@ iqtree3 -s raw.fa -p raw.best_model.nex -z trees -n 0 -zb 10000 -zw -au -T 20
 ```bash
 phyloai posttree topology \
   --matrix raw.fa \
-  --candidate-trees h1.nwk \
-  --candidate-trees h2.nwk \
-  --candidate-trees h3.nwk \
+  --candidate-trees h1.nwk,h2.nwk,h3.nwk \
   --model-expr LG+F+R4 \
   -t 20
 ```
 
-PhyloAI merges `h1.nwk`, `h2.nwk`, and `h3.nwk` in that order into `candidate.trees` under the output directory, then invokes:
+PhyloAI splits on commas, reads `h1.nwk`, `h2.nwk`, and `h3.nwk` in that order, merges them into `candidate.trees` under the output directory, then invokes:
 
 ```bash
 iqtree3 -s raw.fa -m LG+F+R4 -z runs/posttree/topology/candidate.trees -n 0 -zb 10000 -zw -au -T 20
@@ -279,9 +277,9 @@ For ordinary users, the default command remains the complete recommended topolog
 
 1. `--matrix` is required and must exist.
 2. At least one `--candidate-trees` value is required.
-3. A single `--candidate-trees` value is treated as a tree-list file and must exist, be a regular non-empty file, and be readable.
-4. Multiple `--candidate-trees` values are treated as ordered individual tree files; each must exist, be a regular non-empty file, and be readable. PhyloAI writes `candidate.trees` under `--output-dir` before invoking IQ-TREE.
-5. `--input-format` must be one of `auto`, `fasta`, `phylip-relaxed`, `nexus`, or `clustal`.
+3. A `--candidate-trees` value with no commas is treated as a tree-list file and must exist, be a regular non-empty file, and be readable.
+4. A `--candidate-trees` value containing commas is treated as ordered individual tree files; each segment must exist, be a regular non-empty file, and be readable. PhyloAI writes `candidate.trees` under `--output-dir` before invoking IQ-TREE.
+5. `--input-format` must be one of `auto`, `fasta`, `phylip-relaxed`, or `nexus`.
 6. Exactly one of `--model-expr` and `--partitions` is required unless `--tool-args` contains `-m` or `-p`. If `--tool-args` provides the model source, both high-level model-source flags may be omitted.
 7. `--model-expr` and `--partitions` are mutually exclusive unless one is intentionally overridden through `--tool-args`. First implementation should reject both high-level flags together.
 8. `--guide-tree`, if provided, must exist.
@@ -428,7 +426,7 @@ Rules:
 The help text must not be terse. It should use grouped sections similar to `tree ml iqtree`:
 
 1. **Purpose**: explain that this command tests existing candidate topologies, not tree inference.
-2. **Input**: `--matrix`, repeatable `--candidate-trees`, and the two candidate-tree input forms.
+2. **Input**: `--matrix`, `--candidate-trees` (comma-separated individual tree files, or a single tree-list file), and the two candidate-tree input forms.
 3. **Model Source**: explain `--model-expr` vs `--partitions`, and why PhyloAI does not expose ModelFinder here.
 4. **Default Tests**: explicitly state `-n 0 -zb <replicates> -zw -au`, list resulting tests, and explain `--replicates`.
 5. **Advanced IQ-TREE Args**: document minimal blocked flags and override behavior.
@@ -493,8 +491,8 @@ The parser must preserve raw row text in each parsed item as `raw_line` if pract
 
 - [ ] `--matrix` missing exits 1.
 - [ ] `--candidate-trees` missing exits 1.
-- [ ] one `--candidate-trees candidate.trees` passes that file directly to IQ-TREE `-z`.
-- [ ] multiple `--candidate-trees h1.nwk --candidate-trees h2.nwk` writes merged `candidate.trees` in that order and passes it to `-z`.
+- [ ] one `--candidate-trees candidate.trees` (no comma) passes that file directly to IQ-TREE `-z`.
+- [ ] `--candidate-trees h1.nwk,h2.nwk` (comma-separated) writes merged `candidate.trees` in that order and passes it to `-z`.
 - [ ] `--input-format` accepts only `auto`, `fasta`, `phylip-relaxed`, `nexus`, or `clustal`.
 - [ ] Neither `--model-expr`, `--partitions`, nor model source in `--tool-args` exits 1.
 - [ ] Both high-level `--model-expr` and `--partitions` exits 1.
