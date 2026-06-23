@@ -189,7 +189,7 @@ No `-d` or model flags. pb_mpi reads all settings from the existing `.chain` fil
 
 ### 3.3 run_state.json
 
-Written at fresh launch to `output_dir/run_state.json`. Never overwritten on resume.
+`output_dir/run_state.json` records the run configuration. It is created on fresh launch and **updated (not replaced) when new chains are added via `--chain-names`**. It is never modified during `--resume`.
 
 ```json
 {
@@ -202,11 +202,21 @@ Written at fresh launch to `output_dir/run_state.json`. Never overwritten on res
 }
 ```
 
-On `--resume`:
+**Adding chains (`--chain-names chain4,chain5` to an existing directory):**
+
+1. Read existing `run_state.json`.
+2. Validate that the current invocation's model parameters (`model_flags`, `sample_freq`, `nsamples`, `threads`) match the stored values. If any differ, raise `ValueError` (exit code 1): `"Model parameters conflict with existing run_state.json. Use --resume to continue existing chains or choose a different --output-dir."`.
+3. Validate that none of the new chain names already exist in `chain_names` (would overwrite existing chains without `--overwrite`).
+4. Append new names to `chain_names` and rewrite `run_state.json`.
+5. Launch only the new chains (fresh run command).
+
+**On `--resume`:**
+
 1. Read `run_state.json` to obtain `nsamples` and `chain_names`.
-2. For each chain to resume: read its `.trace` file to get current length. If `nsamples != -1` and `current_length >= nsamples`, skip that chain (already complete) and print `"chain1: already at target (6420 >= 10000 samples), skipping"`.
-3. Launch remaining chains with resume command.
-4. If `nsamples != -1`: monitor loop schedules a soft-stop for each chain once its trace length reaches `nsamples` (checked on each 60-second poll). This enforces the original target even though the native pb_mpi resume command has no `until` argument.
+2. Resolve which chains to resume: `'__ALL__'` → all names in `run_state.json`; comma-separated string → only those names (validate each exists in `run_state.json`).
+3. For each chain to resume: read its `.trace` file to get current length. If `nsamples != -1` and `current_length >= nsamples`, skip that chain and print `"chain1: already at target (6420 >= 10000 samples), skipping"`.
+4. Launch remaining chains with resume command.
+5. If `nsamples != -1`: monitor loop issues a soft-stop for each chain once its trace length reaches `nsamples` (checked on each 60-second poll).
 
 ### 3.4 Monitoring Loop
 
@@ -288,11 +298,11 @@ Uses `rich.live.Live` for the upper progress section; convergence statistics are
 **Progress section (origin-place refreshed every 60 s):**
 
 ```
- Bayesian Inference  ·  model: CAT-GTR  ·  chains/  ·  4 threads/chain
+Bayesian Inference | model: CAT-GTR | chains/ | 4 threads/chain
 
- chain1  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  6420 samples  12.3 s/sample
- chain2  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  6415 samples  12.1 s/sample
- chain3  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  6418 samples  12.2 s/sample
+ chain1  [============================================================]  6420 samples  12.3 s/sample
+ chain2  [============================================================]  6415 samples  12.1 s/sample
+ chain3  [============================================================]  6418 samples  12.2 s/sample
 ```
 
 - If `--nsamples N`: bar shows `current/N` fraction (deterministic progress).
@@ -303,30 +313,32 @@ Uses `rich.live.Live` for the upper progress section; convergence statistics are
 **Convergence statistics (appended below on each check):**
 
 ```
-────────────── Convergence Check @ 6400 samples (burnin 50% = 3200) ──────────────
+--- Convergence Check @ 6400 samples (burnin 50% = 3200) ---
 
-  All chains (chain1 · chain2 · chain3)
-    bpcomp    maxdiff  0.081   meandiff  0.006   ✓ good  (< 0.1)
-    tracecomp  min effsize  312   max rel_diff  0.094   ✓ good
+  All chains (chain1, chain2, chain3)
+    bpcomp    maxdiff  0.081   meandiff  0.006   [good]  (< 0.1)
+    tracecomp  min effsize  312   max rel_diff  0.094   [good]
 
   Pairwise
-    chain1 × chain2   maxdiff  0.073   min effsize  340   ✓ good
-    chain1 × chain3   maxdiff  0.089   min effsize  298   ✓ good
-    chain2 × chain3   maxdiff  0.065   min effsize  355   ✓ good
+    chain1 x chain2   maxdiff  0.073   min effsize  340   [good]
+    chain1 x chain3   maxdiff  0.089   min effsize  298   [good]
+    chain2 x chain3   maxdiff  0.065   min effsize  355   [good]
 
-  Trace plots updated → convergence/trace_plots.pdf
-───────────────────────────────────────────────────────────────────────────────────
+  Trace plots updated -> convergence/trace_plots.pdf
+-------------------------------------------------------------
+
+  *** All convergence criteria met. You may stop chains with Ctrl+C when ready. ***
 ```
 
-Status labels use ASCII for compatibility: `[good]`, `[ok]`, `[not converged]`. Rich renders these as plain text; no Unicode glyphs required.
+Status labels are ASCII: `[good]`, `[ok]`, `[not converged]`. All terminal output uses plain ASCII characters only — no Unicode box-drawing, arrows, or glyphs. This ensures correct rendering in log files, remote terminals, and non-UTF-8 environments.
 
 ### 5.2 Ctrl+C Soft-Stop
 
 ```
-^C  Caught interrupt — sending soft-stop to all chains...
-    Wrote 0 → chains/chain1.run
-    Wrote 0 → chains/chain2.run
-    Wrote 0 → chains/chain3.run
+^C  Caught interrupt -- sending soft-stop to all chains...
+    Wrote 0 -> chains/chain1.run
+    Wrote 0 -> chains/chain2.run
+    Wrote 0 -> chains/chain3.run
     Waiting for chains to finish current cycle...
     chain1 stopped at 6423 samples.
     chain2 stopped at 6420 samples.
