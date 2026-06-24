@@ -134,8 +134,9 @@ def _build_resume_cmd(mpirun: str, pb_mpi: str, threads: int, chain_name: str) -
 
 
 def _detect_pb_version(pb_dir: str) -> str | None:
-    tool_dir = Path(pb_dir).parent          # e.g. /opt/pbmpi/bin
-    search_dirs = [tool_dir, tool_dir.parent]  # /opt/pbmpi/bin, /opt/pbmpi
+    resolved = Path(pb_dir).resolve() if Path(pb_dir).exists() else Path(pb_dir)
+    tool_dir = resolved.parent
+    search_dirs = [tool_dir, tool_dir.parent]
     patterns = ["pb_mpi*Manual*.pdf", "pb_mpi*README*", "VERSION", "CHANGELOG", "*.pdf"]
     for sd in list(dict.fromkeys(search_dirs)):
         if not sd.is_dir():

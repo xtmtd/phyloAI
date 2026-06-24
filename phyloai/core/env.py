@@ -71,9 +71,9 @@ TOOL_REGISTRY: dict[str, dict] = {
                     "path_aliases": ["BMGE.jar"],
                     "bundled": True,
                     "install": "bundled with PhyloAI"},
-    "FastTree":   {"required": False, "version_flag": "",
-                    "path_aliases": ["fasttree"],
-                    "install": "Download from http://www.microbesonline.org/fasttree/"},
+    "FastTree":   {"required": False, "version_args": [[]],
+                     "path_aliases": ["fasttree"],
+                     "install": "Download from http://www.microbesonline.org/fasttree/"},
 }
 
 
@@ -100,12 +100,30 @@ class ToolEnv:
             return None
         return match.group(1)
 
+    def _version_from_tool_dir(self, path: Path) -> Optional[str]:
+        resolved = path.resolve() if path.exists() else path
+        tool_dir = resolved.parent
+        search_dirs = [tool_dir, tool_dir.parent]
+        patterns = ["*Manual*.pdf", "*README*", "VERSION", "CHANGELOG", "*.pdf"]
+        for sd in list(dict.fromkeys(search_dirs)):
+            if not sd.is_dir():
+                continue
+            for pat in patterns:
+                for fpath in sorted(sd.glob(pat), key=lambda p: str(p).lower()):
+                    if not fpath.is_file():
+                        continue
+                    for re_pat in [r"[Vv]ersion\s*(\d+\.\d+(?:\.\d+)?)", r"(\d+\.\d+)"]:
+                        m = re.search(re_pat, fpath.name)
+                        if m:
+                            return m.group(1)
+        return None
+
     def _get_version(self, path: Path, version_args: str | list[list[str]]) -> Optional[str]:
         if version_args is None:
             return None
         if isinstance(version_args, str):
             if version_args == "":
-                return None
+                return self._version_from_tool_dir(path)
             candidates = [[version_args]]
         else:
             candidates = version_args
