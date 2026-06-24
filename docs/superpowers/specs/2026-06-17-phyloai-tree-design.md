@@ -39,7 +39,7 @@ phyloai tree ml fasttree --matrix ./concat/matrix.fa --seq-type NT --model gtr \
 phyloai tree ml iqtree --matrix ./concat/matrix.fa --model LG --rate-heterogeneity +G4
 
 # Bayesian
-phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3
+phyloai tree bi --matrix ./concat/matrix.phy --chains 3
 
 # MSC (single backend: wASTRAL)
 phyloai tree msc --tree-dir ./genetrees/
@@ -58,8 +58,7 @@ phyloai tree (click.Group)
 ├── ml (click.Group)          # Maximum-likelihood tree inference
 │   ├── fasttree              # FastTree backend
 │   └── iqtree                # IQ-TREE3 backend
-├── bi (click.Group)          # Bayesian inference
-│   └── phylobayes            # PhyloBayes backend
+├── bi (click.Command)        # Bayesian inference (PhyloBayes-MPI, direct command)
 ├── msc                     # Multispecies coalescent (wASTRAL, single backend)
 └── cf                        # Concordance factors (gCF/sCF/sCFl/qCF, mode selector)
 ```

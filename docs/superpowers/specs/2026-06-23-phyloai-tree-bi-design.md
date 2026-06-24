@@ -72,7 +72,7 @@ The effective names list is resolved as: if `--chain-names` is given, use it; el
 | Parameter | Type | Default | pb_mpi flag | Description |
 |-----------|------|---------|-------------|-------------|
 | `--sample-freq` | int | `1` | `-x <every>` | Save one MCMC point every N cycles. |
-| `--nsamples` | int | `-1` | `-x <every> [<until>]` | Stop each chain after N saved points. `-1` = run forever (no `until` argument passed to pb_mpi). |
+| `--nsamples` | int | `-1` | `-x <every> <until>` | Total MCMC cycles per chain after which pb_mpi stops (pb_mpi `-x <until>`). The number of saved points is `nsamples / sample_freq` (since samples are taken every `sample_freq` cycles). `-1` = run forever (passed to pb_mpi as `<until>`; pb_mpi interprets `-1` as indefinite). |
 
 To stop a forever-running chain: use Ctrl+C (phyloai sends soft-stop), or directly write `echo 0 > chains/<chainname>.run`.
 
@@ -81,14 +81,14 @@ To stop a forever-running chain: use Ctrl+C (phyloai sends soft-stop), or direct
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `--monitor-freq` | int | `100` | Run `bpcomp` + `tracecomp` every N new samples (measured as: the minimum chain length across all active chains has increased by N since last check). |
-| `--burnin-frac` | float | `0.5` | Fraction of each chain to discard as burn-in during convergence checks. Applied dynamically: `burnin = floor(min_chain_length × burnin_frac)`. Minimum burn-in of 10 samples required; checks are skipped with a warning if chains are too short. |
-| `--no-plot` | flag | False | Disable PDF trace plot generation. Falls back gracefully if `matplotlib` is not installed. |
+| `--burnin-frac` | float | `0.5` | Fraction of saved samples to discard as burn-in **during convergence monitoring only**. Applied dynamically: `burnin = floor(min_chain_length × burnin_frac)`. Minimum burn-in of 10 samples required; checks are skipped with a warning if chains are too short. This value is NOT passed to pb_mpi (no `-x <burnin>`). Use bpcomp and tracecomp after the run to choose a final burn-in for summarisation. |
+| `--poll-interval` | int | `60` | Seconds between `.trace` file polls for progress display and nsamples/check triggers. |
 
 #### Resume
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `--resume [CHAINS]` | optional str | Resume existing chains from their current state. No value = resume all chains listed in `run_state.json`. Comma-separated names = resume only those chains (e.g. `--resume chain1,chain3`). Resume uses the native pb_mpi mechanism: `mpirun -np <threads> pb_mpi <chainname>` (no `-d` or model flags; pb_mpi reads from `.chain` file). The `--nsamples` target from the original run (stored in `run_state.json`) is enforced by phyloai: chains already at target are skipped; running chains receive a soft-stop when they reach the target. Click implementation: `@click.option('--resume', default=None, is_flag=False, flag_value='__ALL__', help='...')` — absent = `None`, bare `--resume` = `'__ALL__'`, `--resume chain1,chain2` = `'chain1,chain2'`. |
+| `--resume [CHAINS]` | optional str | Resume existing chains from their current state. No value = resume all chains listed in `run_state.json`. Comma-separated names = resume only those chains (e.g. `--resume chain1,chain3`). Resume uses the native pb_mpi mechanism: `mpirun -np <threads> pb_mpi <chainname>` (no `-d` or model flags; pb_mpi reads from `.chain` file). The `--nsamples` target from `run_state.json` is used unless overridden by a user-provided `--nsamples` value (e.g. `--resume --nsamples 10000` to extend a 5000-cycle run). Chains already at the resolved target are skipped; running chains receive a soft-stop when they reach the target. Click implementation: `@click.option('--resume', default=None, is_flag=False, flag_value='__ALL__', help='...')` — absent = `None`, bare `--resume` = `'__ALL__'`, `--resume chain1,chain2` = `'chain1,chain2'`. |
 
 #### Tool
 
@@ -109,7 +109,7 @@ Usage: phyloai tree bi [OPTIONS]
   Runs N independent MCMC chains in parallel using mpirun + pb_mpi, monitors
   convergence in real time via bpcomp and tracecomp, and generates a consensus
   tree. Chains run until stopped: use Ctrl+C for a safe soft-stop, or set
-  --nsamples to stop automatically after N saved points.
+  --nsamples to stop automatically after N MCMC cycles.
 
   Examples:
     # Standard: 3 chains, CAT-GTR, 4 MPI processes each, run forever
@@ -128,6 +128,12 @@ Usage: phyloai tree bi [OPTIONS]
 
     # Resume only chain1 and chain3
     phyloai tree bi --output-dir runs/tree/bi --resume chain1,chain3
+
+    # Resume and extend to a new nsamples target
+    phyloai tree bi --output-dir runs/tree/bi --resume --nsamples 10000
+
+    # Resume and run forever (was previously set to 5000)
+    phyloai tree bi --output-dir runs/tree/bi --resume --nsamples -1
 ```
 
 ### 2.3 `rich_click` Option Groups
@@ -142,8 +148,8 @@ click.rich_click.OPTION_GROUPS["phyloai tree bi"] = [
      "options": ["--chains", "--chain-prefix", "--chain-names", "--threads"]},
     {"name": "Sampling",
      "options": ["--sample-freq", "--nsamples"]},
-    {"name": "Convergence Monitoring",
-     "options": ["--monitor-freq", "--burnin-frac", "--no-plot"]},
+     {"name": "Convergence Monitoring",
+      "options": ["--monitor-freq", "--burnin-frac", "--poll-interval"]},
     {"name": "Resume",
      "options": ["--resume"]},
     {"name": "Tool",
@@ -169,7 +175,7 @@ click.rich_click.OPTION_GROUPS["phyloai tree bi"] = [
 
 **Fresh run:**
 ```
-mpirun -np <threads> pb_mpi -d <abs_matrix_path> [model_flags] -x <sample_freq> [nsamples] <chainname>
+mpirun -np <threads> pb_mpi -d <abs_matrix_path> [model_flags] -x <sample_freq> <nsamples> <chainname>
 ```
 
 Model flags are assembled from CLI parameters:
@@ -178,7 +184,7 @@ Model flags are assembled from CLI parameters:
 - `--gamma-cats N` → `-dgam N`
 - `--start-tree <file>` → `-t <abs_path>`
 - `--fix-tree <file>` → `-T <abs_path>`
-- `--nsamples -1`: omit `until` from `-x`; `--nsamples N`: `-x <freq> N`
+- `--nsamples` is always passed: `-x <freq> <nsamples>` (pb_mpi requires both `<every>` and `<until>`; `-1` means forever)
 
 **Resume:**
 ```
@@ -212,7 +218,7 @@ No `-d` or model flags. pb_mpi reads all settings from the existing `.chain` fil
 
 **On `--resume`:**
 
-1. Read `run_state.json` to obtain `nsamples` and `chain_names`.
+1. Read `run_state.json` to obtain stored `nsamples`, `chain_names`, and other parameters. If the user-provided `--nsamples` value differs from the stored value, use the user-provided value and update `run_state.json` (this enables extending a completed run, e.g. `--resume --nsamples 10000` after a 5000-cycle run). If `--nsamples` is not explicitly provided (default `-1`), the stored value is used.
 2. Resolve which chains to resume: `'__ALL__'` → all names in `run_state.json`; comma-separated string → only those names (validate each exists in `run_state.json`).
 3. For each chain to resume: read its `.trace` file to get current length. If `nsamples != -1` and `current_length >= nsamples`, skip that chain and print `"chain1: already at target (6420 >= 10000 samples), skipping"`.
 4. Launch remaining chains with resume command.
@@ -222,11 +228,13 @@ No `-d` or model flags. pb_mpi reads all settings from the existing `.chain` fil
 
 The main thread runs a monitoring loop while chain subprocesses are alive:
 
-**Every 60 seconds:** Poll each chain's `.trace` file to update the progress display. Trace length = number of complete, newline-terminated non-header lines. Return 0 if file is absent, header-only, or contains only blank/partial lines. Never return negative values.
+**Before entering loop:** Progress bar tasks are created with pre-read trace file sample counts (so resume runs show existing data immediately, not 0). `last_trace_read` is set to `time.monotonic()` so the first poll waits a full `--poll-interval` period.
 
-**Every `--monitor-freq` new samples** (measured as: `min_chain_length - last_check_length >= monitor_freq`): trigger a convergence check (Section 4).
+**Every `--poll-interval` seconds (default 60):** Poll each chain's `.trace` file to update the progress display. Trace length = number of complete, newline-terminated non-header lines. Return 0 if file is absent, header-only, or contains only blank/partial lines. Never return negative values.
 
-**On Ctrl+C:** capture `SIGINT`, write `0` to all `chains/<chainname>.run` files, print soft-stop message, wait for all subprocesses to exit (they finish their current cycle), then run a final convergence check and write `result.json`.
+**Every `--monitor-freq` new samples** (measured as: `min_chain_length - last_check_length >= monitor_freq`): trigger a convergence check (Section 4). Convergence output is printed via `live_display.stop()` → `console.print()` → `live_display.start()` to ensure visibility during active Rich Live rendering.
+
+**On Ctrl+C:** capture `SIGINT`, immediately call `live_display.stop()`, write `0` to all `chains/<chainname>.run` files, print soft-stop messages, wait for all subprocesses to exit (they finish their current cycle), then run a final convergence check and write `result.json`.
 
 **On subprocess exit:** if any chain exits with non-zero return code, mark it as failed. If all chains exit normally (zero return code or soft-stopped), write `result.json` with `status: "success"`.
 
@@ -242,11 +250,11 @@ Check fires when `min(chain_lengths) - last_check_min >= monitor_freq`.
 
 ### 4.2 bpcomp Invocations
 
-All convergence commands run with working directory `output_dir` (not `output_dir/chains/`). Chain files are referenced as `chains/chain1`, trace files as `chains/chain1.trace`, and outputs written to `convergence/<basename>`.
+All convergence commands run with working directory `output_dir/convergence/` (not `output_dir/`). Chain files are referenced as `../chains/chain1`, trace files as `../chains/chain1.trace`, and outputs written with base name (no path prefix).
 
 For N chains, run:
-- **All chains:** `bpcomp -x <burnin> -o convergence/bpcomp_all chains/chain1 chains/chain2 ...`
-- **All pairwise combinations:** `bpcomp -x <burnin> -o convergence/bpcomp_chain1_chain2 chains/chain1 chains/chain2` (etc.)
+- **All chains:** `bpcomp -x <burnin> -o bpcomp_all ../chains/chain1 ../chains/chain2 ...` (cwd = convergence/)
+- **All pairwise combinations:** `bpcomp -x <burnin> -o bpcomp_chain1_chain2 ../chains/chain1 ../chains/chain2` (etc.)
 
 Output files per invocation (per pb_mpi manual section 6.2): `<basename>.bpdiff` (summary), `<basename>.bplist` (bipartition list), `<basename>.con.tre` (consensus tree). PhyloAI's parser reads `.bpdiff` for the maxdiff/meandiff summary.
 
@@ -254,10 +262,10 @@ Parse from `.bpdiff`: `maxdiff` and `meandiff` lines.
 
 ### 4.3 tracecomp Invocations
 
-- **All chains:** `tracecomp -x <burnin> chains/chain1.trace chains/chain2.trace ...` (output written to stdout, captured to `convergence/tracecomp_all.contdiff` via subprocess stdout pipe)
+- **All chains:** `tracecomp -x <burnin> ../chains/chain1.trace ../chains/chain2.trace ...` (cwd = convergence/; output written to stdout, captured to `convergence/tracecomp_all.contdiff` via subprocess stdout pipe)
 - **All pairwise combinations:** same pattern, output captured to `convergence/tracecomp_chain1_chain2.contdiff` (etc.)
 
-Note: `tracecomp` takes `.trace` filenames (with extension), `bpcomp` takes chain names (without extension). Both run from `output_dir`.
+Note: `tracecomp` takes `.trace` filenames (with extension), `bpcomp` takes chain names (without extension). Both run from `output_dir/convergence/`.
 
 Parse from `.contdiff`: extract `effsize` (minimum across all parameters) and `rel_diff` (maximum across all parameters).
 
@@ -269,21 +277,21 @@ Parse from `.contdiff`: extract `effsize` (minimum across all parameters) and `r
 | `tracecomp min effsize` | > 300 | > 50 | ≤ 50 |
 | `tracecomp max rel_diff` | < 0.1 | < 0.3 | ≥ 0.3 |
 
-Overall status = worst individual metric. If all-chains and all pairwise comparisons reach **good**, print:
+Per-metric status (used in display):
+- `_bpcomp_status(maxdiff)`: `good` if < 0.1, `ok` if < 0.3, else `no`
+- `_tracecomp_status(min_effsize, max_rel_diff)`: uses the worse of the two tracecomp metrics; same thresholds
 
-```
-  ★ All convergence criteria met. You may stop chains with Ctrl+C when ready.
-```
+Overall status = worst individual metric across all three. The command notifies via tiered messages (Section 5.1).
 
 The command does **not** auto-stop chains.
 
 ### 4.5 trace_plots.pdf Generation
 
-On each convergence check (unless `--no-plot`), read all `.trace` files and regenerate `convergence/trace_plots.pdf` using `matplotlib`. **All parameter columns** in the trace file are plotted — one page per column, derived dynamically from the header row (skipping `iter` and `time`). Each page shows one line per chain (distinct colors), x-axis = iteration, y-axis = parameter value. A vertical dashed line marks the current burn-in position.
+On each convergence check, read all `.trace` files and regenerate `convergence/trace_plots.pdf` using `matplotlib`. **All parameter columns** in the trace file are plotted — one page per column, derived dynamically from the header row (skipping `iter` and `time`). Each page shows one line per chain (distinct colors), x-axis = iteration, y-axis = parameter value. A vertical dashed line marks the current burn-in position.
 
 The parameter set is determined at first check from the header of any available `.trace` file; all chains are expected to share the same columns.
 
-PDF generation runs after convergence statistics are printed (non-blocking relative to chain supervision). File is overwritten on each update. Users can open it in any PDF viewer; refreshing shows the latest state.
+PDF generation runs after convergence statistics are printed, wrapped in try-except to prevent convergence-check crashes. Uses `matplotlib.use("Agg")` non-interactive backend. File is overwritten on each update. Users can open it in any PDF viewer; refreshing shows the latest state.
 
 If `matplotlib` is not installed, skip silently and print once: `"matplotlib not available; trace plots disabled."`.
 
@@ -308,31 +316,40 @@ Bayesian Inference | model: CAT-GTR | chains/ | 4 threads/chain
 - If `--nsamples N`: bar shows `current/N` fraction (deterministic progress).
 - If `--nsamples -1`: bar shows an indeterminate rolling animation; only absolute sample count and speed are shown.
 - Speed unit: `s/sample` when < 60 s/sample; `min/sample` otherwise.
-- On resume: sample count starts from the existing `.trace` line count, not from zero.
+- On resume: sample count starts from the existing `.trace` line count, not from zero. Progress bar tasks pre-read trace files at startup; display never briefly shows 0 before the first poll.
+- Rich Live rendering uses `stop()` → `print()` → `start()` + 4 blank lines buffer for convergence output to prevent Live refresh from overwriting table rows; raw `print()` bypasses Rich's Console output processing.
 
 **Convergence statistics (appended below on each check):**
 
 ```
 --- Convergence Check @ 6400 samples (burnin 50% = 3200) ---
 
-  All chains (chain1, chain2, chain3)
-    bpcomp    maxdiff  0.081   meandiff  0.006   [good]  (< 0.1)
-    tracecomp  min effsize  312   max rel_diff  0.094   [good]
+  All chains
+  bpcomp    maxdiff  0.081   meandiff  0.006   [good]
+  tracecomp  min effsize  312   max rel_diff  0.094   [good]
 
   Pairwise
-    chain1 x chain2   maxdiff  0.073   min effsize  340   [good]
-    chain1 x chain3   maxdiff  0.089   min effsize  298   [good]
-    chain2 x chain3   maxdiff  0.065   min effsize  355   [good]
-
-  Trace plots updated -> convergence/trace_plots.pdf
+    pair              maxdiff  min effsize  max rel_diff  bpcomp  tracecomp
+    chain1 x chain2   0.073       340           0.094     good       good
+    chain1 x chain3   0.089       298           0.085     good       good
+    chain2 x chain3   0.065       355           0.072     good       good
 -------------------------------------------------------------
-
-  *** All convergence criteria met. You may stop chains with Ctrl+C when ready. ***
+  *** All convergence criteria met (all pairs good). You may stop chains with Ctrl+C when ready. ***
 ```
 
-Status labels are ASCII: `[good]`, `[ok]`, `[not converged]`. All terminal output uses plain ASCII characters only — no Unicode box-drawing, arrows, or glyphs. This ensures correct rendering in log files, remote terminals, and non-UTF-8 environments.
+The Pairwise section uses a 6-column table: `pair`, `maxdiff`, `min effsize`, `max rel_diff`, `bpcomp` (single-metric status from `_bpcomp_status`), `tracecomp` (combined status from `_tracecomp_status`). The All chains bpcomp and tracecomp lines each show their own per-column status label (not the combined overall status).
+
+Notification messages below the separator are tiered:
+- All pairs good: `"*** All convergence criteria met ..."`
+- All pairs at least ok: `"Convergence acceptable across all chain pairs ... Consider stopping when ready."`
+- Some pairs converged: `"Some chain pairs agree (N good, M ok, K not converged)."`
+- Nothing converged: no message (table alone is sufficient)
+
+Status labels are ASCII: `good`, `ok`, `no`. The old label `[not converged]` is replaced by per-column `no` for each tool, making it clear which metric is failing.
 
 ### 5.2 Ctrl+C Soft-Stop
+
+The `KeyboardInterrupt` handler immediately calls `live_display.stop()` to release the console, then prints each step of the shutdown sequence:
 
 ```
 ^C  Caught interrupt -- sending soft-stop to all chains...
@@ -391,7 +408,7 @@ Follows the JSON output standard (`2026-06-21-phyloai-json-output-standard.md`).
 ```json
 {
   "status": "success | error",
-  "command": "phyloai tree bi --matrix concat/matrix.phy --model gtr --mixture auto --gamma-cats 4 --chains 3 --chain-prefix chain --threads 4 --sample-freq 1 --nsamples -1 --monitor-freq 100 --burnin-frac 0.5 --output-dir runs/tree/bi",
+  "command": "phyloai tree bi --matrix concat/matrix.phy --model gtr --mixture auto --gamma-cats 4 --chains 3 --chain-prefix chain --threads 4 --sample-freq 1 --nsamples -1 --monitor-freq 100 --burnin-frac 0.5 --poll-interval 60 --output-dir runs/tree/bi",
   "wall_time": 3600.5,
   "tool_versions": {
     "pb_mpi": null,
@@ -417,7 +434,7 @@ Follows the JSON output standard (`2026-06-21-phyloai-json-output-standard.md`).
     "resume": null,
     "monitor_freq": 100,
     "burnin_frac": 0.5,
-    "no_plot": false,
+    "poll_interval": 60,
     "pb_path": null,
     "dry_run": false,
     "quiet": false
@@ -573,18 +590,32 @@ PhyloBayes MPI
 Follows the same structural pattern as `msc.py` and `cf.py`:
 
 ```
-_validate_inputs()
 _resolve_chain_names()
-_detect_tools()               # returns (pb_mpi_path, bpcomp_path, tracecomp_path, mpirun_path)
+_detect_tools()               # returns pb_mpi, bpcomp, tracecomp, mpirun paths
 _detect_pb_version()          # file-based heuristic
-_build_chain_cmd()            # builds argv list for one chain
-_build_resume_cmd()           # builds resume argv list for one chain
-_launch_chains()              # Popen × N, returns dict of {name: proc}
-_monitor_loop()               # Rich Live + convergence checks + Ctrl+C handler
-_run_convergence_check()      # bpcomp + tracecomp, returns parsed dict
-_generate_trace_plots()       # matplotlib PDF generation
-_soft_stop_chains()           # writes 0 to .run files, waits
+_detect_mpirun_version()      # --version parsing
+_detect_tool_versions()       # combines above
+_build_chain_cmd()            # builds argv list, always passes -x <freq> <nsamples>
+_build_resume_cmd()           # builds resume argv list
+_build_model_flags()          # assembles -cat/-ncat/-dgam/tree flags
+_count_trace_samples()        # safe .trace parser
+_prepare_matrix()             # FASTA→PHYLIP conversion
+_state_payload()              # run_state.json dict
+_write_run_state()            # persist run_state
+_read_run_state()             # read run_state
+_update_run_state_for_new_chains()
+_resolve_resume_names()
+_parse_bpcomp_bpdiff()        # parse .bpdiff → maxdiff, meandiff
+_parse_tracecomp_contdiff()   # parse .contdiff → min_effsize, max_rel_diff
+_status_from_metrics()        # combined 3-metric status (good/ok/not converged)
+_bpcomp_status()              # per-column: maxdiff only
+_tracecomp_status()           # per-column: min_effsize + max_rel_diff
+_run_convergence_check()      # bpcomp + tracecomp, cwd=convergence/
+_format_convergence_text()    # 6-column ASCII table + per-column status; also writes convergence_render.txt diagnostic
+_generate_trace_plots()       # matplotlib PDF
+_soft_stop_chains()           # writes 0 to .run files
 _assemble_result()            # builds result.json dict
+_run_bi_processes()           # Rich Live (stop→print→start) + convergence checks + Ctrl+C handler
 run_bi()                      # main entry point
 ```
 
@@ -608,7 +639,7 @@ def run_bi(
     resume: str | None,
     monitor_freq: int,
     burnin_frac: float,
-    no_plot: bool,
+    poll_interval: int,
     pb_path: Path | None,
     dry_run: bool,
     quiet: bool,

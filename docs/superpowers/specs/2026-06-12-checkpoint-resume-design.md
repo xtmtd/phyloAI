@@ -306,7 +306,7 @@ The checkpoint framework should be command-agnostic. Each command defines its ta
 | `pretree metrics` | one MSA or MSA/tree pair | skip metric records that exist in command-specific partial outputs; rerun missing records |
 | `tree ml iqtree` | one matrix analysis | prefer IQ-TREE native checkpoint/resume; PhyloAI records tool state and verifies final outputs |
 | `tree ml fasttree` | one matrix analysis | rerun the matrix analysis if output is missing or invalid |
-| `tree bi phylobayes` | one chain | use PhyloBayes chain resume; PhyloAI tracks chain status and convergence-check outputs |
+| `tree bi` | multiple chains | use PhyloBayes chain resume; PhyloAI tracks chain status and convergence-check outputs |
 | `tree msc wastral` | one gene-tree set | rerun if species-tree output is missing or invalid |
 | `tree concordance` | tree/branch or gene-tree batch unit | skip verified output tables; rerun incomplete units |
 | `posttree topology` | one hypothesis/test unit | skip verified test outputs; rerun incomplete tests |

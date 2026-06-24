@@ -13,7 +13,12 @@ from phyloai.cli.doctor import doctor
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
-@click.group(context_settings=CONTEXT_SETTINGS)
+class _RootGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["completion", "doctor", "pretree", "tree", "posttree"]
+
+
+@click.group(context_settings=CONTEXT_SETTINGS, cls=_RootGroup)
 @click.pass_context
 def cli(ctx: click.Context) -> None:
     """PhyloAI — modular phylogenomics analysis platform.
@@ -25,9 +30,9 @@ def cli(ctx: click.Context) -> None:
 
 cli.add_command(completion)
 cli.add_command(doctor)
-cli.add_command(posttree)
 cli.add_command(pretree)
 cli.add_command(tree)
+cli.add_command(posttree)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,14 @@ TOOL_REGISTRY: dict[str, dict] = {
                     "install": "https://github.com/chaoszhang/ASTER"},
     "pb_mpi":     {"required": False, "version_flag": "",
                    "install": "https://github.com/bayesiancook/pbmpi"},
+    "bpcomp":     {"required": False, "version_flag": "",
+                   "install": "https://github.com/bayesiancook/pbmpi"},
+    "tracecomp":  {"required": False, "version_flag": "",
+                   "install": "https://github.com/bayesiancook/pbmpi"},
+    "readpb_mpi": {"required": False, "version_flag": "",
+                   "install": "https://github.com/bayesiancook/pbmpi"},
+    "mpirun":     {"required": False, "version_flag": "--version",
+                   "install": "https://www.open-mpi.org  (or: brew install open-mpi / apt install openmpi-bin)"},
     "mcmctree":   {"required": False, "version_flag": "",
                    "install": "https://github.com/abacus-gene/paml/releases"},
     "correction_multi.jl": {"required": False, "version_flag": "",
@@ -67,6 +75,15 @@ TOOL_REGISTRY: dict[str, dict] = {
                     "path_aliases": ["fasttree"],
                     "install": "Download from http://www.microbesonline.org/fasttree/"},
 }
+
+
+TOOL_GROUPS: list[tuple[str, list[str]]] = [
+    ("Core", ["mafft", "trimal", "iqtree3"]),
+    ("Pre-tree", ["magus", "clipkit", "bmge", "java", "julia", "correction_multi.jl", "run_treeshrink.py"]),
+    ("Tree", ["FastTree", "wastral"]),
+    ("PhyloBayes MPI", ["pb_mpi", "bpcomp", "tracecomp", "readpb_mpi", "mpirun"]),
+    ("Post-tree", ["mcmctree"]),
+]
 
 
 class ToolEnv:

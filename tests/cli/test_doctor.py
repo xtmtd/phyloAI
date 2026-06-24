@@ -25,6 +25,14 @@ def _mock_tools():
                             Path("/repo/phyloai/bundled/TAPER-1.0.0/correction_multi.jl"), "1.0.0", "bundled"),
         "pb_mpi":  ToolInfo("pb_mpi",  ToolStatus.MISSING,
                             note="install: https://github.com/bayesiancook/pbmpi"),
+        "bpcomp":  ToolInfo("bpcomp",  ToolStatus.MISSING,
+                            note="install: https://github.com/bayesiancook/pbmpi"),
+        "tracecomp":  ToolInfo("tracecomp",  ToolStatus.MISSING,
+                            note="install: https://github.com/bayesiancook/pbmpi"),
+        "readpb_mpi":  ToolInfo("readpb_mpi",  ToolStatus.MISSING,
+                            note="install: https://github.com/bayesiancook/pbmpi"),
+        "mpirun":  ToolInfo("mpirun",  ToolStatus.MISSING,
+                            note="install: https://www.open-mpi.org"),
     }
 
 
@@ -142,3 +150,15 @@ def test_explicit_bmge_path_override_is_preferred_over_bundled(tmp_path):
     assert info.status == ToolStatus.OK
     assert info.path == bmge_jar
     assert info.version == "1.12"
+
+
+def test_doctor_json_includes_phylobayes_mpi_tools():
+    runner = CliRunner()
+    with patch("phyloai.cli.doctor.ToolEnv") as MockEnv:
+        MockEnv.return_value.check_all.return_value = _mock_tools()
+        result = runner.invoke(cli, ["doctor", "--output-format", "json"])
+
+    data = json.loads(result.output)
+    for name in ["pb_mpi", "bpcomp", "tracecomp", "readpb_mpi", "mpirun"]:
+        assert name in data
+        assert data[name]["status"] in ("ok", "missing", "warn")

@@ -68,8 +68,7 @@ phyloai tree (click.Group)
 ├── ml (click.Group)
 │   ├── fasttree
 │   └── iqtree
-├── bi (click.Group)
-│   └── phylobayes
+├── bi                        # Bayesian inference (PhyloBayes-MPI, direct command)
 ├── msc
 └── cf                 # Direct command (click.Command), mode selector: --cf
 ```

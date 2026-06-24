@@ -49,8 +49,7 @@ phyloai tree (click.Group)
 ├── ml (click.Group)
 │   ├── fasttree
 │   └── iqtree
-├── bi (click.Group)
-│   └── phylobayes
+├── bi                        # Bayesian inference (PhyloBayes-MPI, direct command)
 ├── msc                # Direct command (click.Command), single backend: wASTRAL
 └── concordance
 ```

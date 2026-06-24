@@ -107,11 +107,18 @@ def _validate_data_section(data: dict[str, Any]) -> None:
 
     if "tool_stderr" in data:
         stderr = data["tool_stderr"]
-        assert isinstance(stderr, str), \
-            f"data.tool_stderr must be a str, got {type(stderr)}"
-        for field in ("wall_time", "exit_code", "command"):
-            assert field not in stderr, \
-                f"data.tool_stderr must not contain '{field}' field"
+        if isinstance(stderr, str):
+            for field in ("wall_time", "exit_code", "command"):
+                assert field not in stderr, \
+                    f"data.tool_stderr must not contain '{field}' field"
+        elif isinstance(stderr, dict):
+            for key, value in stderr.items():
+                assert isinstance(value, str), \
+                    f"data.tool_stderr['{key}'] must be a str, got {type(value)}"
+        else:
+            raise AssertionError(
+                f"data.tool_stderr must be a str or dict, got {type(stderr)}"
+            )
 
     if "tool_log" in data:
         assert isinstance(data["tool_log"], str), \

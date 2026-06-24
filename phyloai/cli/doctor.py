@@ -7,10 +7,32 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from phyloai.core.env import ToolEnv, ToolStatus
+from phyloai.core.env import TOOL_GROUPS, ToolEnv, ToolStatus
 
 console = Console()
 DISPLAY_NAMES = {"bmge": "BMGE.jar"}
+
+STATUS_ICON = {
+    ToolStatus.OK:      "[green]OK[/green]",
+    ToolStatus.WARN:    "[yellow]WARN[/yellow]",
+    ToolStatus.MISSING: "[red]MISSING[/red]",
+}
+
+
+def _build_table(title: str, tools: dict) -> Table:
+    table = Table(title=title, show_header=True)
+    table.add_column("Status", width=8)
+    table.add_column("Tool", width=14)
+    table.add_column("Version", width=12)
+    table.add_column("Path / Note")
+    for name, info in tools.items():
+        table.add_row(
+            STATUS_ICON[info.status],
+            DISPLAY_NAMES.get(name, name),
+            info.version or "\u2014",
+            str(info.path) if info.path else info.note,
+        )
+    return table
 
 
 @click.command("doctor")
@@ -38,24 +60,15 @@ def doctor(output_format: str) -> None:
         click.echo(json.dumps(out, indent=2))
         return
 
-    table = Table(title="PhyloAI Environment Check", show_header=True)
-    table.add_column("Status", width=8)
-    table.add_column("Tool", width=14)
-    table.add_column("Version", width=12)
-    table.add_column("Path / Note")
+    # Text output: render grouped tables in TOOL_GROUPS order.
+    # Tools not in any group appear last under "Other".
+    covered: set[str] = set()
+    for group_name, member_names in TOOL_GROUPS:
+        group_tools = {name: tools[name] for name in member_names if name in tools}
+        covered.update(group_tools.keys())
+        if group_tools:
+            console.print(_build_table(group_name, group_tools))
 
-    status_icon = {
-        ToolStatus.OK:      "[green]OK[/green]",
-        ToolStatus.WARN:    "[yellow]WARN[/yellow]",
-        ToolStatus.MISSING: "[red]MISSING[/red]",
-    }
-
-    for name, info in tools.items():
-        table.add_row(
-            status_icon[info.status],
-            DISPLAY_NAMES.get(name, name),
-            info.version or "—",
-            str(info.path) if info.path else info.note,
-        )
-
-    console.print(table)
+    other = {name: info for name, info in tools.items() if name not in covered}
+    if other:
+        console.print(_build_table("Other", other))

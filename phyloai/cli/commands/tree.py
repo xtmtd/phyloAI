@@ -20,6 +20,69 @@ def _fail(message: str, exit_code: int) -> None:
     raise click.exceptions.Exit(exit_code)
 
 
+def _write_error_result(kwargs: dict, message: str, exit_code: int) -> None:
+    output_dir = kwargs.get("output_dir", Path("runs/tree/bi"))
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result = {
+        "status": "error",
+        "command": " ".join(_build_command_tokens(kwargs)),
+        "wall_time": 0.0,
+        "tool_versions": {},
+        "params": {
+            k: str(v) if isinstance(v, Path) else v
+            for k, v in kwargs.items()
+        },
+        "key_results": {},
+        "error": message,
+        "data": {},
+    }
+    result_path = output_dir / "result.json"
+    result_path.write_text(json.dumps(result, indent=2))
+
+
+def _build_command_tokens(kwargs: dict) -> list[str]:
+    tokens = ["phyloai", "tree", "bi"]
+    flag_map = {
+        "matrix": "--matrix",
+        "output_dir": "--output-dir",
+        "model": "--model",
+        "mixture": "--mixture",
+        "gamma_cats": "--gamma-cats",
+        "start_tree": "--start-tree",
+        "fix_tree": "--fix-tree",
+        "chains": "--chains",
+        "chain_prefix": "--chain-prefix",
+        "chain_names": "--chain-names",
+        "threads": "--threads",
+        "sample_freq": "--sample-freq",
+        "nsamples": "--nsamples",
+        "resume": "--resume",
+        "monitor_freq": "--monitor-freq",
+        "burnin_frac": "--burnin-frac",
+        "poll_interval": "--poll-interval",
+        "pb_path": "--pb-path",
+    }
+    for key, flag in flag_map.items():
+        val = kwargs.get(key)
+        if val is None:
+            continue
+        if isinstance(val, bool) and val:
+            tokens.append(flag)
+        elif isinstance(val, bool):
+            continue
+        else:
+            tokens.append(flag)
+            tokens.append(str(val))
+    if kwargs.get("overwrite"):
+        tokens.append("--overwrite")
+    if kwargs.get("dry_run"):
+        tokens.append("--dry-run")
+    if kwargs.get("quiet"):
+        tokens.append("--quiet")
+    return tokens
+
+
 class _MLGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
         return ["fasttree", "iqtree"]
@@ -27,7 +90,7 @@ class _MLGroup(click.Group):
 
 class _TreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["ml", "msc", "cf"]
+        return ["ml", "bi", "msc", "cf"]
 
 
 class _GroupedHelpCommand(click.Command):
@@ -1230,3 +1293,214 @@ def cf_command(
             click.echo(f"CF results saved to {output_dir}/{prefix_val}.cf.*")
         else:
             click.echo(f"qCF tree saved to {output_dir}/{prefix_val}.cf.tree")
+
+
+@tree.command(
+    "bi",
+    cls=_CFCommand,
+    help=(
+        "Bayesian phylogenetic inference with PhyloBayes-MPI (pb_mpi).\n\n"
+        "\n\n"
+        "  Run N independent MCMC chains in parallel (mpirun + pb_mpi),\n"
+        "  monitor convergence in real time (bpcomp + tracecomp), and\n"
+        "  produce a consensus tree when chains are stopped.\n\n"
+        "\n\n"
+        "  Chains run until Ctrl+C (safe soft-stop) or --nsamples cycles\n"
+        "  are reached. The command stays alive, showing a live progress\n"
+        "  bar and periodic convergence statistics.\n\n"
+        "\n\n"
+        "  Examples:\n\n"
+        "    Default: 3 chains, CAT-GTR, run forever\n"
+        "      phyloai tree bi --matrix concat/matrix.phy\n\n"
+        "    Homogeneous LG+G4 model, auto-stop after 11000 cycles\n"
+        "      phyloai tree bi --matrix concat/matrix.phy --model lg --mixture 1 --nsamples 11000\n\n"
+        "    Add extra chains to an existing run\n"
+        "      phyloai tree bi --matrix concat/matrix.phy --chain-names chain4,chain5 -o runs/tree/bi\n\n"
+        "    Resume all chains in a directory\n"
+        "      phyloai tree bi -o runs/tree/bi --resume\n\n"
+        "    Resume selected chains only\n"
+        "      phyloai tree bi -o runs/tree/bi --resume chain1,chain3\n\n"
+        "    Resume and extend to a higher nsamples target\n"
+        "      phyloai tree bi -o runs/tree/bi --resume --nsamples 10000\n\n"
+        "    Resume and run forever (override previous nsamples)\n"
+        "      phyloai tree bi -o runs/tree/bi --resume --nsamples -1\n\n"
+        "\n\n"
+        "  After the run, determine burn-in and summarise results:\n"
+        "    bpcomp -x 5000 chains/chain1 chains/chain2 chains/chain3\n"
+        "    tracecomp -x 5000 chains/chain1.trace chains/chain2.trace chains/chain3.trace\n\n"
+        "\n\n"
+        "  Mutually exclusive:\n"
+        "    --start-tree / --fix-tree\n"
+        "    --overwrite / --resume\n"
+        "    --chains/--chain-prefix vs --chain-names (names override count)\n\n"
+    ),
+)
+@click.option(
+    "--matrix",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Input alignment (PHYLIP sequential or FASTA). FASTA is auto-converted to PHYLIP for pb_mpi. Required unless --resume is used.",
+)
+@click.option(
+    "--output-dir", "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/bi"),
+    show_default=True,
+    help="Output directory for chains/, convergence/, run_state.json, and result.json.",
+)
+@click.option(
+    "--model",
+    type=click.Choice(["gtr", "poisson", "lg", "wag", "jtt", "mtrev", "mtzoa", "mtart"]),
+    default="gtr",
+    show_default=True,
+    help="Relative exchangeability matrix. gtr=general time reversible, lg/wag/jtt=empirical, poisson=equal rates, mtrev/mtzoa/mtart=mitochondrial.",
+)
+@click.option(
+    "--mixture",
+    type=str,
+    default="auto",
+    show_default=True,
+    help="Profile mixture model. 'auto'=CAT Dirichlet process (recommended). '1'=homogeneous single matrix (e.g. LG+G4). Integer N=N-component fixed mixture (e.g. '20'=CAT20).",
+)
+@click.option(
+    "--gamma-cats",
+    type=click.IntRange(1, None),
+    default=4,
+    show_default=True,
+    help="Number of discrete Gamma rate categories (pb_mpi -dgam). Typical: 4.",
+)
+@click.option(
+    "--start-tree",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Starting tree (Newick). Topology is free to change during MCMC. Mutually exclusive with --fix-tree.",
+)
+@click.option(
+    "--fix-tree",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Fix topology throughout MCMC (Newick). Only branch lengths and other parameters are sampled. Tree must be bifurcating. Mutually exclusive with --start-tree.",
+)
+@click.option(
+    "--chains",
+    type=click.IntRange(1, None),
+    default=3,
+    show_default=True,
+    help="Number of independent MCMC chains. Auto-named as --chain-prefix + 1..N. Overridden by --chain-names.",
+)
+@click.option(
+    "--chain-prefix",
+    type=str,
+    default="chain",
+    show_default=True,
+    help="Prefix for auto-generated chain names (chain1, chain2, ...). Ignored when --chain-names is given.",
+)
+@click.option(
+    "--chain-names",
+    type=str,
+    default=None,
+    help="Comma-separated explicit chain names (e.g. 'chain4,chain5'). Overrides --chains and --chain-prefix. Use to add new chains to an existing run.",
+)
+@click.option(
+    "--threads", "-t",
+    type=click.IntRange(2, None),
+    default=4,
+    show_default=True,
+    help="MPI processes per chain (mpirun -np). Minimum 2: 1 master + N-1 slaves.",
+)
+@click.option(
+    "--sample-freq",
+    type=click.IntRange(1, None),
+    default=1,
+    show_default=True,
+    help="Save one MCMC point every N cycles (pb_mpi -x <every>). Lower values give denser sampling but larger files.",
+)
+@click.option(
+    "--nsamples",
+    type=int,
+    default=None,
+    show_default=False,
+    help="Total MCMC cycles per chain after which pb_mpi stops (pb_mpi -x <until>). -1 = run forever (Ctrl+C to stop). Default (not set) = -1 for fresh runs, or use the stored value on --resume. Note: with --sample-freq=N, the number of saved points is --nsamples / N. On --resume, a new --nsamples value overrides the stored target; use this to extend a completed run (e.g. --resume --nsamples 10000).",
+)
+@click.option(
+    "--monitor-freq",
+    type=click.IntRange(1, None),
+    default=100,
+    show_default=True,
+    help="Run bpcomp + tracecomp convergence diagnostics every N new saved samples (minimum across all chains).",
+)
+@click.option(
+    "--burnin-frac",
+    type=click.FloatRange(0.0, None),
+    default=0.5,
+    show_default=True,
+    help="Fraction of saved samples discarded for convergence monitoring only (0.0 <= x < 1.0). NOT passed to pb_mpi; use bpcomp/tracecomp after the run to choose a final burn-in.",
+)
+@click.option(
+    "--poll-interval",
+    type=click.IntRange(1, None),
+    default=60,
+    show_default=True,
+    help="Seconds between .trace file reads for progress update and convergence triggers. Larger values reduce I/O on network filesystems.",
+)
+@click.option(
+    "--pb-path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Directory containing PhyloBayes-MPI tools (pb_mpi, bpcomp, tracecomp). Overrides PATH lookup.",
+)
+@click.option(
+    "--resume",
+    default=None,
+    is_flag=False,
+    flag_value="__ALL__",
+    help="Resume chains from their .chain state. Bare --resume resumes all chains in run_state.json. --resume chain1,chain3 resumes only those. Mutually exclusive with --overwrite. Use --nsamples to extend to a new target (e.g. --resume --nsamples 10000 to continue from 5000).",
+)
+@click.option(
+    "--overwrite",
+    is_flag=True,
+    default=False,
+    help="Delete and recreate the output directory before starting. Mutually exclusive with --resume.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Print the mpirun + pb_mpi commands that would be run, then exit. No processes are started.",
+)
+@click.option(
+    "--quiet", "-q",
+    is_flag=True,
+    default=False,
+    help="Suppress all terminal output except errors.",
+)
+def bi_command(**kwargs) -> None:
+    from phyloai.tree.bi import run_bi
+
+    try:
+        payload = run_bi(**kwargs)
+    except FileNotFoundError as exc:
+        _write_error_result(kwargs, str(exc), 3)
+        _fail(str(exc), 3)
+    except ValueError as exc:
+        _write_error_result(kwargs, str(exc), 1)
+        _fail(str(exc), 1)
+    if kwargs.get("dry_run"):
+        if not kwargs.get("quiet"):
+            for cmd in payload["data"]["chain_cmds"].values():
+                click.echo(" ".join(cmd))
+        return
+    result_path = kwargs["output_dir"] / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    if result_path.exists():
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = result_path.with_name(f"result_{ts}.json")
+        import shutil
+        shutil.copy2(str(result_path), str(backup_path))
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "pb_mpi execution failed"), 2)
+    if not kwargs.get("quiet"):
+        click.echo(f"Results saved to {result_path}", err=True)
