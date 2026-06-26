@@ -1052,19 +1052,27 @@ def test_run_supermatrix_normal_full_pipeline_mocked(tmp_path: Path) -> None:
 
     r = _mock_step_result()
 
-    # Create expected output directories and tree files so final_tree validation passes
-    (out_dir / "1-convert" / "seqs").mkdir(parents=True)
-    (out_dir / "6-tree").mkdir(parents=True)
-    (out_dir / "1-convert" / "seqs" / "gene1.fa").write_text(">sp1\nA")
-    tree_file = out_dir / "6-tree" / "iqtree.treefile"
-    tree_file.write_text("(sp1,sp2);")
+    # side_effect helpers: create files the pipeline validates after mock returns
+    def _mock_convert(*args, **kwargs) -> dict:
+        out = kwargs.get("output_dir", args[1] if len(args) > 1 else None)
+        if out:
+            (Path(out) / "seqs").mkdir(parents=True, exist_ok=True)
+            (Path(out) / "seqs" / "gene1.fa").write_text(">sp1\nA")
+        return r
 
-    with patch("phyloai.pretree.convert.convert_input", return_value=r), \
+    def _mock_iqtree(*args, **kwargs) -> dict:
+        out = kwargs.get("output_dir", args[2] if len(args) > 2 else None)
+        tf = Path(out) / "iqtree.treefile" if out else Path(".")
+        tf.parent.mkdir(parents=True, exist_ok=True)
+        tf.write_text("(sp1,sp2);")
+        return {**r, "data": {"tree_file": str(tf)}}
+
+    with patch("phyloai.pretree.convert.convert_input", side_effect=_mock_convert), \
          patch("phyloai.pretree.align.run_align", return_value=r), \
          patch("phyloai.pretree.trim.run_trim", return_value=r), \
          patch("phyloai.pretree.filter.run_taper", return_value=r) as mock_taper, \
          patch("phyloai.pretree.concat.run_concat", return_value={**r, "data": {"matrix_file": str(out_dir / "5-concat" / "matrix.fa"), "n_taxa": 2, "n_sites": 10}}) as mock_concat, \
-         patch("phyloai.tree.ml_iqtree.run_iqtree", return_value={**r, "data": {"tree_file": str(out_dir / "6-tree" / "iqtree.treefile")}}) as mock_iqtree:
+         patch("phyloai.tree.ml_iqtree.run_iqtree", side_effect=_mock_iqtree) as mock_iqtree:
         result = runner.invoke(cli, [
             "run", "--seq-dir", str(seq_dir),
             "--mode", "supermatrix", "--speed", "normal",
@@ -1092,18 +1100,26 @@ def test_run_supertree_fast_full_pipeline_mocked(tmp_path: Path) -> None:
 
     r = _mock_step_result()
 
-    # Create expected output directories and tree files so final_tree validation passes
-    (out_dir / "1-convert" / "seqs").mkdir(parents=True)
-    (out_dir / "6-tree").mkdir(parents=True)
-    (out_dir / "1-convert" / "seqs" / "gene1.fa").write_text(">sp1\nA")
-    (out_dir / "6-tree" / "wastral.tre").write_text("(sp1,sp2);")
+    def _mock_convert(*args, **kwargs) -> dict:
+        out = kwargs.get("output_dir", args[1] if len(args) > 1 else None)
+        if out:
+            (Path(out) / "seqs").mkdir(parents=True, exist_ok=True)
+            (Path(out) / "seqs" / "gene1.fa").write_text(">sp1\nA")
+        return r
 
-    with patch("phyloai.pretree.convert.convert_input", return_value=r), \
+    def _mock_wastral(*args, **kwargs) -> dict:
+        out = kwargs.get("output_dir", Path("."))
+        tf = Path(out) / "wastral.tre"
+        tf.parent.mkdir(parents=True, exist_ok=True)
+        tf.write_text("(sp1,sp2);")
+        return {**r, "data": {"tree_file": str(tf)}}
+
+    with patch("phyloai.pretree.convert.convert_input", side_effect=_mock_convert), \
          patch("phyloai.pretree.align.run_align", return_value=r), \
          patch("phyloai.pretree.trim.run_trim", return_value=r), \
          patch("phyloai.pretree.filter.run_taper", side_effect=AssertionError("should not be called")) as mock_taper, \
          patch("phyloai.tree.ml.run_fasttree", return_value={**r, "data": {"trees_dir": str(out_dir / "5-genetrees" / "trees")}}) as mock_ft, \
-         patch("phyloai.tree.msc.run_wastral", return_value={**r, "data": {"tree_file": str(out_dir / "6-tree" / "wastral.tre")}}) as mock_wastral:
+         patch("phyloai.tree.msc.run_wastral", side_effect=_mock_wastral) as mock_wastral:
         result = runner.invoke(cli, [
             "run", "--seq-dir", str(seq_dir),
             "--mode", "supertree", "--speed", "fast",
@@ -1331,7 +1347,7 @@ Replace the final `raise NotImplementedError(...)` at the end of `execute_pipeli
 
     # Validate final tree exists before claiming success (error result.json written
     # by the outer try/except added in Task 7)
-    if final_tree_path and not Path(final_tree_path).exists():
+    if not final_tree_path or not Path(final_tree_path).exists():
         raise _RunStepError(f"Final tree file not found after tree step completed: {final_tree_path}")
 
     checkpoint["status"] = "success"
