@@ -44,7 +44,8 @@ TOOL_REGISTRY: dict[str, dict] = {
                    "install": "https://github.com/bayesiancook/pbmpi"},
     "mpirun":     {"required": False, "version_flag": "--version",
                    "install": "https://www.open-mpi.org  (or: brew install open-mpi / apt install openmpi-bin)"},
-    "mcmctree":   {"required": False, "version_flag": "",
+    "mcmctree":   {"required": False, "version_args": [],
+                   "version_pattern": r"paml version (\d+(?:\.\d+)+)",
                    "install": "https://github.com/abacus-gene/paml/releases"},
     "correction_multi.jl": {"required": False, "version_flag": "",
                    "bundled": True,
@@ -118,7 +119,8 @@ class ToolEnv:
                             return m.group(1)
         return None
 
-    def _get_version(self, path: Path, version_args: str | list[list[str]]) -> Optional[str]:
+    def _get_version(self, path: Path, version_args: str | list[list[str]],
+                      version_pattern: Optional[str] = None) -> Optional[str]:
         if version_args is None:
             return None
         if isinstance(version_args, str):
@@ -126,7 +128,7 @@ class ToolEnv:
                 return self._version_from_tool_dir(path)
             candidates = [[version_args]]
         else:
-            candidates = version_args
+            candidates = version_args if version_args else [[]]
         try:
             for args in candidates:
                 command = [str(path), *args]
@@ -137,6 +139,10 @@ class ToolEnv:
                     capture_output=True, text=True, timeout=5
                 )
                 output = result.stdout.strip() or result.stderr.strip()
+                if version_pattern:
+                    m = re.search(version_pattern, output)
+                    if m:
+                        return m.group(1)
                 for line in output.splitlines():
                     if line.strip():
                         version = self._normalize_version(line.strip()[:200])
@@ -148,6 +154,7 @@ class ToolEnv:
 
     def _detect_tool(self, name: str, version_flag: str = "",
                       version_args: Optional[list[list[str]]] = None,
+                      version_pattern: Optional[str] = None,
                       bundled: bool = False,
                       bundled_dir: Optional[str] = None,
                       bundled_executable: Optional[str] = None,
@@ -156,7 +163,7 @@ class ToolEnv:
         override_path = self._tool_paths.get(name)
         if override_path is not None:
             if override_path.exists():
-                ver = self._get_version(override_path, version_probe)
+                ver = self._get_version(override_path, version_probe, version_pattern)
                 return ToolInfo(name=name, status=ToolStatus.OK,
                                 path=override_path, version=ver)
             return ToolInfo(name=name)
@@ -164,7 +171,7 @@ class ToolEnv:
             bundled_name = bundled_executable or name
             bundled_path = self._bundled_dir / (bundled_dir or name) / bundled_name
             if bundled_path.exists():
-                ver = self._get_version(bundled_path, version_probe) or self._version_from_bundled_dir(bundled_dir)
+                ver = self._get_version(bundled_path, version_probe, version_pattern) or self._version_from_bundled_dir(bundled_dir)
                 return ToolInfo(name=name, status=ToolStatus.OK,
                                 path=bundled_path, version=ver, note="bundled")
         candidates = [name, *(path_aliases or [])]
@@ -172,7 +179,7 @@ class ToolEnv:
             found = shutil.which(candidate)
             if found:
                 p = Path(found)
-                ver = self._get_version(p, version_probe)
+                ver = self._get_version(p, version_probe, version_pattern)
                 return ToolInfo(name=name, status=ToolStatus.OK, path=p, version=ver)
         return ToolInfo(name=name)
 
@@ -187,6 +194,7 @@ class ToolEnv:
                 name,
                 version_flag=meta.get("version_flag", ""),
                 version_args=meta.get("version_args"),
+                version_pattern=meta.get("version_pattern"),
                 bundled=meta.get("bundled", False),
                 bundled_dir=meta.get("bundled_dir"),
                 bundled_executable=meta.get("bundled_executable"),

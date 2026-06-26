@@ -95,3 +95,4 @@ Fish loads completions from that directory automatically in new shells, so you d
 | `phyloai tree msc`   | Multispecies coalescent species tree inference with wASTRAL. | [docs/commands/tree-msc.md](docs/commands/tree-msc.md) |
 | `phyloai tree cf`    | Concordance factor computation: gCF, sCF, sCFl (IQ-TREE3) and qCF (wASTRAL). | [docs/commands/tree-cf.md](docs/commands/tree-cf.md) |
 | `phyloai posttree topology` | Tree topology tests (AU / KH / SH / WKH / WSH / c-ELW) comparing candidate trees against a supermatrix. | [docs/commands/posttree-topology.md](docs/commands/posttree-topology.md) |
+| `phyloai posttree dating`  | Bayesian molecular dating with MCMCtree: IQ-TREE Hessian computation + MCMC divergence time estimation with diagnostics. | [docs/commands/posttree-dating.md](docs/commands/posttree-dating.md) |

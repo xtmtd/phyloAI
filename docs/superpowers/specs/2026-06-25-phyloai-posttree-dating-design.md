@@ -1,7 +1,8 @@
 # PhyloAI posttree dating — Design Spec
 
 **Date:** 2026-06-25
-**Status:** Approved for implementation
+**Last updated:** 2026-06-26 (implemented; --prefix removed, ndata counting from dummy.phy, --seq-type auto supports FASTA/PHYLIP/NEXUS, help/examples cleaned up)
+**Status:** Implemented
 
 ---
 
@@ -45,10 +46,9 @@ MCMCtree:
 |------|------|---------|-------------|
 | `--matrix` | Path | required | Supermatrix alignment (FASTA/PHYLIP/NEXUS) |
 | `--rooted-tree` | Path | required | Rooted tree with fossil/tip calibrations in MCMCtree format |
-| `--seq-type` | Choice[AA\|NT\|auto] | `auto` | Sequence type. AA→LG+F+G4, NT→HKY+G4. auto detects from alignment |
+| `--seq-type` | Choice[AA\|NT\|auto] | `auto` | Sequence type. AA→LG+F+G4, NT→GTR+G4. auto detects from FASTA, PHYLIP, and NEXUS via shared format helpers. |
 | `--model-expr` | str | None | Custom IQ-TREE model expression (e.g. `C10+F+G4`). Mutually exclusive with `--partitions` |
-| `--partitions` | Path | None | Partition file (RAxML-like or NEXUS `.best_model.nex`). Mutually exclusive with `--model-expr` |
-| `--prefix` | str | `iqtree` | IQ-TREE output prefix |
+| `--partitions` | Path | None | Partition file (RAxML-like or NEXUS `.best_model.nex`, or clusters from `phyloai pretree filter cluster`). Mutually exclusive with `--model-expr` |
 | `-o/--output-dir` | Path | `runs/posttree/dating/hessian` | Output directory |
 | `-t/--threads` | int | 4 | IQ-TREE thread count |
 | `--iqtree-path` | str | None | Explicit path to iqtree3 executable |
@@ -64,9 +64,9 @@ Based on `--seq-type` (detected or explicit) and `--partitions`:
 
 | Condition | IQ-TREE command |
 |-----------|----------------|
-| No partitions | `-s matrix -m <model-expr or LG+F+G4/HKY+G4> -te rooted.tre --dating mcmctree --prefix iqtree` |
+| No partitions | `-s matrix -m <model-expr or LG+F+G4/GTR+G4> -te rooted.tre --dating mcmctree --prefix iqtree` |
 | Partitions, AA, N < 10 | add `-m MF -Q partitions --mset LG -mfreq F -mrate G` |
-| Partitions, NT, N < 10 | add `-m MF -Q partitions --mset HKY -mrate G` |
+| Partitions, NT, N < 10 | add `-m MF -Q partitions --mset GTR -mrate G` |
 | Partitions, AA, N ≥ 10 | same as above + `--merge --rclusterf 10` |
 | Partitions, NT, N ≥ 10 | same as above + `--merge --rclusterf 10` |
 
@@ -75,7 +75,17 @@ exclusive). The partition count is read from the file before building the
 command.
 
 `--tool-args` tokens are appended last and may override any managed flag.
-Blocked flags (rejected with error): `-s`, `--dating`.
+**Blocked flags** (rejected with exit code 1 and a clear message):
+`-s`, `--dating`, `-te`, `--prefix`. These four flags define the
+PhyloAI → mcmctree contract: the hessian step hardcodes IQ-TREE prefix
+`iqtree` and must emit
+`iqtree.dummy.phy`, `iqtree.rooted.nwk`, and `iqtree.mcmctree.hessian`
+under the output directory, and use the
+calibrated tree the user supplied via `--rooted-tree` (controlled by
+`-te`). Letting `--tool-args` silently override any of these would
+break the mcmc step's ability to find the required files or use the
+correct tree. All other IQ-TREE flags remain strategy parameters and
+pass through `--tool-args` unchanged.
 
 #### `--rooted-tree` format
 
@@ -94,23 +104,25 @@ validated before running IQ-TREE. Missing root age → error with explanation.
 ### 2.2 `phyloai posttree dating mcmc`
 
 Runs MCMCtree Bayesian dating using approximate likelihood (usedata=2).
-Launches 4 processes in parallel: run1-posterior, run2-posterior,
-run1-prior, run2-prior.
+Launches `2 × --runs` processes: a posterior + prior pair for each run
+(default 4 processes: run1-posterior, run2-posterior, run1-prior,
+run2-prior).
 
 #### Parameters
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--hessian-dir` | Path | required | Output directory from `hessian` step |
-| `--clock` | Choice[1\|2\|3] | `2` | Clock model: 1=global, 2=independent rates, 3=correlated rates |
-| `--burnin` | int | 100000 | MCMC burnin iterations |
-| `--sample-freq` | int | 10 | Sampling frequency (record every N iterations) |
-| `--nsamples` | int | 10000 | Number of samples to keep |
-| `--runs` | int | 2 | Number of independent posterior runs (≥ 2 recommended) |
+| `--ctl` | Path | None | Use this mcmctree.ctl as-is instead of generating one. PhyloAI still copies it into each runN/ and runs MCMCtree. The provided ctl's `seqfile`/`treefile` are honored; symlinks to hessian files under runN/ are placed alongside so MCMCtree can find `in.BV` and `iqtree.*` regardless of `seqfile`/`treefile` content. Passing any of `--clock`/`--burnin`/`--sample-freq`/`--nsamples` with a **non-default value** together with `--ctl` exits code 1 (those flags only affect the generated template; when `--ctl` is provided no template is generated). Passing the default value (e.g. `--clock 2`) is allowed but silently ignored. |
+| `--clock` | Choice[1\|2\|3] | `2` | Clock model: 1=global, 2=independent rates, 3=correlated rates. Ignored when `--ctl` is provided. |
+| `--burnin` | int | 100000 | MCMC burnin iterations. Ignored when `--ctl` is provided. |
+| `--sample-freq` | int | 10 | Sampling frequency (record every N iterations). Ignored when `--ctl` is provided. |
+| `--nsamples` | int | 10000 | Number of samples to keep. Ignored when `--ctl` is provided. |
+| `--runs` | int | 2 | Number of independent posterior runs. Each run is paired with a matching prior run. **I7**: `--runs=1` is allowed for exploratory runs that skip convergence diagnostics; `--runs≥3` is supported by computing pairwise convergence (run1 vs run2, run1 vs run3, run2 vs run3, …) with the per-pair Spearman ρ in `spearman_correlations.csv`. |
 | `-o/--output-dir` | Path | `runs/posttree/dating/mcmc` | Output directory |
 | `--mcmctree-path` | str | None | Explicit path to mcmctree executable |
 | `--overwrite` | flag | False | Delete and recreate output directory |
-| `--dry-run` | flag | False | Generate mcmctree.ctl and print commands without executing |
+| `--dry-run` | flag | False | Generate mcmctree.ctl and print commands without executing (no-op when `--ctl` is provided: just print which ctl would be used) |
 | `-q/--quiet` | flag | False | Suppress terminal output except errors |
 
 Total MCMC iterations = `burnin + (sample_freq × nsamples)`.
@@ -137,23 +149,23 @@ runs/posttree/dating/hessian/
 
 ```
 runs/posttree/dating/mcmc/
-├── mcmctree.ctl                    # generated template; user may edit before run
+├── mcmctree.ctl                    # generated template copy; edit via --dry-run + --ctl workflow
 ├── run1/
 │   ├── in.BV -> <hessian-dir>/iqtree.mcmctree.hessian
 │   ├── iqtree.dummy.phy -> <hessian-dir>/iqtree.dummy.phy
 │   ├── iqtree.rooted.nwk -> <hessian-dir>/iqtree.rooted.nwk
-│   ├── mcmctree.ctl                # copy of top-level ctl (usedata=2, seed=-1)
+│   ├── mcmctree.ctl                # copy of top-level ctl, seed injected with random int
 │   ├── mcmctree.log                # mcmctree stdout
 │   ├── mcmc.txt                    # MCMC parameter trace (progress source)
 │   ├── mcmctree.out                # mcmctree summary
-│   ├── SeedUsed                    # seed written by mcmctree at startup
 │   ├── FigTree.tre                 # annotated dated tree (mcmctree native)
-│   ├── FigTree.node.tre            # same tree with internal node labels (nodeXX)
+│   ├── FigTree.node.tre            # same tree, internal labels as bare integers
 │   └── prior/
 │       ├── in.BV -> <hessian-dir>/iqtree.mcmctree.hessian
 │       ├── iqtree.dummy.phy -> <hessian-dir>/iqtree.dummy.phy
 │       ├── iqtree.rooted.nwk -> <hessian-dir>/iqtree.rooted.nwk
-│       ├── mcmctree.ctl            # usedata=0, seed fixed from ../SeedUsed
+│       ├── mcmctree.ctl            # usedata=0, same random seed as posterior
+│       ├── mcmctree.log
 │       ├── mcmctree.log
 │       ├── mcmc.txt
 │       ├── mcmctree.out
@@ -165,10 +177,11 @@ runs/posttree/dating/mcmc/
 │       └── ...
 └── diagnostics/
     ├── convergence/
-    │   ├── posterior_times.txt     # node means + 95%CI, run1 & run2
-    │   ├── prior_times.txt
-    │   ├── convergence_posterior.pdf   # run1 vs run2 scatter + regression line
-    │   └── convergence_prior.pdf
+    │   ├── posterior_times.csv                    # run1 vs run2 (canonical pair)
+    │   ├── prior_times.csv
+    │   ├── convergence_posterior_run1_vs_run2.pdf # scatter + regression + y=x
+    │   └── convergence_prior_run1_vs_run2.pdf
+    │   #   (extra pairs generated as *_runA_vs_runB.pdf when --runs >= 3)
     ├── infinite_sites/
     │   ├── infinite_sites_run1_posterior.pdf   # mean age vs 95%CI width
     │   ├── infinite_sites_run2_posterior.pdf
@@ -182,7 +195,7 @@ runs/posttree/dating/mcmc/
     │   ├── mcmc_trace_run2_posterior.pdf
     │   ├── mcmc_trace_run1_prior.pdf
     │   └── mcmc_trace_run2_prior.pdf
-    └── spearman_correlations.csv       # columns: comparison, rho, pvalue
+    └── spearman_correlations.csv       # columns: comparison, rho, pvalue, slope, intercept, rmse
 ```
 
 Symlinks in each `runN/` and `runN/prior/` point directly to `<hessian-dir>`.
@@ -192,7 +205,11 @@ Symlinks in each `runN/` and `runN/prior/` point directly to `<hessian-dir>`.
 
 ## 4. `mcmctree.ctl` Template
 
-Generated by Python directly (not copied from PAML examples). Template:
+Generated by Python directly (not copied from PAML examples). The template
+includes every parameter that the upstream `mcmctree.sh` reference script
+exposes, with the inline `* ...` comments preserved verbatim. These comments
+are harmless if MCMCtree ignores the parameter (e.g. `model`/`alpha`/`ncatG`
+when `usedata = 2`) and they help users edit the ctl confidently.
 
 ```
           seed = -1
@@ -201,18 +218,16 @@ Generated by Python directly (not copied from PAML examples). Template:
        outfile = mcmctree.out
 
          ndata = {ndata}
-       seqtype = {seqtype}   * 0: nucleotides; 1:codons; 2:AAs
-       usedata = 2           * 0: no data; 1:seq like; 2:use in.BV; 3: out.BV
-         clock = {clock}     * 1: global clock; 2: independent rates; 3: correlated rates
-       RootAge =             * safe constraint on root age
+       seqtype = {seqtype}  * 0: nucleotides; 1:codons; 2:AAs
+       usedata = 2    * 0: no data; 1:seq like; 2:use in.BV; 3: out.BV
+         clock = {clock}    * 1: global clock; 2: independent rates; 3: correlated rates
+       RootAge =   * safe constraint on root age, used if no fossil for root.
 
-     cleandata = 0
+       BDparas = 1 1 0.1 M   * birth, death, sampling
+   rgene_gamma = 2 20 1   * gamma prior for overall rates for genes
+  sigma2_gamma = 1 10 1    * gamma prior for sigma^2     (for clock=2 or 3)
 
-       BDparas = 1 1 0.1 M
-   rgene_gamma = 2 20 1
-  sigma2_gamma = 1 10 1
-
-      finetune = 0: .1  .1  .1  .1 .1 .1
+      finetune = 0: .1  .1  .1  .1 .1 .1  * auto (0 or 1) : times, musigma2, rates, mixing, paras, FossilErr
 
 *** These parameters control the MCMC run
 ***  Note: Total number of MCMC iterations will be burnin + (sampfreq * nsample)
@@ -226,20 +241,35 @@ Generated by Python directly (not copied from PAML examples). Template:
 *** The following parameters only needed to run MCMCtree with exact likelihood (usedata = 1)
 *** no need to change anything for approximate likelihood (usedata = 2)
 
-         model = 0
-         alpha = 0.5
-         ncatG = 4
+         model = 0    * 0:JC69, 1:K80, 2:F81, 3:F84, 4:HKY85
+         alpha = 0.5    * alpha for gamma rates at sites
+         ncatG = 4    * No. categories in discrete gamma
 
-   kappa_gamma = 6 2
-   alpha_gamma = 1 1
+     cleandata = 0  * remove sites with ambiguity data (1:yes, 0:no)?
+
+   kappa_gamma = 6 2      * gamma prior for kappa
+   alpha_gamma = 1 1      * gamma prior for alpha
+
+*** Note: Make your window wider (100 columns) before running the program.
 ```
 
-- `ndata`: number of partitions (from `iqtree.dummy.phy` header, or 1 if unpartitioned)
-- `seqtype`: 2 (AA) or 0 (NT) — inferred from `iqtree.dummy.phy` content.
-  If sequences contain characters outside `ACGTN-` → seqtype=2 (AA),
-  otherwise seqtype=0 (NT). `--seq-type` is not a parameter of `mcmc`.
-
-- Prior run ctl: identical except `usedata = 0` and `seed = <value from SeedUsed>`
+- `ndata`: number of data blocks in `iqtree.dummy.phy`. **Always counted
+  directly from the file** — this is the ground truth, especially when
+  `--merge --rclusterf 10` reduces ≥ 10 original partitions to fewer
+  megapartitions. `mcmc` counts blocks matching `^\s+\d+\s+\d+\s*$`,
+  minimum 1. The `hessian` step also stores the original partition count
+  in `result.json` (`params.n_partitions`; 1 for unpartitioned), but
+  `mcmc` does **not** read `ndata` from there — it reads `seq_type` from
+  `params.seq_type` but always counts `ndata` from the actual dummy.phy.
+- `seqtype`: 2 (AA) or 0 (NT). Sourced from `hessian`'s `result.json`
+  (`params.seq_type`); fallback scans `iqtree.dummy.phy` for non-ACGT
+  characters. `--seq-type` is not a parameter of `mcmc`.
+- `cleandata = 0`: default for IQ-TREE-emitted dummy.phy, where MCMCtree's
+  internal likelihood is not used. Leave at 0 unless running with
+  `usedata = 1`/`usedata = 3` (exact likelihood paths, not in this spec's
+  scope).
+- Prior run ctl: identical except `usedata = 0` and the random seed
+  injected by PhyloAI (shared with the posterior run).
 
 ---
 
@@ -247,10 +277,10 @@ Generated by Python directly (not copied from PAML examples). Template:
 
 ### 5.1 `hessian` flow
 
-1. Validate `--matrix` exists and has supported extension
+1. Validate `--matrix` exists and is a supported format (FASTA, PHYLIP, NEXUS).
 2. Validate `--rooted-tree` exists; check root age constraint present (regex
    on outermost node label)
-3. Detect seq-type from alignment if `--seq-type auto`
+3. Detect seq-type from FASTA alignment if `--seq-type auto`
 4. Count partitions if `--partitions` provided; select IQ-TREE command variant
 5. Build IQ-TREE command; apply `--tool-args` tokens last
 6. Handle output dir lifecycle (overwrite/resume/error if non-empty)
@@ -263,28 +293,45 @@ Generated by Python directly (not copied from PAML examples). Template:
 
 ```
 Step 1:  Validate hessian-dir contains 3 required files
-Step 2:  Infer seqtype from iqtree.dummy.phy
-Step 3:  Count ndata from iqtree.dummy.phy header
-Step 4:  Generate mcmctree.ctl at output-dir root
-         If --dry-run: print ctl content + would-run commands, exit 0
-Step 5:  Create run1/, run2/ and run1/prior/, run2/prior/ directories
-         - Symlinks to hessian-dir files in each directory
-         - Copy mcmctree.ctl to each runN/ (usedata=2, seed=-1)
-         - Write placeholder runN/prior/mcmctree.ctl (will be completed
-           once SeedUsed appears)
-Step 6:  Launch run1-posterior and run2-posterior subprocesses
+Step 2:  Read seq_type and ndata from <hessian-dir>/result.json
+         (hessian records them under params.seq_type / params.n_partitions).
+         Fallback (older hessian output without these fields, or
+         out-of-PhyloAI hessian dir): infer seqtype from iqtree.dummy.phy
+         content and count ndata from header blocks.
+Step 3:  If --ctl provided:
+            - Validate --ctl exists
+            - Reject if --clock/--burnin/--sample-freq/--nsamples are
+              passed with non-default values (those flags only affect the
+              generated template; Click cannot distinguish an implicit
+              default from an explicit one, so only non-default values
+              trigger the conflict check).
+            - Resolve ctl_text = contents of --ctl file
+            - Skip Steps 4 (no generation)
+         Else:
+            - Generate mcmctree.ctl at output-dir root from template,
+              substituting {seqtype}/{ndata}/{clock}/{burnin}/{sampfreq}/{nsample}
+            - ctl_text = generated template
+Step 4:  If --dry-run:
+            - Print ctl_text + would-run commands, exit 0
+Step 5:  Generate a random seed per run (positive 32-bit int).
+         For each run directory:
+           - Inject the seed into ctl_text via regex
+           - Write posterior runN/mcmctree.ctl
+           - Derive prior runN/prior/mcmctree.ctl (usedata=0, same seed)
+         All symlinks to hessian-dir files are created in both runN/
+         and runN/prior/.
+Step 6:  Launch all posterior and prior subprocesses in parallel
          stdout → runN/mcmctree.log
-Step 7:  Background watcher threads poll for runN/SeedUsed
-         - As soon as SeedUsed appears for runN:
-           - Read seed value
-           - Write runN/prior/mcmctree.ctl (usedata=0, seed=<value>)
-           - Launch runN/prior subprocess
-Step 8:  rich.Live progress bar monitors all 4 processes
-         - One progress task per run
+Step 7:  rich.Live progress bar monitors every launched process
+         (2 × --runs total: one posterior + one prior task per run)
          - Progress = mcmc.txt line count (excluding header) / nsamples
-         - Prior tasks show "waiting for seed..." until prior launched
          - Poll interval: 5 seconds
-Step 9:  All 4 processes finish → stop Live display
+Step 8:  All processes finish → stop Live display
+Step 9:  Collect return codes; if any posterior non-zero → status=error,
+         error message names the failed run/dir, data.warnings lists
+         every failure. Validation: mcmc.txt and mcmctree.out non-empty
+         for every run; failures recorded as warnings even when
+         returncode=0 (silent truncation).
 Step 10: Generate diagnostics/ (see Section 6)
 Step 11: Write result.json
 ```
@@ -297,40 +344,59 @@ Step 11: Write result.json
 ```
  run1-posterior  ████████████░░░░  6234/10000 samples  [02:14]
  run2-posterior  ████████████░░░░  6198/10000 samples  [02:14]
- run1-prior      waiting for seed...
- run2-prior      ████████████████  10000/10000 samples [01:58]
+ run1-prior      ████████████████  10000/10000 samples [01:58]
+ run2-prior      █████████░░░░░░░░  4231/10000 samples  [01:21]
 ```
 
 ---
 
 ## 6. Diagnostics
 
-All diagnostics generated after all 4 runs complete successfully.
+Diagnostics are generated after all runs complete. Diagnostics use
+whatever output is available: a run whose prior failed is still included
+(posterior node times and traces); a run with zero nodes is highlighted
+as a warning in `spearman_correlations.csv`. Convergence plots and
+pairwise metrics are generated for every pair of runs that both produced
+valid `mcmctree.out` files (`--runs=1` skips convergence entirely). The
+diagnostics section degrades gracefully with partial output.
 
 ### 6.1 Time tables
 
 Parse `mcmctree.out` (lines matching `^t_`) for each run:
 
 ```
-posterior_times.txt  columns: node, mean_run1, lower95_run1, upper95_run1,
+posterior_times.csv  columns: node, mean_run1, lower95_run1, upper95_run1,
                                ci_width_run1, mean_run2, lower95_run2,
                                upper95_run2, ci_width_run2
-prior_times.txt      same structure
+prior_times.csv      same structure
 ```
 
 ### 6.2 Convergence plots (`diagnostics/convergence/`)
 
-- `convergence_posterior.pdf`: scatter of run1 vs run2 posterior node means +
-  linear regression line. X=run1 mean, Y=run2 mean.
-- `convergence_prior.pdf`: same for prior.
-- If points fall tightly on the diagonal, runs have converged.
-- Spearman ρ and p-value added to `spearman_correlations.csv`.
+- `convergence_posterior_<run_a>_vs_<run_b>.pdf`: scatter of two
+  posterior runs' node means + linear regression line + y=x reference
+  line. X = run_a mean, Y = run_b mean.
+- `convergence_prior_<run_a>_vs_<run_b>.pdf`: same for priors.
+- For `--runs=2` (default) only one pair is generated:
+  `run1_vs_run2`.
+- For `--runs≥3` all `C(n_runs, 2)` pairs are generated.
+- For `--runs=1` (I7) no convergence plots are written; the
+  `convergence` entry in `data.diagnostics` is `{"status": "skipped",
+  "reason": "n_runs=1"}`.
+- D3: each plot annotates the linear-regression slope/intercept and
+  RMSE in the legend alongside Spearman ρ. A point cloud lying on the
+  y=x diagonal (slope ≈ 1, intercept ≈ 0, ρ ≈ 1, low RMSE) indicates
+  convergence; systematic offset between runs shows up as a slope ≠ 1
+  or non-zero intercept that pure ρ would hide.
+- Per-pair Spearman ρ and p-value added to `spearman_correlations.csv`.
 
 ### 6.3 Infinite-sites plots (`diagnostics/infinite_sites/`)
 
 - X = mean node age, Y = 95%CI width
 - Points connected as line plot (ordered by X)
-- One plot per run × posterior/prior = 4 plots total
+- One plot per available run × posterior/prior pair. For the default
+  `--runs=2` this is 4 plots; `--runs=1` produces 2; `--runs=3` produces
+  6.
 - Interpretation differs by distribution type:
   - **Posterior** (`usedata=2`): a straight line (CI width proportional to
     age) indicates the infinite-sites limit is approached, i.e. additional
@@ -349,28 +415,34 @@ prior_times.txt      same structure
 - Points connected as line plot (ordered by X)
 - Diagnoses fossil calibration placement: large deviations suggest
   calibrations may be misplaced on the tree
-- One plot per run = 2 plots total
+- One plot per available run. Default `--runs=2` → 2 plots total.
 
 ### 6.5 Trace plots (`diagnostics/traces/`)
 
 - Parse `mcmc.txt` columns (t_nX parameters = node times, mu = mean rate,
   sigma2 = rate variance, lnL = log-likelihood)
 - Plot each parameter trace over samples as multi-panel figure
-- One PDF per run × posterior/prior = 4 plots total
+- One PDF per available run × posterior/prior. Default `--runs=2` → 4 plots.
 
 ### 6.6 `spearman_correlations.csv`
 
-Columns: `comparison`, `rho`, `pvalue`
+Columns: `comparison`, `rho`, `pvalue`, `slope`, `intercept`, `rmse`
 
 Rows:
-- `convergence_posterior` (run1 vs run2 posterior means)
-- `convergence_prior`
+- `convergence_posterior_run1_vs_run2`, `convergence_prior_run1_vs_run2`
+  (and every extra pair when `--runs≥3`)
 - `infinite_sites_run1_posterior` (mean vs CI width)
 - `infinite_sites_run2_posterior`
 - `infinite_sites_run1_prior`
 - `infinite_sites_run2_prior`
 - `posterior_vs_prior_run1`
 - `posterior_vs_prior_run2`
+
+D3: `slope`/`intercept` come from the per-plot linear fit (only for
+rows that have an X/Y pair; infinite-sites and posterior-vs-prior rows
+fill `slope`/`intercept`/`rmse` with the same fit). For runs with
+fewer than 3 valid points (D6) all five numeric columns are written as
+empty strings and a warning is added to `data.warnings`.
 
 ---
 
@@ -421,130 +493,133 @@ fossil/tip age constraints on nodes and a constrained root age, e.g.:
 Calibration units are 100 Mya. The root age constraint is mandatory.
 
 Model selection:
-  --seq-type AA|NT|auto  detects sequence type from the alignment (default:
-                         auto). Default models: LG+F+G4 (AA), HKY+G4 (NT).
-  --model-expr           override with any IQ-TREE model string (e.g.
+  --seq-type AA|NT|auto  Sequence type (default: auto — reads FASTA,
+                         PHYLIP, and NEXUS through shared format helpers).
+  --model-expr           Override with any IQ-TREE model string (e.g.
                          C10+F+G4). Mutually exclusive with --partitions.
-  --partitions           partition file (RAxML-like or .best_model.nex from
-                         phyloai tree ml iqtree). Recommended: <= 10
-                         partitions for MCMCtree (too many partitions narrow
-                         node age intervals). If > 10, PhyloAI automatically
-                         merges them with --merge --rclusterf 10.
+  --partitions           Partition file (RAxML-like, NEXUS .best_model.nex,
+                         or cluster file). < 10 partitions run directly;
+                         >= 10 are auto-merged.
 
 Examples:
 
   # Unpartitioned AA analysis (default model LG+F+G4)
-  phyloai posttree dating hessian \
-      --matrix concat.aa.fa --rooted-tree calib.tre
+
+  phyloai posttree dating hessian --matrix concat.aa.fa --rooted-tree calib.tre
 
   # Custom mixture model
-  phyloai posttree dating hessian \
-      --matrix concat.aa.fa --rooted-tree calib.tre --model-expr C10+F+G4
 
-  # Partitioned NT analysis (<= 10 partitions, fixed HKY+G4 per partition)
-  phyloai posttree dating hessian \
-      --matrix concat.nt.fa --rooted-tree calib.tre \
-      --partitions loci.partitions
+  phyloai posttree dating hessian --matrix concat.aa.fa --rooted-tree calib.tre --model-expr C10+F+G4
+
+  # Partitioned NT analysis (< 10 partitions, fixed GTR+G4 per partition)
+
+  phyloai posttree dating hessian --matrix concat.nt.fa --rooted-tree calib.tre --partitions loci.partitions
 
   # Resume interrupted IQ-TREE run
-  phyloai posttree dating hessian \
-      --matrix concat.aa.fa --rooted-tree calib.tre --resume
+
+  phyloai posttree dating hessian --matrix concat.aa.fa --rooted-tree calib.tre --resume
 ```
 
 ### `mcmc` command docstring
 
 ```
-Run MCMCtree Bayesian molecular dating (approximate likelihood).
+Run MCMCtree Bayesian molecular dating (approximate likelihood only).
 
 Reads the three IQ-TREE files from a completed `hessian` run and executes
-MCMCtree to estimate divergence times under a Bayesian framework.
+MCMCtree to estimate divergence times. Uses usedata=2 (gradient/Hessian
+from IQ-TREE in.BV). Does NOT implement usedata=1 or usedata=3.
 
-Two independent posterior runs (run1/, run2/) are launched in parallel,
-each paired with a matching prior run (run1/prior/, run2/prior/) started
-as soon as the posterior seed is available from SeedUsed. All four runs
-use one CPU thread each (4 threads total).
+Two independent posterior runs (run1/, run2/) launch in parallel, each
+with a matching prior run using the same seed.
 
-A mcmctree.ctl control file is generated in the output directory before
-any run starts. You may inspect and edit it freely — the file is copied
-into each run directory at launch time.
+Review the generated ctl with --dry-run, then edit the copy and re-run
+with --ctl edited.ctl to customize parameters beyond the built-in flags.
 
-MCMC settings:
-  Total iterations = --burnin + (--sample-freq x --nsamples)
-  Default: 100000 + (10 x 10000) = 200000 iterations, 10000 samples kept.
-  Increase --nsamples (e.g. 20000) or --burnin for demanding datasets.
+MCMC settings: Total iterations = --burnin + (--sample-freq x --nsamples).
+Default: 200000 iterations, 10000 samples kept.
 
-Clock models (--clock):
-  1  Global clock (all lineages same rate)
-  2  Independent rates (default; recommended for most datasets)
-  3  Correlated rates (autocorrelated across branches)
+Clock models:
+  1  Global clock
+  2  Independent rates (default; recommended)
+  3  Correlated rates
 
-Progress is tracked by polling mcmc.txt sample counts for all four runs.
-
-Diagnostics generated after all runs complete:
-  diagnostics/convergence/         run1 vs run2 scatter + regression line
-  diagnostics/infinite_sites/      mean age vs 95%CI width (data sufficiency)
-  diagnostics/posterior_vs_prior/  posterior vs prior age per node
-  diagnostics/traces/              MCMC parameter trace plots
-  diagnostics/spearman_correlations.csv
+Diagnostics generated after all runs complete (under diagnostics/):
+  convergence/       posterior_times.csv + run1-vs-run2 scatter plots
+  infinite_sites/    mean age vs 95%CI width (data-sufficiency check)
+  posterior_vs_prior/  posterior-vs-prior mean age per node
+  traces/            MCMC parameter trace plots
+  spearman_correlations.csv
 
 Examples:
 
   # Default 2-run analysis
-  phyloai posttree dating mcmc \
-      --hessian-dir runs/posttree/dating/hessian
+
+  phyloai posttree dating mcmc --hessian-dir runs/posttree/dating/hessian
 
   # Longer run with correlated clock
-  phyloai posttree dating mcmc \
-      --hessian-dir runs/posttree/dating/hessian \
-      --clock 3 --burnin 200000 --nsamples 20000
 
-  # Dry-run: inspect generated mcmctree.ctl without executing
-  phyloai posttree dating mcmc \
-      --hessian-dir runs/posttree/dating/hessian --dry-run
+  phyloai posttree dating mcmc --hessian-dir runs/posttree/dating/hessian --clock 3 --burnin 200000 --nsamples 20000
+
+  # Use a custom mcmctree.ctl
+
+  phyloai posttree dating mcmc --hessian-dir runs/posttree/dating/hessian --ctl my_run.ctl
+
+  # Dry-run: inspect generated ctl without executing
+
+  phyloai posttree dating mcmc --hessian-dir runs/posttree/dating/hessian --dry-run
 ```
 
 ---
 
 ## 9. Implementation Notes
 
-### `FigTree.node.tre` extraction
+### Tool detection
 
-`mcmctree.out` contains three trees under the section:
+`run_mcmc` finds the mcmctree binary via `shutil.which("mcmctree")` (or
+uses `--mcmctree-path` if supplied), then runs a `subprocess.run` with no
+arguments and extracts the version from stdout via the regex
+`paml version (\d+(?:\.\d+)+)`.  No `ToolEnv` or `TOOL_REGISTRY` is
+involved — the detection is self-contained in ~15 lines.
 
-```
-Species tree for FigTree.  Branch lengths = posterior mean times; 95% CIs = labels
-```
+### Seed handling
 
-The **first** of these three trees has internal node labels (e.g. `nodeXX`)
-that identify which node corresponds to which `t_nodeXX` parameter in
-`mcmc.txt` and `mcmctree.out` time tables. This tree is extracted and saved
-as `FigTree.node.tre` so users can map parameter names to tree nodes without
-manually parsing `mcmctree.out`.
+`run_mcmc` generates a `random.randint(1, 2**31 - 1)` seed for each run,
+injects it into the ctl text via regex, and launches posterior + prior
+subprocesses immediately with the same seed.  No `SeedUsed` file is read
+or waited on.
 
-Extraction: scan `mcmctree.out` for the section header, take the first
-Newick string that follows (ends with `;`), write to `FigTree.node.tre`.
-Applied to both posterior `runN/` and prior `runN/prior/` directories.
+When `--ctl` is provided, the user's ctl is copied into each `runN/`
+after the seed line is replaced. The prior ctl is derived from the
+posterior ctl (`usedata = 0`, same seed) via `_derive_prior_ctl()`.
 
-### File organisation
+### MCMCtree output parsing
 
-- CLI layer: `phyloai/cli/commands/posttree.py` — add `dating` subgroup +
-  `hessian` and `mcmc` commands following existing `topology` pattern
-- Library layer: `phyloai/posttree/dating_hessian.py` and
-  `phyloai/posttree/dating_mcmc.py`
-- Diagnostic helpers: `phyloai/posttree/dating_diagnostics.py`
-- `env.py`: mcmctree version detection fix
+`parse_mcmctree_out()` extracts node age estimates from `mcmctree.out`.
+The regex allows optional whitespace after the opening parenthesis
+(`\(\s*`) to handle PAML's `( 1.234, 5.678)` formatting.
 
-### Dependencies
+`extract_node_tree()` returns the first Newick string after the
+`Species tree for FigTree.` marker. The regex `\([\s\S]+?\)[\s\d]*;`
+handles node-labeled trees (`) 7 ;`) where a bare-integer label sits
+between `)` and `;`.
 
-No new dependencies. Uses:
-- `matplotlib` (already used elsewhere for plots)
-- `scipy.stats.spearmanr` (scipy already a dependency)
-- `rich` (already used)
-- `subprocess`, `threading`, `symlink` from stdlib
+### Progress monitoring
 
-### `result.json` schema
+A `_SampleCounter` helper tracks `(inode, byte_offset)` per `mcmc.txt`
+for incremental reading — each 5-second poll reads only new bytes.
 
-Follows standard PhyloAI schema. Key fields for `mcmc`:
+Log files are tailed to the terminal via daemon threads (unless
+`--quiet`), prefixed with the run key (`run1:posterior`, etc.).
+
+### hessian → mcmc contract
+
+`seq_type` ("AA"|"NT") is read from `<hessian-dir>/result.json`, falling
+back to scanning `iqtree.dummy.phy` content when the field is absent.
+`ndata` is **always counted from `iqtree.dummy.phy`** data blocks — never
+from `result.json`. The `hessian` step stores the original partition count
+in `params.n_partitions` (1 for unpartitioned) for reporting only.
+
+### result.json schema (mcmc step)
 
 ```json
 {
@@ -552,17 +627,21 @@ Follows standard PhyloAI schema. Key fields for `mcmc`:
   "command": "phyloai posttree dating mcmc ...",
   "wall_time": 3421.5,
   "tool_versions": {"mcmctree": "4.10.10"},
-  "params": { "clock": 2, "burnin": 100000, "nsamples": 10000, ... },
+  "params": {
+    "ctl": null, "ctl_source": "generated",
+    "clock": 2, "burnin": 100000, "sample_freq": 10,
+    "nsamples": 10000, "n_runs": 2,
+    "seqtype": "AA", "ndata": 2, "seqtype_ndata_source": "hessian-result.json"
+  },
   "key_results": {
-    "n_nodes": 12,
     "n_runs": 2,
-    "convergence_rho_posterior": 0.998,
-    "convergence_rho_prior": 0.997
+    "n_posterior_failures": 0,
+    "convergence_rho_posterior": 0.998
   },
   "data": {
-    "posterior_times": [...],
-    "prior_times": [...],
-    "diagnostics": { ... }
+    "diagnostics": {"spearman": [...], "warnings": [], "generated": [...], "skipped": [...]},
+    "warnings": [],
+    "return_codes": {"run1:posterior": 0, "run1:prior": 0, ...}
   }
 }
 ```
