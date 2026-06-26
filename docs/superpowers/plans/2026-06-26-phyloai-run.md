@@ -17,7 +17,7 @@
 - Step subdirectories use numeric prefixes: `1-convert`, `2-align`, `3-trim`, `4-filter`, `5-concat` or `5-genetrees`, `6-tree`.
 - `4-filter/` directory is NOT created when `--speed fast` is used.
 - `result.json` is written at `<output-dir>/result.json` only on successful completion (or on failure with `status: "error"`).
-- `run_checkpoint.json` uses `phyloai/core/checkpoint.py` `save_checkpoint_atomic` with `fsync=True` on terminal writes only.
+- `run_checkpoint.json` uses a local `_save_json_atomic` helper (plain dicts, not the `Checkpoint` dataclass) with `fsync=True` on terminal writes only.
 - Rich progress: each step prints a `[N/total]` header; batch steps show a progress bar.
 - Exit codes: 0 success, 1 user/input error, 2 tool failure, 3 environment error.
 - All `result.json` fields follow `2026-06-21-phyloai-json-output-standard.md`.
@@ -235,13 +235,6 @@ uv run pytest tests/cli/test_run.py::test_run_help -v
 
 Expected: PASS — `--help` shows all options including `--speed`, `--mode`, `--resume`.
 
-- [ ] **Step 7: Commit**
-
-```bash
-git add phyloai/cli/commands/run.py phyloai/cli/commands/_run_pipeline.py phyloai/cli/main.py tests/cli/test_run.py
-git commit -m "feat(run): scaffold phyloai run CLI command with --help"
-```
-
 ---
 
 ## Task 2: Run-level checkpoint helpers
@@ -251,7 +244,7 @@ git commit -m "feat(run): scaffold phyloai run CLI command with --help"
 - Test: `tests/cli/test_run.py`
 
 **Interfaces:**
-- Consumes: `phyloai.core.checkpoint.canonical_params_hash`, `save_checkpoint_atomic`, `load_checkpoint`, `CHECKPOINT_SCHEMA_VERSION`
+- Consumes: `phyloai.core.checkpoint.canonical_params_hash`, `CHECKPOINT_SCHEMA_VERSION`
 - Produces:
   - `_build_run_params(seq_dir, mode, speed, threads, output_dir) -> dict`
   - `_build_run_checkpoint(command_str, params) -> dict`  returns a plain dict (not a `Checkpoint` dataclass) matching the `run_checkpoint.json` schema
@@ -339,7 +332,6 @@ import click
 from phyloai.core.checkpoint import (
     CHECKPOINT_SCHEMA_VERSION,
     canonical_params_hash,
-    save_checkpoint_atomic,
 )
 
 
@@ -459,10 +451,21 @@ def _validate_run_resume(checkpoint: dict[str, Any], current_hash: str) -> None:
         )
 
 
+# Local atomic JSON write for run-level checkpoint (uses plain dicts,
+# not the Checkpoint dataclass that core.checkpoint.save_checkpoint_atomic expects).
+def _save_json_atomic(data: dict[str, Any], path: Path) -> None:
+    import os
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    f.flush()
+    os.replace(str(tmp), str(path))
+
+
 def _save_run_checkpoint(checkpoint: dict[str, Any], path: Path, *, fsync: bool = False) -> None:
     import datetime as _dt
     checkpoint["updated_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
-    save_checkpoint_atomic(path, checkpoint, fsync=fsync)
+    _save_json_atomic(checkpoint, path)
 
 
 def execute_pipeline(
@@ -487,13 +490,6 @@ uv run pytest tests/cli/test_run.py -k "checkpoint or params or resume_mismatch 
 ```
 
 Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add phyloai/cli/commands/_run_pipeline.py tests/cli/test_run.py
-git commit -m "feat(run): add run-level checkpoint helpers and step definitions"
-```
 
 ---
 
@@ -640,13 +636,6 @@ uv run pytest tests/cli/test_run.py -k "mutually_exclusive or without_checkpoint
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add phyloai/cli/commands/_run_pipeline.py tests/cli/test_run.py
-git commit -m "feat(run): add output directory setup, --resume/--overwrite guards"
-```
-
 ---
 
 ## Task 4: Dry-run mode and step listing
@@ -769,13 +758,6 @@ uv run pytest tests/cli/test_run.py -k "dry_run" -v
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
-
-```bash
-git add phyloai/cli/commands/_run_pipeline.py tests/cli/test_run.py
-git commit -m "feat(run): implement --dry-run step listing with tool labels"
-```
-
 ---
 
 ## Task 5: Step dispatch — convert, align, trim
@@ -854,6 +836,11 @@ Add to `_run_pipeline.py`, and replace the final `NotImplementedError` at the en
 
 ```python
 # --- Step dispatch helper ---
+class _RunStepError(click.ClickException):
+    """Step failure — exit code 2 (tool failure) per Section 9.3."""
+    exit_code = 2
+
+
 def _dispatch_step(
     *,
     checkpoint: dict[str, Any],
@@ -899,7 +886,7 @@ def _dispatch_step(
     except Exception as exc:
         step["status"] = "failed"
         _save_run_checkpoint(checkpoint, checkpoint_path, fsync=True)
-        raise click.ClickException(f"Step '{step_name}' failed: {exc}") from exc
+        raise _RunStepError(f"Step '{step_name}' failed: {exc}") from exc
 
     step["status"] = "success"
     _save_run_checkpoint(checkpoint, checkpoint_path)
@@ -1031,13 +1018,6 @@ uv run pytest tests/cli/test_run.py::test_run_calls_convert_and_align_and_trim -
 ```
 
 Expected: PASS (crashes at filter step with NotImplementedError as expected by the test).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add phyloai/cli/commands/_run_pipeline.py tests/cli/test_run.py
-git commit -m "feat(run): implement convert/align/trim step dispatch"
-```
 
 ---
 
@@ -1333,6 +1313,11 @@ Replace the final `raise NotImplementedError(...)` at the end of `execute_pipeli
     import time as _time
     wall_time = round(_time.monotonic() - run_start, 3)
 
+    # Validate final tree exists before claiming success
+    if final_tree_path and not Path(final_tree_path).exists():
+        _write_error_result(f"Final tree file not found: {final_tree_path}")
+        raise _RunStepError(f"Final tree file not found after tree step completed: {final_tree_path}")
+
     checkpoint["status"] = "success"
     import datetime as _dt
     checkpoint["completed_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
@@ -1388,13 +1373,6 @@ uv run pytest tests/cli/test_run.py -k "full_pipeline_mocked" -v
 ```
 
 Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add phyloai/cli/commands/_run_pipeline.py tests/cli/test_run.py
-git commit -m "feat(run): implement full step dispatch for all modes and speeds"
-```
 
 ---
 
@@ -1487,7 +1465,7 @@ Wrap the entire step-dispatch section in a try/except inside `execute_pipeline`.
         raise
     except Exception as exc:
         _write_error_result(str(exc))
-        raise click.ClickException(str(exc))
+        raise _RunStepError(str(exc)) from exc
 ```
 
 Note: refactor `execute_pipeline` to move the `run_start = _time.monotonic()` and `all_tool_versions` declarations before the try block, and move `_write_error_result` definition before the try block. The existing success path's `wall_time = ...` stays inside the try block.
@@ -1507,13 +1485,6 @@ uv run pytest tests/cli/test_run.py -v
 ```
 
 Expected: all PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add phyloai/cli/commands/_run_pipeline.py tests/cli/test_run.py
-git commit -m "feat(run): write error result.json on step failure"
-```
 
 ---
 
@@ -1613,13 +1584,6 @@ uv run pytest tests/cli/test_run.py -v
 ```
 
 Expected: all PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add phyloai/cli/commands/_run_pipeline.py tests/cli/test_run.py
-git commit -m "feat(run): verify --resume skips already-completed steps"
-```
 
 ---
 
@@ -1764,13 +1728,6 @@ phyloai run --seq-dir ./markers --mode supertree --dry-run
 - The `4-filter/` directory is not created in `--speed fast` mode.
 ```
 
-- [ ] **Step 3: Commit**
-
-```bash
-git add docs/superpowers/specs/2026-06-07-phyloai-design.md docs/commands/run.md
-git commit -m "docs: update main design for run command; add docs/commands/run.md"
-```
-
 ---
 
 ## Task 10: Final verification
@@ -1809,10 +1766,3 @@ uv run phyloai run --seq-dir /tmp/test_markers --mode supertree --speed fast --d
 ```
 
 Verify: step list printed, no tool execution, exit 0.
-
-- [ ] **Step 5: Final commit**
-
-```bash
-git add -A
-git commit -m "feat(run): phyloai run pipeline complete (supermatrix/supertree, normal/fast, resume)"
-```

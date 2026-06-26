@@ -229,7 +229,7 @@ runs/run/
     └── <tool-native output files>
 ```
 
-Numeric prefixes ensure natural sort order in file managers and `ls`. The prefix matches the step number displayed during progress output.
+Numeric prefixes ensure natural sort order in file managers and `ls`. Directory numbers are stable across `--speed` variants (e.g., `5-concat/` always means the concat step regardless of whether filter was skipped, so `4-filter/` may not exist). The step counter displayed during progress (`[N/total]`) reflects the actual steps being run and may differ from the directory prefix number.
 
 `4-filter/` is not created at all when `--speed fast` is used. The downstream step reads from `3-trim/seqs/` directly.
 
@@ -308,7 +308,7 @@ Steps without resume support: if their status is `interrupted` or `running`, `ph
 
 ### 6.5 Atomic writes and `run_checkpoint.json`
 
-`run_checkpoint.json` is updated using `save_checkpoint_atomic` from `phyloai/core/checkpoint.py`, the same helper used by subcommands. The run-level checkpoint is written:
+`run_checkpoint.json` is updated using a local atomic-write helper (the shared `phyloai/core/checkpoint.py` `save_checkpoint_atomic` expects a `Checkpoint` dataclass; `run` uses plain dicts for its run-level checkpoint to stay minimal). The run-level checkpoint is written:
 - once after each step completes (step count is small; no throttle needed at this level)
 - on `KeyboardInterrupt` (status set to `interrupted`, `fsync=True`)
 - on final completion (status set to `success`, `fsync=True`)
@@ -317,7 +317,7 @@ Steps without resume support: if their status is `interrupted` or `running`, `ph
 
 ## 7. `result.json` Schema
 
-`result.json` is written at `<output-dir>/result.json` only on successful pipeline completion.
+`result.json` is written at `<output-dir>/result.json` on both successful and failed pipeline completion. Pre-directory-creation parameter errors (e.g., `--seq-dir` missing, `--resume` + `--overwrite` together) exit before the output directory exists and do not write `result.json`.
 
 ```json
 {
@@ -371,6 +371,8 @@ Steps without resume support: if their status is `interrupted` or `running`, `ph
 
 If the pipeline fails mid-run, `result.json` is written with `status: "error"` and `error` populated. Steps not yet started have `status: "pending"` in `data.steps`.
 
+On successful completion, the `final_tree` path in `key_results` is validated (file must exist) before writing `result.json`. If the final tree file is missing after a step reports success, the run is treated as failed.
+
 ---
 
 ## 8. Error Handling
@@ -381,7 +383,7 @@ If the pipeline fails mid-run, `result.json` is written with `status: "error"` a
 | `--resume` with no `run_checkpoint.json` | Exit 1: tell user to use `--overwrite` or check path |
 | `--resume` + `--overwrite` | Exit 1 |
 | params_hash mismatch on resume | Exit 1: show which params changed |
-| A step fails (subcommand exits non-zero) | Write `run_checkpoint.json` with step `status: "failed"`, write `result.json` with `status: "error"`, exit 2 |
+| A step fails (subcommand exits non-zero) | Write `run_checkpoint.json` with step `status: "failed"`, write `result.json` with `status: "error"`, exit 2. Use a custom exception with `exit_code = 2` so Click exits with the correct code. |
 | All genes filtered out before concat | Exit 1 with clear message from the filter step |
 | External tool not found | Exit 3 (propagated from subcommand) |
 
