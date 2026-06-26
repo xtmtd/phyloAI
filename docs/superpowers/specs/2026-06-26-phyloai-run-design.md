@@ -383,8 +383,7 @@ On successful completion, the `final_tree` path in `key_results` is validated (f
 | `--resume` with no `run_checkpoint.json` | Exit 1: tell user to use `--overwrite` or check path |
 | `--resume` + `--overwrite` | Exit 1 |
 | params_hash mismatch on resume | Exit 1: show which params changed |
-| A step fails (subcommand exits non-zero) | Write `run_checkpoint.json` with step `status: "failed"`, write `result.json` with `status: "error"`, exit 2. Use a custom exception with `exit_code = 2` so Click exits with the correct code. |
-| All genes filtered out before concat | Exit 1 with clear message from the filter step |
+| A step fails (subcommand exits non-zero, raises exception, or all genes are filtered out) | Write `run_checkpoint.json` with step `status: "failed"`, write `result.json` with `status: "error"`, exit 2. Use a custom exception with `exit_code = 2` so Click exits with the correct code. |
 | External tool not found | Exit 3 (propagated from subcommand) |
 
 When a step fails, the error message displayed to the user includes:

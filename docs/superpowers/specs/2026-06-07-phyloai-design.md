@@ -134,18 +134,22 @@ phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
 phyloai report generate --run-dir ./runs
 
 # One-click pipeline
-phyloai run --msa-dir ./raw --output ./runs --mode supermatrix
-phyloai run --msa-dir ./raw --output ./runs --mode coalescent
+phyloai run --seq-dir ./raw --output ./runs/run --mode supermatrix
+phyloai run --seq-dir ./raw --output ./runs/run --mode supertree
 ```
 
 ### 4.2 One-click Pipeline (`phyloai run`)
 
-Two modes, both include: `align → trim → filter taper → concat → [tree inference]`
+> **Note:** Detailed specification superseded by `2026-06-26-phyloai-run-design.md`. This section provides a summary only.
+
+Two modes, both start with: `convert → align → trim → [filter taper]`, then diverge.
+
+`--speed normal` (default) uses MAFFT linsi + TAPER filter + IQ-TREE3 (unpartitioned) / FastTree (gene trees). `--speed fast` uses MAFFT auto, skips TAPER, and uses FastTree for all tree inference.
 
 | Mode | Steps | Notes |
 |------|-------|-------|
-| `--mode supermatrix` | align → trim → filter taper → concat → iqtree (unpartitioned) | Fast, single-step ML tree |
-| `--mode coalescent` | align → trim → filter taper → concat → genetree → wastral | MSC-based species tree |
+| `--mode supermatrix` | convert → align → trim → [filter taper] → concat → iqtree (unpartitioned) | `--speed fast`: FastTree instead of IQ-TREE3 |
+| `--mode supertree` | convert → align → trim → [filter taper] → gene trees → wastral | `--speed fast`: FastTree fast mode for gene trees |
 
 The filter step in `phyloai run` uses `phyloai pretree filter taper` (TAPER error-site masking only). Full marker filtering is an explicit manual step via the other `phyloai pretree filter` subcommands.
 
@@ -465,7 +469,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 2 | `pretree/` modules | stats, convert, align, trim, metrics, filter, concat | Phase 1 |
 | 3 | `tree/` modules | ml, bi, msc, cf | Phase 1 |
 | 4 | `posttree/` modules | topology, dating, signal, syserror, simulate | Phases 2–3 |
-| 5 | `phyloai run` | one-click supermatrix and coalescent pipelines | Phases 2–3 |
+| 5 | `phyloai run` | one-click supermatrix and supertree pipelines | Phases 2–3 |
 | 6 | `report/` module | collector, methods, figures, run_record.yaml | Phases 2–4 |
 | 7 | MCP Server | JSON tool interface | Phases 2–6 |
 | 8 | AI Coding Assistant Skill | workflow orchestration, syserror sub-workflow | Phase 7 |

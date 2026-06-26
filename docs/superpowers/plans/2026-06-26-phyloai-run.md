@@ -453,19 +453,22 @@ def _validate_run_resume(checkpoint: dict[str, Any], current_hash: str) -> None:
 
 # Local atomic JSON write for run-level checkpoint (uses plain dicts,
 # not the Checkpoint dataclass that core.checkpoint.save_checkpoint_atomic expects).
-def _save_json_atomic(data: dict[str, Any], path: Path) -> None:
+def _save_json_atomic(data: dict[str, Any], path: Path, *, fsync: bool = False) -> None:
     import os
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
-    f.flush()
+        f.flush()
+        if fsync:
+            os.fsync(f.fileno())
     os.replace(str(tmp), str(path))
 
 
 def _save_run_checkpoint(checkpoint: dict[str, Any], path: Path, *, fsync: bool = False) -> None:
     import datetime as _dt
     checkpoint["updated_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
-    _save_json_atomic(checkpoint, path)
+    _save_json_atomic(checkpoint, path, fsync=fsync)
 
 
 def execute_pipeline(
@@ -1049,6 +1052,13 @@ def test_run_supermatrix_normal_full_pipeline_mocked(tmp_path: Path) -> None:
 
     r = _mock_step_result()
 
+    # Create expected output directories and tree files so final_tree validation passes
+    (out_dir / "1-convert" / "seqs").mkdir(parents=True)
+    (out_dir / "6-tree").mkdir(parents=True)
+    (out_dir / "1-convert" / "seqs" / "gene1.fa").write_text(">sp1\nA")
+    tree_file = out_dir / "6-tree" / "iqtree.treefile"
+    tree_file.write_text("(sp1,sp2);")
+
     with patch("phyloai.pretree.convert.convert_input", return_value=r), \
          patch("phyloai.pretree.align.run_align", return_value=r), \
          patch("phyloai.pretree.trim.run_trim", return_value=r), \
@@ -1081,6 +1091,12 @@ def test_run_supertree_fast_full_pipeline_mocked(tmp_path: Path) -> None:
     out_dir = tmp_path / "run"
 
     r = _mock_step_result()
+
+    # Create expected output directories and tree files so final_tree validation passes
+    (out_dir / "1-convert" / "seqs").mkdir(parents=True)
+    (out_dir / "6-tree").mkdir(parents=True)
+    (out_dir / "1-convert" / "seqs" / "gene1.fa").write_text(">sp1\nA")
+    (out_dir / "6-tree" / "wastral.tre").write_text("(sp1,sp2);")
 
     with patch("phyloai.pretree.convert.convert_input", return_value=r), \
          patch("phyloai.pretree.align.run_align", return_value=r), \
@@ -1313,9 +1329,9 @@ Replace the final `raise NotImplementedError(...)` at the end of `execute_pipeli
     import time as _time
     wall_time = round(_time.monotonic() - run_start, 3)
 
-    # Validate final tree exists before claiming success
+    # Validate final tree exists before claiming success (error result.json written
+    # by the outer try/except added in Task 7)
     if final_tree_path and not Path(final_tree_path).exists():
-        _write_error_result(f"Final tree file not found: {final_tree_path}")
         raise _RunStepError(f"Final tree file not found after tree step completed: {final_tree_path}")
 
     checkpoint["status"] = "success"
@@ -1404,7 +1420,7 @@ def test_run_step_failure_writes_error_result_json(tmp_path: Path) -> None:
             "--output-dir", str(out_dir),
         ])
 
-    assert result.exit_code != 0
+    assert result.exit_code == 2, f"expected exit 2, got {result.exit_code}"
     result_json_path = out_dir / "result.json"
     assert result_json_path.exists()
     data = json.loads(result_json_path.read_text())
@@ -1597,22 +1613,7 @@ Expected: all PASS.
 
 - [ ] **Step 1: Update `2026-06-07-phyloai-design.md`**
 
-In Section 4.1, update the `phyloai run` examples to replace `--mode coalescent` with `--mode supertree`:
-
-```markdown
-# One-click pipeline
-phyloai run --seq-dir ./markers --output-dir ./runs/run --mode supermatrix
-phyloai run --seq-dir ./markers --output-dir ./runs/run --mode supertree
-```
-
-In Section 4.2, replace the pipeline table with:
-
-```markdown
-| Mode | Steps | Notes |
-|------|-------|-------|
-| `--mode supermatrix` | convert → align → trim → filter taper → concat → iqtree (unpartitioned) | `--speed normal` (default): MAFFT linsi + TAPER + IQ-TREE3; `--speed fast`: MAFFT auto, no TAPER, FastTree |
-| `--mode supertree` | convert → align → trim → filter taper → gene trees → wastral | `--speed normal`: MAFFT linsi + TAPER + FastTree gene trees + wASTRAL; `--speed fast`: no TAPER, FastTree fast mode |
-```
+Section 4.1–4.2 was synced during spec review: `--mode coalescent` → `--mode supertree`, added `convert` as first step, added `--speed`, and added a note pointing to `2026-06-26-phyloai-run-design.md` for details. The following remains:
 
 In Section 9.2, add `--speed` to the shared parameter registry:
 
