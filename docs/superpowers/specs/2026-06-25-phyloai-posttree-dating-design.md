@@ -147,7 +147,8 @@ runs/posttree/dating/mcmc/
 │   ├── mcmc.txt                    # MCMC parameter trace (progress source)
 │   ├── mcmctree.out                # mcmctree summary
 │   ├── SeedUsed                    # seed written by mcmctree at startup
-│   ├── FigTree.tre                 # annotated dated tree
+│   ├── FigTree.tre                 # annotated dated tree (mcmctree native)
+│   ├── FigTree.node.tre            # same tree with internal node labels (nodeXX)
 │   └── prior/
 │       ├── in.BV -> <hessian-dir>/iqtree.mcmctree.hessian
 │       ├── iqtree.dummy.phy -> <hessian-dir>/iqtree.dummy.phy
@@ -156,7 +157,8 @@ runs/posttree/dating/mcmc/
 │       ├── mcmctree.log
 │       ├── mcmc.txt
 │       ├── mcmctree.out
-│       └── FigTree.tre
+│       ├── FigTree.tre
+│       └── FigTree.node.tre
 ├── run2/                           # identical structure to run1/
 │   ├── ...
 │   └── prior/
@@ -326,11 +328,20 @@ prior_times.txt      same structure
 
 ### 6.3 Infinite-sites plots (`diagnostics/infinite_sites/`)
 
-- X = mean posterior (or prior) node age, Y = 95%CI width
+- X = mean node age, Y = 95%CI width
 - Points connected as line plot (ordered by X)
-- Assesses data sufficiency: a straight line indicates approach to
-  infinite-sites limit; scatter indicates limited molecular data
 - One plot per run × posterior/prior = 4 plots total
+- Interpretation differs by distribution type:
+  - **Posterior** (`usedata=2`): a straight line (CI width proportional to
+    age) indicates the infinite-sites limit is approached, i.e. additional
+    molecular data would not substantially improve precision. Scatter or
+    non-linear pattern suggests limited molecular data.
+  - **Prior** (`usedata=0`): reflects fossil calibration information alone.
+    A straight line indicates fossil constraints are internally consistent
+    and informative. Scatter or non-linearity suggests fossil calibrations
+    may be insufficient or conflicting.
+- Comparing posterior vs prior infinite-sites plots for the same run
+  reveals how much the molecular data updates the fossil-only prior.
 
 ### 6.4 Posterior vs prior plots (`diagnostics/posterior_vs_prior/`)
 
@@ -495,6 +506,24 @@ Examples:
 ---
 
 ## 9. Implementation Notes
+
+### `FigTree.node.tre` extraction
+
+`mcmctree.out` contains three trees under the section:
+
+```
+Species tree for FigTree.  Branch lengths = posterior mean times; 95% CIs = labels
+```
+
+The **first** of these three trees has internal node labels (e.g. `nodeXX`)
+that identify which node corresponds to which `t_nodeXX` parameter in
+`mcmc.txt` and `mcmctree.out` time tables. This tree is extracted and saved
+as `FigTree.node.tre` so users can map parameter names to tree nodes without
+manually parsing `mcmctree.out`.
+
+Extraction: scan `mcmctree.out` for the section header, take the first
+Newick string that follows (ends with `;`), write to `FigTree.node.tre`.
+Applied to both posterior `runN/` and prior `runN/prior/` directories.
 
 ### File organisation
 
