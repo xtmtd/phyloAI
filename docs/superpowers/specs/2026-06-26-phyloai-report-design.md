@@ -198,10 +198,22 @@ STEP_ORDER = [
       "params": {"method": "linsi", "backtrans": true, "seq_type": "AA"},
       "key_results": {"n_aligned": 1066, "n_skipped": 0, "mean_alignment_length": 591.5},
       "methods_text": "Multiple sequence alignments were performed using MAFFT v7.526...",
-      "figures": [],
-      "output_files": [
-        {"label": "Aligned AA MSAs", "path": "runs/pretree/2-align/seqs/faa/"}
-      ],
+      "output_files": {},
+      "warnings": []
+    },
+    {
+      "step_id": "pretree.metrics",
+      "command": "phyloai pretree metrics ...",
+      "status": "success",
+      "wall_time": 18.2,
+      "tool_versions": {},
+      "params": {"msa_dir": "...", "tree_dir": null},
+      "key_results": {"errors": 0},
+      "methods_text": "Phylogenetic informativeness metrics were computed...",
+      "output_files": {
+        "metrics_table": "/abs/path/runs/pretree/5-metrics/faa/metrics.csv",
+        "correlation_heatmap": "/abs/path/runs/pretree/5-metrics/faa/correlation_heatmap.pdf"
+      },
       "warnings": []
     }
   ],
@@ -212,15 +224,17 @@ STEP_ORDER = [
     {
       "figure_id": "Fig-3.1",
       "step_id": "pretree.metrics",
+      "label": "correlation_heatmap",
       "caption": "Correlation heatmap of phylogenetic informativeness metrics",
-      "path": "runs/pretree/6-metrics/faa/correlation.pdf",
+      "path": "/abs/path/runs/pretree/5-metrics/faa/correlation_heatmap.pdf",
       "type": "pdf"
     },
     {
-      "figure_id": "Fig-4.1",
+      "figure_id": "Fig-3.2",
       "step_id": "pretree.filter.cluster",
+      "label": "umap_scatter",
       "caption": "UMAP clustering of loci by phylogenetic informativeness",
-      "path": "runs/pretree/6-filter/cluster/umap.pdf",
+      "path": "/abs/path/runs/pretree/6-filter/cluster/umap_scatter.pdf",
       "type": "pdf"
     }
   ],
@@ -228,9 +242,19 @@ STEP_ORDER = [
   "tables_index": [
     {
       "table_id": "Table-3.1",
+      "step_id": "pretree.metrics",
+      "label": "metrics_table",
+      "caption": "Phylogenetic informativeness metrics per locus",
+      "path": "/abs/path/runs/pretree/5-metrics/faa/metrics.csv",
+      "type": "csv"
+    },
+    {
+      "table_id": "Table-3.2",
       "step_id": "pretree.filter.taper",
-      "caption": "Per-locus masking summary from TAPER",
-      "source": "result.json:data.files"
+      "label": "filter_decisions",
+      "caption": "Per-locus TAPER masking decisions",
+      "path": "/abs/path/runs/pretree/6-filter/taper/filter_decisions.csv",
+      "type": "csv"
     }
   ]
 }
@@ -242,8 +266,11 @@ STEP_ORDER = [
 - `status`: `"complete"` | `"partial"` | `"failed"`
 - `steps[].params`: only scientifically meaningful parameters; technical params (`threads`, executable paths) are excluded
 - `steps[].methods_text`: empty string `""` for failed steps; excluded from `methods_paragraph`
-- `figures_index` and `tables_index`: global indices enabling AI diagnostics to locate all visual outputs without traversing steps
-- `figure_id` and `table_id`: sequential numbering by section (section number = STEP_ORDER position group), e.g. `Fig-3.1`, `Table-3.1`
+- `steps[].output_files`: copied directly from `result.json:data.output_files` for that step (see JSON Output Standard Section 5.4); `{}` when the step produces no tables or figures
+- `figures_index`: global index of all PDF/PNG figures across all steps, built by filtering `output_files` entries whose paths end in `.pdf` or `.png`; enables AI diagnostics and HTML renderer to locate all figures without traversing individual step records
+- `tables_index`: global index of all CSV/TSV tables across all steps, built by filtering `output_files` entries whose paths end in `.csv` or `.tsv`
+- `figure_id` and `table_id`: sequential numbering by section group (see Section 11), e.g. `Fig-3.1`, `Table-3.1`
+- `label`: the snake_case key from `data.output_files` in the source `result.json`
 
 ---
 
@@ -434,18 +461,27 @@ Within each section, numbering is sequential in `STEP_ORDER` order.
 
 ---
 
-## 12. Known PDF Figures by Module
+## 12. Output Files by Module
 
-These modules are known to produce PDF figures that will appear in Section 4:
+Every command records all CSV/TSV tables and PDF/PNG figures it produces under `data.output_files` in its `result.json` (JSON Output Standard Section 5.4). `collector.py` reads `data.output_files` from each step to populate `figures_index` (`.pdf`/`.png` entries) and `tables_index` (`.csv`/`.tsv` entries) in `report.json`. No paths are hardcoded in the report module.
 
-| Module | Figure | Description |
-|--------|--------|-------------|
-| `pretree.metrics` | `correlation.pdf` | Spearman correlation heatmap of all phylogenetic informativeness metrics |
-| `pretree.filter.cluster` | `umap.pdf` | UMAP 2D projection of loci colored by cluster assignment |
-| `tree.bi` | diagnostics PDF(s) | MrBayes MCMC trace and convergence plots |
-| `posttree.dating` | `diagnostics.pdf` | MCMCtree MCMC trace, effective sample sizes, and node age distributions |
+Known output files per module (for reference; authoritative source is always `result.json:data.output_files`):
 
-`renderer.py` discovers these by scanning `figures_index` in `report.json`; no hardcoded paths in the renderer.
+| Module | `data.output_files` labels | Type | Description |
+|--------|---------------------------|------|-------------|
+| `pretree.stats` | `per_gene_stats` | CSV | Per-locus length, taxon count, gap ratio statistics |
+| `pretree.metrics` | `metrics_table` | CSV | All phylogenetic informativeness metrics per locus |
+| `pretree.metrics` | `correlation_heatmap` | PDF | Spearman correlation heatmap of all metrics |
+| `pretree.filter.taper` | `retained_loci`, `dropped_loci`, `filter_decisions` | CSV | Per-locus TAPER masking decisions |
+| `pretree.filter.treeshrink` | `retained_loci`, `dropped_loci`, `modified_loci`, `removed_taxa`, `filter_decisions` | CSV | Per-locus TreeShrink pruning decisions |
+| `pretree.filter.symtest` | `retained_loci`, `dropped_loci`, `filter_decisions` | CSV | Per-locus symmetry test results |
+| `pretree.filter.metrics` | `retained_loci`, `dropped_loci`, `filter_decisions` | CSV | Per-locus metric-rule filtering decisions |
+| `pretree.filter.cluster` | `cluster_assignments`, `reduction_summary`, `metric_means` | CSV | UMAP cluster assignments and statistics |
+| `pretree.filter.cluster` | `umap_scatter`, `boxplots`, `outlier_diagnostics` | PDF | UMAP and cluster diagnostic plots |
+| `posttree.topology` | `topology_test_results` | CSV | AU/WKH/WSH test p-values per candidate tree |
+| `posttree.dating.mcmc` | `trace_run*_posterior`, `trace_run*_prior` | PDF | MCMCtree MCMC trace plots per run |
+| `posttree.dating.mcmc` | `convergence_summary`, `node_ages` | CSV | Convergence statistics and posterior node age estimates |
+| `tree.bi` | `trace_plots`, `convergence_render` | PDF/TXT | MrBayes MCMC trace and convergence diagnostics |
 
 ---
 
@@ -455,7 +491,7 @@ When a new phyloai command is added:
 
 1. Add its `step_id` to `STEP_ORDER` in `collector.py` at the correct position
 2. Add a `generate_methods_<step_id>(params, key_results, tool_versions) -> str` function to `templates.py`
-3. If the command produces PDF figures, they are automatically picked up via `data.figures` in the command's `result.json` (requires the command to record figure paths there)
+3. Ensure the command records all CSV/TSV tables and PDF/PNG figures under `data.output_files` in its `result.json`; `collector.py` auto-populates `figures_index` and `tables_index` from these entries by file extension — no changes to the report module needed
 4. No changes to `schema.py`, `renderer.py`, or `report.html.j2` are needed for standard cases
 
 ---
