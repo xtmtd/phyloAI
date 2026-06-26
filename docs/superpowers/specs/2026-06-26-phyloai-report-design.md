@@ -30,7 +30,7 @@ phyloai report --run-dir ./runs/run/faa
 phyloai report --run-dir ./runs/pretree
 ```
 
-> **Deferred to v2:** `phyloai report --run-dir ./runs` (multi-run auto-discovery). Multi-run support requires schema extensions for child run grouping and figure/table renumbering across runs.
+
 
 Output is always written to `<run-dir>/report/`:
 
@@ -68,7 +68,7 @@ cli/commands/report.py     # CLI entry point
     │
     ▼
 collector.py
-  Detect run_mode (pipeline / module / multi)
+  Detect run_mode (pipeline / module)
   Discover all result.json files at correct depth
   Parse and order steps by STEP_ORDER
     │
@@ -92,8 +92,6 @@ renderer.py
 ---
 
 ## 5. Directory Detection and run_mode
-
-> **v1 scope:** `multi` mode is deferred. `phyloai report` accepts a single run directory only. Multi-run support can be added in v2 when schema and numbering conventions are validated.
 
 `collector.py` determines `run_mode` from the structure of `--run-dir` using the following **ordered** checks (earlier checks take priority):
 
@@ -271,7 +269,7 @@ STEP_ORDER = [
 
 **Field notes:**
 
-- `run_mode`: `"pipeline"` | `"module"` (`"multi"` deferred to v2)
+- `run_mode`: `"pipeline"` | `"module"`
 - `status`: `"complete"` | `"partial"` | `"failed"`
 - `steps[].params`: the **complete** `params` dict copied verbatim from `result.json` (all parameters including `threads`, paths, flags); this preserves full reproducibility. Methods templates read from this complete dict but only describe scientifically meaningful parameters in the generated text — technical parameters are ignored inside the template function.
 - `steps[].methods_text`: empty string `""` for failed steps; excluded from `methods_paragraph`
@@ -515,8 +513,8 @@ Usage: phyloai report [OPTIONS]
   and report.html (human-readable, with embedded figures and methods draft).
 
 Options:
-  --run-dir PATH   Run directory to report on. Auto-detects single run,
-                   pipeline run, or multi-run directory structure.
+  --run-dir PATH   Run directory to report on. Auto-detects pipeline run
+                   (phyloai run output) or module run (pretree/tree/posttree).
                    [required]
   -o, --output-dir PATH
                    Output directory for report files.

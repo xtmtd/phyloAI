@@ -136,7 +136,6 @@ phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
 # Report (see 2026-06-26-phyloai-report-design.md)
 phyloai report --run-dir ./runs/run/faa      # single pipeline run
 phyloai report --run-dir ./runs/pretree      # single module run
-phyloai report --run-dir ./runs              # auto-discover all runs
 
 # One-click pipeline
 phyloai run --seq-dir ./raw --output-dir ./runs/run --mode supermatrix
@@ -292,10 +291,9 @@ Batch pipeline commands (`align`, `trim`, `fasttree`, `iqtree`) write `checkpoin
 
 `report.html` is fully derived from `report.json` and can be re-rendered at any time without re-scanning the run directory.
 
-**Directory auto-detection:** `report` identifies three run structures automatically:
+**Directory auto-detection:** `report` identifies two run structures automatically:
 - `pipeline` — `phyloai run` two-layer output (top-level `result.json` + per-step subdirectories)
-- `module` — single-module output (one or more step subdirectories without a pipeline-level `result.json`)
-- `multi` — top-level directory containing multiple pipeline or module runs
+- `module` — single-module output (one or more step subdirectories, with or without a top-level `result.json`)
 
 **Methods paragraph:** Generated from per-command Python template functions in `templates.py`. Each template describes the tool used, key scientific parameters and their meaning, inputs, and quantitative outcomes. Templates are deterministic (no LLM involvement) and cover all scientific parameters; technical parameters (threads, paths) are omitted.
 
