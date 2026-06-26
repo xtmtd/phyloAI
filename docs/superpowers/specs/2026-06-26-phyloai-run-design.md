@@ -127,7 +127,7 @@ Examples:
 | 2. Align | `2-align/` | `pretree align --method linsi` | `pretree align --method auto` |
 | 3. Trim | `3-trim/` | `pretree trim --tool trimal --trimal-mode automated1` | same |
 | 4. Filter | `4-filter/` | `pretree filter taper` | **skipped** |
-| 5. Gene Trees | `5-genetrees/` | `tree ml fasttree --msa-dir ... --mode normal` | `tree ml fasttree --msa-dir ... --mode fast` |
+| 5. Gene Trees | `5-genetrees/` | `tree ml iqtree --msa-dir ...` | `tree ml fasttree --msa-dir ... --mode fast` |
 | 6. Species Tree | `6-tree/` | `tree msc --mode 1` | same |
 
 ### 3.3 Step count and `--speed fast`
@@ -300,7 +300,7 @@ Numeric prefixes ensure natural sort order in file managers and `ls`. Directory 
 | trim | Yes (`checkpoint.json` per gene) |
 | filter taper | No (fast; rerun) |
 | concat | No (single-shot; rerun) |
-| gene trees (fasttree batch) | Yes (`checkpoint.json` per gene) |
+| gene trees (iqtree or fasttree batch) | Yes (`checkpoint.json` per gene) |
 | iqtree | Yes (IQ-TREE3 native checkpoint) |
 | wastral | No (one-shot; rerun) |
 
@@ -401,10 +401,10 @@ When a step fails, the error message displayed to the user includes:
 Each step is dispatched by calling the corresponding module's entry function, e.g.:
 
 ```python
-from phyloai.pretree.convert import run_convert
+from phyloai.pretree.convert import convert_input
 from phyloai.pretree.align import run_align
 from phyloai.pretree.trim import run_trim
-from phyloai.pretree.filter import run_filter_taper
+from phyloai.pretree.filter import run_taper
 from phyloai.pretree.concat import run_concat
 from phyloai.tree.ml import run_fasttree, run_iqtree
 from phyloai.tree.msc import run_wastral
@@ -418,12 +418,11 @@ The `command` field in each step's `result.json` is the equivalent CLI command s
 
 ## 10. Main Design Updates Required
 
-The following updates to `2026-06-07-phyloai-design.md` are needed after this spec is accepted:
+The following updates to `2026-06-07-phyloai-design.md` have been completed during implementation:
 
-1. **Section 4.1 command examples:** Update `--mode coalescent` to `--mode supertree` in the `phyloai run` examples.
-2. **Section 4.2 pipeline table:** Replace the coalescent row with supertree; update both rows to match the step sequences in this spec (adding `convert` as first step, specifying `--speed` variants).
-3. **Section 4.3 universal flags:** Add `--speed normal|fast` to the shared parameter registry table (applicable to `run` only).
-4. **Section 9.2 shared parameter registry:** Add `--speed` row.
+1. **Section 4.1 command examples:** `--mode coalescent` → `--mode supertree`, `--msa-dir` → `--seq-dir`, added `convert` as first step. ✓
+2. **Section 4.2 pipeline table:** Replaced coalescent row with supertree; updated both rows to include `convert` and `--speed` variants. ✓
+3. **Section 9.2 shared parameter registry:** Added `--speed` row. ✓
 
 ---
 

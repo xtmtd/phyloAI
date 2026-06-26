@@ -17,7 +17,7 @@ from phyloai.core.env import ToolEnv
 
 # Gene tree file extensions wastral can read (newick variants)
 _WASTRAL_TREE_EXTENSIONS = frozenset({
-    ".nwk", ".tre", ".tree", ".nw", ".trees", ".newick",
+    ".nwk", ".tre", ".tree", ".nw", ".trees", ".newick", ".treefile",
 })
 
 

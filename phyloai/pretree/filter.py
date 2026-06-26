@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import math
+import re
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -315,7 +316,9 @@ def run_taper(
     try:
         proc = subprocess.run([julia_exe, "-v"], capture_output=True, text=True, timeout=30)
         if proc.returncode == 0 and proc.stdout.strip():
-            julia_version = proc.stdout.strip().splitlines()[0].strip()
+            raw = proc.stdout.strip().splitlines()[0].strip()
+            m = re.match(r"julia version (\S+)", raw)
+            julia_version = m.group(1) if m else raw
     except Exception:
         pass
 

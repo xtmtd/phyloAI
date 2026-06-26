@@ -16,6 +16,13 @@ PhyloAI bundles TAPER 1.0.0 (`correction_multi.jl`) and BMGE 1.12 (`BMGE.jar`) i
 phyloai doctor
 ```
 
+One-click phylogenomics pipeline from raw sequences to a species tree:
+
+```bash
+phyloai run --seq-dir ./markers
+phyloai run --seq-dir ./markers --mode supertree --speed fast --threads 16
+```
+
 Show all available commands:
 
 ```bash
@@ -82,6 +89,7 @@ Fish loads completions from that directory automatically in new shells, so you d
 | Command | Purpose | Documentation |
 |---------|---------|---------------|
 | `phyloai doctor` | Inspect external tool availability. | [docs/commands/doctor.md](docs/commands/doctor.md) |
+| `phyloai run`     | One-click phylogenomics pipeline from raw sequences to a species tree. | [docs/commands/run.md](docs/commands/run.md) |
 | `phyloai pretree convert` | Normalize and convert sequence files before downstream analysis. | [docs/commands/pretree-convert.md](docs/commands/pretree-convert.md) |
 | `phyloai pretree stats`   | Inspect one sequence/alignment file or summarize a directory of files. | [docs/commands/pretree-stats.md](docs/commands/pretree-stats.md)     |
 | `phyloai pretree align`   | Align sequences with MAFFT or MAGUS. | [docs/commands/pretree-align.md](docs/commands/pretree-align.md)     |

@@ -4,7 +4,7 @@
 
 **Goal:** Implement `phyloai run` — a one-click pipeline command that orchestrates convert → align → trim → [filter taper] → [concat | gene trees] → [iqtree | wastral] for supermatrix and supertree modes, with `--speed normal|fast`, `--resume`, Rich progress display, and a `run_checkpoint.json` step-level checkpoint.
 
-**Architecture:** `phyloai run` lives in `phyloai/cli/commands/run.py` (CLI) and calls library functions directly (no subprocess). The orchestrator manages a `run_checkpoint.json` at the run output root using the existing `phyloai/core/checkpoint.py` helpers. Each step's detailed checkpoint (align, trim, gene trees, iqtree) remains in that step's own subdirectory and is managed by the step's own library function.
+**Architecture:** `phyloai run` lives in `phyloai/cli/commands/run.py` (CLI) and calls library functions directly (no subprocess). The orchestrator manages a `run_checkpoint.json` at the run output root using a local `_save_json_atomic` helper (plain dicts, not the `Checkpoint` dataclass). Each step's detailed checkpoint (align, trim, gene trees, iqtree) remains in that step's own subdirectory and is managed by the step's own library function.
 
 **Tech Stack:** Python 3.11+, Click, Rich, existing `phyloai` library layer (`convert_input`, `run_align`, `run_trim`, `run_taper`, `run_concat`, `run_fasttree`, `run_iqtree`, `run_wastral`), `phyloai/core/checkpoint.py`.
 
@@ -20,7 +20,8 @@
 - `run_checkpoint.json` uses a local `_save_json_atomic` helper (plain dicts, not the `Checkpoint` dataclass) with `fsync=True` on terminal writes only.
 - Rich progress: each step prints a `[N/total]` header; batch steps show a progress bar.
 - Exit codes: 0 success, 1 user/input error, 2 tool failure, 3 environment error.
-- All `result.json` fields follow `2026-06-21-phyloai-json-output-standard.md`.
+- All tree library functions (convert_input, run_align, run_trim, run_iqtree, run_fasttree, run_wastral) return dicts; `_write_step_result_json()` writes their result.json since they don't do it themselves (concat and filter/taper write their own).
+- `_WASTRAL_TREE_EXTENSIONS` in `msc.py` includes `.treefile` extension for IQ-TREE outputs.
 - Tests go in `tests/cli/test_run.py` using Click's `CliRunner`.
 
 ---
@@ -731,7 +732,7 @@ _STEP_TOOL_LABELS: dict[tuple[str, str, str], str] = {
     ("supertree", "normal", "align"):          "pretree align (MAFFT linsi)",
     ("supertree", "normal", "trim"):           "pretree trim (trimAl -automated1)",
     ("supertree", "normal", "filter_taper"):   "pretree filter taper (TAPER)",
-    ("supertree", "normal", "genetrees"):      "tree ml fasttree --msa-dir (normal)",
+    ("supertree", "normal", "genetrees"):      "tree ml iqtree --msa-dir",
     ("supertree", "normal", "tree"):           "tree msc (wASTRAL mode 1)",
     ("supertree", "fast", "convert"):          "pretree convert",
     ("supertree", "fast", "align"):            "pretree align (MAFFT auto)",
@@ -1781,5 +1782,21 @@ echo ">sp1\nMKTLL\n>sp2\nMKTAA" > /tmp/test_markers/gene1.fa
 uv run phyloai run --seq-dir /tmp/test_markers --dry-run
 uv run phyloai run --seq-dir /tmp/test_markers --mode supertree --speed fast --dry-run
 ```
+
+---
+
+## Implementation Notes
+
+**Status:** Implemented (2026-06-26).
+
+**Divergences from plan:**
+- `_save_run_checkpoint` uses local `_save_json_atomic` instead of `core.checkpoint.save_checkpoint_atomic` (plain dicts vs Checkpoint dataclass).
+- Step resume/overwrite decisions use `_step_resume()` helper reading from `checkpoint["steps"]` directly, avoiding closure variable capture issues.
+- `--threads` passed to all sub-steps (convert, align, trim, filter, gene trees, tree).
+- Supertree normal gene trees use `run_iqtree --msa-dir` (not `run_fasttree`).
+- `_write_step_result_json()` added for convert/align/trim and all tree steps whose library functions don't write result.json themselves.
+- `_RunStepError(exit_code=2)` for step failures, `_EnvError(exit_code=3)` for missing tools.
+- `_WASTRAL_TREE_EXTENSIONS` expanded with `.treefile` in `msc.py`.
+- Julia version in `filter.py` stripped of "julia version " prefix.
 
 Verify: step list printed, no tool execution, exit 0.

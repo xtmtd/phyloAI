@@ -134,8 +134,8 @@ phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
 phyloai report generate --run-dir ./runs
 
 # One-click pipeline
-phyloai run --seq-dir ./raw --output ./runs/run --mode supermatrix
-phyloai run --seq-dir ./raw --output ./runs/run --mode supertree
+phyloai run --seq-dir ./raw --output-dir ./runs/run --mode supermatrix
+phyloai run --seq-dir ./raw --output-dir ./runs/run --mode supertree
 ```
 
 ### 4.2 One-click Pipeline (`phyloai run`)
@@ -318,6 +318,7 @@ This section defines binding conventions for all subcommand implementations. Per
 | `--output-dir` | `-o` | Path | auto under `runs/` | all commands producing output files |
 | `--threads` | `-t` | int | 4 | all commands invoking multi-threaded tools |
 | `--seq-type` | | AA \| NT \| CODON \| auto | auto where safe | commands where molecule type matters |
+| `--speed` | | `normal\|fast` | `normal` | `run` only |
 | `--tool` | | str | tool-specific | commands offering multiple tool choices |
 | `--input-format` | | str | auto-detect | commands reading alignment or tabular files |
 | `--output-format` | | text \| json | text | `doctor` only |
