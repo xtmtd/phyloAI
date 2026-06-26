@@ -237,7 +237,9 @@ Rich tables, panels, and progress bars are rendered to the terminal unless `--qu
 }
 ```
 
-`key_results` is empty (`{}`): `stats` is a utility command and does not contribute to `report`.
+`key_results` is empty (`{}`).
+
+> **Note:** The report spec (`2026-06-26-phyloai-report-design.md`) supersedes the earlier convention. `pretree stats` does contribute a `methods_text` entry to `phyloai report`, describing what statistics were computed and for how many loci. The `key_results` field remains `{}` because stats values are in `data`, not summarised as top-level metrics.
 
 ---
 

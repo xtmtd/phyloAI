@@ -177,7 +177,9 @@ Additional `phylip-paml` rules:
 | `--quiet` | `-q` | flag | `False` | Suppress terminal display except errors |
 | `--overwrite` | | flag | `False` | Allow writing into an existing non-empty output directory |
 
-`--output-dir` follows the global directory parameter convention and defaults under the standard run layout. The command does not write run logs and does not contribute to `report`.
+`--output-dir` follows the global directory parameter convention and defaults under the standard run layout. The command does not write run logs.
+
+> **Note:** The report spec (`2026-06-26-phyloai-report-design.md`) supersedes the earlier convention. `pretree convert` does contribute a `methods_text` entry to `phyloai report`, describing the format conversion performed (input format, output format, number of files converted).
 
 ---
 

@@ -20,18 +20,17 @@ The command is a single invocation; all internal logic (collection, template ren
 
 ## 2. User Interface
 
-Single command, three usage patterns:
+Single command, two usage patterns (v1):
 
 ```bash
 # Single pipeline run (phyloai run — two-layer structure)
 phyloai report --run-dir ./runs/run/faa
 
-# Single module run (pretree/tree/posttree — one-layer structure)
+# Single module run (pretree/tree/posttree — one or more steps)
 phyloai report --run-dir ./runs/pretree
-
-# Top-level directory — auto-discovers all runs
-phyloai report --run-dir ./runs
 ```
+
+> **Deferred to v2:** `phyloai report --run-dir ./runs` (multi-run auto-discovery). Multi-run support requires schema extensions for child run grouping and figure/table renumbering across runs.
 
 Output is always written to `<run-dir>/report/`:
 
@@ -94,14 +93,18 @@ renderer.py
 
 ## 5. Directory Detection and run_mode
 
-`collector.py` determines `run_mode` from the structure of `--run-dir`:
+> **v1 scope:** `multi` mode is deferred. `phyloai report` accepts a single run directory only. Multi-run support can be added in v2 when schema and numbering conventions are validated.
 
-| Condition | run_mode |
-|-----------|----------|
-| `run-dir/result.json` exists directly | `module` (single command) |
-| `run-dir/` has subdirs with `result.json`, and `run-dir/result.json` also exists | `pipeline` (`phyloai run` two-layer) |
-| `run-dir/` has subdirs with `result.json`, no top-level `result.json` | `module` (multi-step module, e.g. pretree) |
-| `run-dir/` has multiple subdirs each matching pipeline or module pattern | `multi` |
+`collector.py` determines `run_mode` from the structure of `--run-dir` using the following **ordered** checks (earlier checks take priority):
+
+| Priority | Condition | run_mode |
+|----------|-----------|----------|
+| 1 | `run-dir/result.json` exists **AND** at least one subdir also contains `result.json` | `pipeline` (`phyloai run` two-layer) |
+| 2 | `run-dir/result.json` exists, no subdirs with `result.json` | `module` (single command) |
+| 3 | No `run-dir/result.json`, but subdirs contain `result.json` | `module` (multi-step module, e.g. pretree) |
+| 4 | No `result.json` found at any expected depth | Error: not a valid run directory |
+
+**Rationale for priority 1 before priority 2:** Both `pipeline` and single-command `module` runs have a top-level `result.json`. The distinguishing feature of `pipeline` is the simultaneous presence of per-step subdirectory `result.json` files. Checking for subdirectory files first prevents a pipeline run directory from being misclassified as a single-command run.
 
 Scan depth:
 
@@ -109,7 +112,6 @@ Scan depth:
 |----------|-------|--------------|
 | `module` | 1–2 levels | `runs/pretree/2-align/result.json` |
 | `pipeline` | 2–3 levels | `runs/run/faa/pretree/2-align/result.json` |
-| `multi` | recurse, each child treated independently | — |
 
 ---
 
@@ -138,6 +140,13 @@ STEP_ORDER = [
     "posttree.topology",
     "posttree.dating.hessian",
     "posttree.dating.mcmc",
+    # Phase 4 commands not yet implemented — listed here so they are ordered
+    # correctly when implemented rather than appended as unknowns
+    "posttree.signal",
+    "posttree.syserror.brlen",
+    "posttree.syserror.cca",
+    "posttree.syserror.sites",
+    "posttree.simulate",
 ]
 ```
 
@@ -195,7 +204,7 @@ STEP_ORDER = [
       "status": "success",
       "wall_time": 31.4,
       "tool_versions": {"mafft": "7.526", "trimal": "1.5.rev1"},
-      "params": {"method": "linsi", "backtrans": true, "seq_type": "AA"},
+      "params": {"seq_dir": "runs/pretree/1-convert/faa/seqs", "method": "linsi", "seq_type": "AA", "backtrans": true, "nt_dir": "runs/pretree/1-convert/fna/seqs", "threads": 8, "tool_args": null, "mafft_path": null, "magus_path": null, "trimal_path": null, "resume": false, "overwrite": true, "dry_run": false, "quiet": false},
       "key_results": {"n_aligned": 1066, "n_skipped": 0, "mean_alignment_length": 591.5},
       "methods_text": "Multiple sequence alignments were performed using MAFFT v7.526...",
       "output_files": {},
@@ -207,7 +216,7 @@ STEP_ORDER = [
       "status": "success",
       "wall_time": 18.2,
       "tool_versions": {},
-      "params": {"msa_dir": "...", "tree_dir": null},
+      "params": {"msa_dir": "runs/pretree/4-trim/seqs/faa", "tree_dir": null, "seq_type": "AA", "threads": 4, "output_dir": "runs/pretree/5-metrics/faa", "overwrite": false, "dry_run": false, "quiet": false},
       "key_results": {"errors": 0},
       "methods_text": "Phylogenetic informativeness metrics were computed...",
       "output_files": {
@@ -262,9 +271,9 @@ STEP_ORDER = [
 
 **Field notes:**
 
-- `run_mode`: `"pipeline"` | `"module"` | `"multi"`
+- `run_mode`: `"pipeline"` | `"module"` (`"multi"` deferred to v2)
 - `status`: `"complete"` | `"partial"` | `"failed"`
-- `steps[].params`: only scientifically meaningful parameters; technical params (`threads`, executable paths) are excluded
+- `steps[].params`: the **complete** `params` dict copied verbatim from `result.json` (all parameters including `threads`, paths, flags); this preserves full reproducibility. Methods templates read from this complete dict but only describe scientifically meaningful parameters in the generated text — technical parameters are ignored inside the template function.
 - `steps[].methods_text`: empty string `""` for failed steps; excluded from `methods_paragraph`
 - `steps[].output_files`: copied directly from `result.json:data.output_files` for that step (see JSON Output Standard Section 5.4); `{}` when the step produces no tables or figures
 - `figures_index`: global index of all PDF/PNG figures across all steps, built by filtering `output_files` entries whose paths end in `.pdf` or `.png`; enables AI diagnostics and HTML renderer to locate all figures without traversing individual step records
@@ -280,11 +289,11 @@ Each `step_id` maps to a dedicated Python function in `templates.py`. Templates 
 
 **Design principles:**
 
+- Each template function receives the **complete** `params` dict (as stored in `steps[].params`) but only reads the scientifically meaningful keys; technical parameters (`threads`, paths, `--quiet`, `--overwrite`, `--resume`, `--dry-run`) are ignored inside the function
 - All scientifically meaningful parameters are described, whether or not they differ from defaults
 - Parameter descriptions include the parameter's scientific meaning, not just its value
 - Conditional branches handle parameter combinations (e.g. `backtrans=True`, `partitioned=True`, `modelfinder=MFP`)
 - All placeholder values have fallbacks: `tool_versions.get("mafft", "unknown version")`
-- Technical parameters (threads, paths, `--quiet`, `--overwrite`) are never included
 - New commands require adding one function to `templates.py`; no other files change
 
 **Template examples (reference quality):**
@@ -331,24 +340,26 @@ The HTML report is a self-contained single file (no external CDN dependencies) r
 
 ### Page layout
 
+The HTML report has five named **panels**. These panel names are distinct from the **figure/table numbering groups** defined in Section 11 (which use `Fig-3.x`, `Fig-4.x` etc. based on analytical phase, not HTML panel position).
+
 ```
 ┌──────────────────────────────────────────────┐
 │ Header: PhyloAI Report                        │
 │ run_dir · generated_at · phyloai_version      │
 ├──────────────────────────────────────────────┤
-│ Section 1. Pipeline Summary                   │
+│ Panel A. Run Summary                          │
 ├──────────────────────────────────────────────┤
-│ Section 2. Methods                            │
+│ Panel B. Methods                              │
 ├──────────────────────────────────────────────┤
-│ Section 3. Steps Detail                       │
+│ Panel C. Steps Detail                         │
 ├──────────────────────────────────────────────┤
-│ Section 4. Figures                            │
+│ Panel D. Figures                              │
 ├──────────────────────────────────────────────┤
-│ Section 5. Output Files Index                 │
+│ Panel E. Output Files Index                   │
 └──────────────────────────────────────────────┘
 ```
 
-### Section 1 — Pipeline Summary
+### Panel A — Run Summary
 
 Summary cards:
 
@@ -360,11 +371,11 @@ Final tree: runs/tree/ml/iqtree/ml/matrix.aa.treefile  [link]
 
 Failed steps listed by name in red below the cards. For `run_mode: pipeline`, a linear progress indicator shows which steps succeeded/failed.
 
-### Section 2 — Methods
+### Panel B — Methods
 
 Full `methods_paragraph` in a styled block with a "Copy to clipboard" button. Each sentence is linked (via anchor) to its corresponding Step Detail card. Intended for direct use in manuscript Methods sections.
 
-### Section 3 — Steps Detail
+### Panel C — Steps Detail
 
 One collapsible card per step, ordered by `STEP_ORDER`:
 
@@ -388,7 +399,7 @@ One collapsible card per step, ordered by `STEP_ORDER`:
 </details>
 ```
 
-### Section 4 — Figures
+### Panel D — Figures
 
 Each figure from `figures_index` is rendered as:
 
@@ -408,9 +419,9 @@ Each figure from `figures_index` is rendered as:
 </figure>
 ```
 
-Figure numbering is sequential within section groups derived from `STEP_ORDER` position (e.g. all pretree figures are `Fig-3.x`, all tree figures `Fig-4.x`).
+Figure numbering uses the analytical-phase groups from Section 11 (e.g. all pretree figures are `Fig-3.x`, all tree figures `Fig-4.x`). These phase numbers are independent of the HTML panel labels (A–E).
 
-### Section 5 — Output Files Index
+### Panel E — Output Files Index
 
 Sortable HTML table of all output files across all steps. Rows beyond 20 are collapsed under a `<details>` wrapper.
 
@@ -422,8 +433,8 @@ Sortable HTML table of all output files across all steps. Rows beyond 20 are col
 
 **Table caption:**
 
-> **Table 5.1** Output files produced across all steps.  
-> Source: aggregated from `result.json:data.output` and `key_results` across all steps.
+> **Table E.1** Output files produced across all steps.  
+> Source: aggregated from `result.json:data.output_files` across all steps.
 
 Table headers are clickable for client-side sorting (ascending/descending).
 
@@ -446,18 +457,15 @@ Tables within Step Detail cards that exceed 20 rows are similarly wrapped:
 
 ## 11. Figure and Table Numbering Convention
 
-Section numbers follow `STEP_ORDER` groupings:
+Figure and table IDs use **analytical phase numbers**, which are independent of the HTML panel labels (A–E). Phase numbers reflect the analytical stage of the run, not the visual layout of the report.
 
-| Section | Steps | Figure/Table prefix |
-|---------|-------|---------------------|
-| 1 | pipeline_summary | — |
-| 2 | methods | — |
+| Phase | Analytical group | Figure/Table prefix |
+|-------|-----------------|---------------------|
 | 3 | pretree.* | Fig-3.x / Table-3.x |
 | 4 | tree.* | Fig-4.x / Table-4.x |
 | 5 | posttree.* | Fig-5.x / Table-5.x |
-| 6 | output files index | Table-6.x |
 
-Within each section, numbering is sequential in `STEP_ORDER` order.
+Within each phase, numbering is sequential in `STEP_ORDER` order. Phase numbers 1 and 2 are intentionally unused (reserved for run summary and methods, which produce no figures or tables).
 
 ---
 
