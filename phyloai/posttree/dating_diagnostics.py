@@ -246,6 +246,7 @@ def generate_all_diagnostics(
     import itertools
     warnings: list[str] = []
     corr_rows: list[dict] = []
+    output_files: dict[str, str] = {}
 
     def _add_corr(comparison: str, stats: dict[str, float]) -> None:
         row = {"comparison": comparison}
@@ -297,11 +298,13 @@ def generate_all_diagnostics(
             ("posterior", run_dir / "mcmc.txt"),
             ("prior", run_dir / "prior" / "mcmc.txt"),
         ]:
+            trace_pdf = diag_dir / "traces" / f"mcmc_trace_{run_label}_{kind}.pdf"
             plot_trace(
                 mcmc_file,
-                diag_dir / "traces" / f"mcmc_trace_{run_label}_{kind}.pdf",
+                trace_pdf,
                 title=f"MCMC trace — {run_label} {kind}",
             )
+            output_files[f"trace_{run_label}_{kind}"] = str(trace_pdf)
 
     if n_runs >= 2:
         for kind_label, times_list, out_name in [
@@ -322,10 +325,12 @@ def generate_all_diagnostics(
                         all_nodes[node][f"upper_{label}"] = r["upper"]
                         all_nodes[node][f"ci_width_{label}"] = r["ci_width"]
                 combined_table = list(all_nodes.values())
+                conv_csv = diag_dir / "convergence" / f"{out_name}.csv"
                 write_time_table_csv(
                     combined_table,
-                    diag_dir / "convergence" / f"{out_name}.csv",
+                    conv_csv,
                 )
+                output_files[f"convergence_{out_name}"] = str(conv_csv)
 
             pairs = list(itertools.combinations(range(len(times_list)), 2))
             for a, b in pairs:
@@ -335,17 +340,18 @@ def generate_all_diagnostics(
                         and times_list[a] and times_list[b]):
                     pair_table = build_time_table(times_list[a], times_list[b],
                                                   label1=label_a, label2=label_b)
+                    conv_pdf = diag_dir / "convergence" / f"convergence_{kind_label}_{label_a}_vs_{label_b}.pdf"
                     stats = plot_convergence(
                         pair_table,
                         f"mean_{label_a}", f"mean_{label_b}",
-                        diag_dir / "convergence" /
-                        f"convergence_{kind_label}_{label_a}_vs_{label_b}.pdf",
+                        conv_pdf,
                         title=f"Convergence — {kind_label} means ({label_a} vs {label_b})",
                         xlabel=f"Mean age {label_a} (100 Mya)",
                         ylabel=f"Mean age {label_b} (100 Mya)",
                     )
                     _add_corr(f"convergence_{kind_label}_{label_a}_vs_{label_b}", stats)
                     generated.append(f"convergence_{kind_label}_{label_a}_vs_{label_b}")
+                    output_files[f"convergence_{kind_label}_{label_a}_vs_{label_b}"] = str(conv_pdf)
                 else:
                     skipped.append({"reason": f"{kind_label} mcmctree.out empty/missing",
                                     "run": f"{label_a}_vs_{label_b}"})
@@ -366,10 +372,10 @@ def generate_all_diagnostics(
             x = [r["mean"] for r in rows]
             y = [r["ci_width"] for r in rows]
             lbs = [r.get("node", "") for r in rows]
+            inf_pdf = diag_dir / "infinite_sites" / f"infinite_sites_{run_label}_{kind}.pdf"
             stats = plot_line(
                 x, y,
-                diag_dir / "infinite_sites" /
-                f"infinite_sites_{run_label}_{kind}.pdf",
+                inf_pdf,
                 title=f"Infinite-sites — {run_label} {kind}",
                 xlabel="Mean age (100 Mya)",
                 ylabel="95% CI width (100 Mya)",
@@ -377,6 +383,7 @@ def generate_all_diagnostics(
             )
             _add_corr(f"infinite_sites_{run_label}_{kind}", stats)
             generated.append(f"infinite_sites_{run_label}_{kind}")
+            output_files[f"infinite_sites_{run_label}_{kind}"] = str(inf_pdf)
 
         if post and prior:
             post_by_node = {r["node"]: r["mean"] for r in post}
@@ -385,10 +392,10 @@ def generate_all_diagnostics(
             if shared:
                 xp = [post_by_node[n] for n in shared]
                 yp = [prior_by_node[n] for n in shared]
+                pvp_pdf = diag_dir / "posterior_vs_prior" / f"posterior_vs_prior_{run_label}.pdf"
                 stats = plot_line(
                     xp, yp,
-                    diag_dir / "posterior_vs_prior" /
-                    f"posterior_vs_prior_{run_label}.pdf",
+                    pvp_pdf,
                     title=f"Posterior vs prior — {run_label}",
                     xlabel="Posterior mean age (100 Mya)",
                     ylabel="Prior mean age (100 Mya)",
@@ -397,6 +404,7 @@ def generate_all_diagnostics(
                 )
                 _add_corr(f"posterior_vs_prior_{run_label}", stats)
                 generated.append(f"posterior_vs_prior_{run_label}")
+                output_files[f"posterior_vs_prior_{run_label}"] = str(pvp_pdf)
             else:
                 skipped.append({"reason": "No shared nodes between posterior and prior",
                                 "run": run_label})
@@ -415,6 +423,8 @@ def generate_all_diagnostics(
             )
             writer.writeheader()
             writer.writerows(corr_rows)
+        output_files["spearman_correlations"] = str(corr_path)
 
     return {"spearman": corr_rows, "warnings": warnings,
-            "generated": generated, "skipped": skipped}
+            "generated": generated, "skipped": skipped,
+            "output_files": output_files}

@@ -146,7 +146,36 @@ Used by: `concat`, `msc`, `cf` (all sub-modes), `filter treeshrink`, `filter sym
 - `data.tool_stderr` stores raw stderr only. Summaries belong in `warnings` or `data.summary`.
 - Top-level or sidecar log files MUST NOT duplicate `wall_time`, `exit_code`, `command`, or other fields already in `result.json`.
 
-### 5.3 Tool Diagnostic Output Model (recap from parent Section 6.2)
+### 5.4 Output Files Convention
+
+**All non-`doctor` commands that produce table files (CSV/TSV) or figure files (PDF/PNG) MUST list them under `data.output_files`**, a flat `{label: abs_path}` dict. This ensures every generated file is discoverable from `result.json` alone.
+
+```json
+{
+  "data": {
+    "output_files": {
+      "retained_loci": "/abs/path/retained_loci.csv",
+      "dropped_loci": "/abs/path/dropped_loci.csv",
+      "filter_decisions": "/abs/path/filter_decisions.csv",
+      "metrics_table": "/abs/path/metrics.csv",
+      "correlation_heatmap": "/abs/path/correlation_heatmap.pdf",
+      "trace_run1_posterior": "/abs/path/traces/mcmc_trace_run1_posterior.pdf"
+    }
+  }
+}
+```
+
+**Hard requirements:**
+1. Labels are short, descriptive, and snake_case (e.g. `"retained_loci"`, `"correlation_heatmap"`, `"trace_run1_posterior"`).
+2. Values are absolute file paths as strings, even when written relative to the output directory.
+3. When the same logical file type is written per-run or per-component, enumerate with indexed labels (e.g. `"trace_run1_posterior"`, `"trace_run1_prior"`) or descriptive keys.
+4. Files written to directories outside `output_dir` are still valid entries.
+
+**Pattern:**
+- Use a single `output_files` key in `data` — never spread file paths across multiple nested keys (e.g. `data.plot.output`, `data.heatmap.output`, `data.summary.plot_paths`).
+- The `output_files` dict is additive: when a `run_*` function writes the base result.json, the CLI handler that generates additional plots/tables afterward must update the `output_files` dict AND rewrite result.json.
+
+### 5.5 Tool Diagnostic Output Model (recap from parent Section 6.2)
 
 | Mode | Diagnostic output location | Referenced in JSON? |
 |------|---------------------------|---------------------|
@@ -189,26 +218,30 @@ Commands without external tool invocations per task (e.g., `pretree metrics`, `p
 
 ## 7. Per-Module Field Requirements
 
-| Module | `command` full? | `params` full? | `data.cmd` | `data.tool_stderr` | `data.tool_log` | `files[].cmd` | `files[].log_file` | `files[].wall_time` |
-|--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| convert | ✓ | ✓ | — | — | — | — | — | — |
-| stats | ✓ | ✓ | — | — | — | — | — | — |
-| align | ✓ | ✓ | — | — | — | ✓ | ✓ | ✓ |
-| trim | ✓ | ✓ | — | — | — | ✓ | ✓ | ✓ |
-| metrics | ✓ | ✓ | — | — | — | — | — | — |
-| filter taper | ✓ | ✓ | — | — | — | ✓ | ✓ | ✓ |
-| filter treeshrink | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
-| filter symtest | ✓ | ✓ | ✓ | ✓ | — | — | — | — |
-| filter metrics | ✓ | ✓ | — | — | — | — | — | — |
-| filter cluster | ✓ | ✓ | — | — | — | — | — | — |
-| concat | ✓ | ✓ | ✓ ([] ok) | ✓ | — | — | — | — |
-| fasttree (batch) | ✓ | ✓ | — | — | — | ✓ | ✓ | ✓ |
-| fasttree (single) | ✓ | ✓ | ✓ | ✓¹ | — | — | — | — |
-| iqtree (batch) | ✓ | ✓ | — | — | — | ✓ | ✓ | ✓ |
-| iqtree (single) | ✓ | ✓ | ✓ | ✓¹ | — | — | — | — |
-| msc | ✓ | ✓ | ✓ | ✓² | ✓ | — | — | — |
-| cf (gCF/sCF/sCFl) | ✓ | ✓ | ✓ | ✓ | ✓ (IQ-TREE native .log) | — | — | — |
-| cf (qCF) | ✓ | ✓ | ✓ | ✓² | ✓ | — | — | — |
+| Module | `command` full? | `params` full? | `data.output_files` | `data.cmd` | `data.tool_stderr` | `data.tool_log` | `files[].cmd` | `files[].log_file` | `files[].wall_time` |
+|--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| convert | ✓ | ✓ | — | — | — | — | — | — | — |
+| stats | ✓ | ✓ | ✓ (per-gene table when --per-gene) | — | — | — | — | — | — |
+| align | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
+| trim | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
+| metrics | ✓ | ✓ | ✓ (metrics.csv, plots/, basic statistics, correlation) | — | — | — | — | — | — |
+| filter taper | ✓ | ✓ | ✓ (retained_loci, dropped_loci, filter_decisions) | — | — | — | ✓ | ✓ | ✓ |
+| filter treeshrink | ✓ | ✓ | ✓ (retained_loci, dropped_loci, modified_loci, removed_taxa, filter_decisions) | ✓ | ✓ | — | — | — | — |
+| filter symtest | ✓ | ✓ | ✓ (retained_loci, dropped_loci, filter_decisions) | ✓ | ✓ | — | — | — | — |
+| filter metrics | ✓ | ✓ | ✓ (retained_loci, dropped_loci, filter_decisions) | — | — | — | — | — | — |
+| filter cluster | ✓ | ✓ | ✓ (all CSVs + PDFs: cluster assignments, reduction, metric means, scatter, boxplots, outlier diagnostics) | — | — | — | — | — | — |
+| concat | ✓ | ✓ | — | ✓ ([] ok) | ✓ | — | — | — | — |
+| fasttree (batch) | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
+| fasttree (single) | ✓ | ✓ | — | ✓ | ✓¹ | — | — | — | — |
+| iqtree (batch) | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
+| iqtree (single) | ✓ | ✓ | — | ✓ | ✓¹ | — | — | — | — |
+| msc | ✓ | ✓ | — | ✓ | ✓² | ✓ | — | — | — |
+| cf (gCF/sCF/sCFl) | ✓ | ✓ | — | ✓ | ✓ | ✓ (IQ-TREE native .log) | — | — | — |
+| cf (qCF) | ✓ | ✓ | — | ✓ | ✓² | ✓ | — | — | — |
+| posttree topology | ✓ | ✓ | ✓ (topology_test_results.csv, iqtree_report, iqtree_log, optimized trees) | ✓ | ✓ | ✓ (IQ-TREE native .log) | — | — | — |
+| posttree dating hessian | ✓ | ✓ | ✓ (iqtree.dummy.phy, iqtree.rooted.nwk, iqtree.mcmctree.hessian) | ✓ | ✓ | — | — | — | — |
+| posttree dating mcmc | ✓ | ✓ | ✓ (diagnostics: traces, convergence, infinite-sites, posterior-vs-prior PDFs/CSVs) | ✓ | ✓ | — | — | — | — |
+| tree bi | ✓ | ✓ | ✓ (trace_plots.pdf, convergence_render.txt, bpcomp/tracecomp files) | — | ✓ | — | — | — | — |
 
 `—` = not required. `opt` = optional (pure-Python batch). `[] ok` = empty array valid when no external tool invoked.
 `✓¹` = MAY be `""` when per-locus diagnostic output is captured in `output/<locus>.log` (single-mode FastTree/IQ-TREE).

@@ -403,8 +403,15 @@ def _run_stats_command(
     summary = aggregate_summary(results)
     summary["warnings"] = warnings
     data: dict = {"summary": summary}
+    output_files: dict[str, str] = {}
     if per_gene:
+        per_gene_path = output_dir / f"per-gene.{table_format}"
+        _write_per_gene_csv(results, per_gene_path, table_format, is_aligned=is_aligned)
         data["per_gene"] = results
+        output_files["per_gene_table"] = str(per_gene_path)
+        if not quiet:
+            click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
+    data["output_files"] = output_files
     payload = {
         "status": "success" if summary["n_genes_ok"] > 0 else "error",
         "command": cmd_str,
@@ -421,11 +428,7 @@ def _run_stats_command(
         console.print(render_summary_table(summary))
     with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
-    click.echo(f"Summary saved to {result_path}", err=True)
-    if per_gene:
-        per_gene_path = output_dir / f"per-gene.{table_format}"
-        _write_per_gene_csv(results, per_gene_path, table_format, is_aligned=is_aligned)
-        click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
+    click.echo(f"Results saved to {result_path}", err=True)
     for warning in warnings:
         click.echo(warning, err=True)
 
@@ -1138,12 +1141,22 @@ def metrics_group(
                 annot=False,
             )
             _write_correlation_csv(corr_matrix, col_names, corr_dir / f"correlation_matrix{_table_suffix(table_format)}", table_format=table_format)
-            payload["data"]["correlation"] = {"n_variables": len(col_names)}
+            corr_matrix_path = corr_dir / f"correlation_matrix{_table_suffix(table_format)}"
+            corr_heatmap_path = corr_dir / "correlation_heatmap.pdf"
+            payload["data"]["output_files"]["correlation_matrix"] = str(corr_matrix_path)
+            payload["data"]["output_files"]["correlation_heatmap"] = str(corr_heatmap_path)
     except Exception as exc:
         if not quiet:
             click.echo(f"\n[WARN] Correlation generation failed: {exc}", err=True)
 
-    payload["data"]["plots"] = {"n_pdfs": n_plots}
+    basic_stats_path = output_dir / f"metrics.basic_statistics{_table_suffix(table_format)}"
+    payload["data"]["output_files"]["basic_statistics"] = str(basic_stats_path)
+    payload["data"]["output_files"]["plots_dir"] = str(plots_dir)
+    payload["data"]["output_files"]["n_plots"] = n_plots
+
+    # Rewrite result.json with updated output_files
+    with open(output_dir / "result.json", "w") as fh:
+        json.dump(payload, fh, indent=2)
 
     if progress:
         progress.stop()
@@ -1303,7 +1316,7 @@ def metrics_plot_command(
                    "xmin": xmin, "xmax": xmax, "title": title, "xlabel": xlabel, "ylabel": ylabel,
                    "color": color, "output_dir": str(output_dir), "overwrite": overwrite},
         "key_results": {"n_filtered": n_filtered}, "error": None,
-        "data": {"cmd": [], "tool_stderr": "", "plot": {"metric": metric, "output": str(out_path), "n_filtered": n_filtered}},
+        "data": {"cmd": [], "tool_stderr": "", "output_files": {"plot": str(out_path)}},
     }
     with open(output_dir / "result.json", "w") as fh:
         json.dump(payload, fh, indent=2)
@@ -1450,7 +1463,7 @@ def metrics_correlate_command(
                    "label_angle": label_angle, "title": title, "output_dir": str(output_dir),
                    "overwrite": overwrite, "cluster_rectangles": cluster_rectangles},
         "key_results": {"n_variables": len(col_names) if col_names else 0}, "error": None,
-        "data": {"cmd": [], "tool_stderr": "", "heatmap": {"variables": len(col_names) if col_names else 0, "method": method, "output": str(heatmap_path)}},
+        "data": {"cmd": [], "tool_stderr": "", "output_files": {"correlation_heatmap": str(heatmap_path), "correlation_matrix": str(output_dir / "correlation_matrix.csv")}},
     }
     with open(output_dir / "result.json", "w") as fh:
         json.dump(payload, fh, indent=2)

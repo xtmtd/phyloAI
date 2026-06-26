@@ -526,6 +526,22 @@ def _assemble_topology_result(
         "model_source": model_source,
     }
 
+    # Write test results to CSV for external consumption
+    output_files: dict[str, str] = {}
+    topology_csv: str | None = None
+    if tests:
+        import csv as _csv
+        topology_csv_path = output_dir / "topology_test_results.csv"
+        with open(topology_csv_path, "w", newline="") as fh:
+            score_cols = ["bp_rell", "p_kh", "p_sh", "p_wkh", "p_wsh", "c_elw", "p_au"]
+            avail = [c for c in score_cols if any(t.get(c) is not None for t in tests)]
+            fieldnames = ["tree_id", "log_likelihood", "delta_likelihood"] + avail
+            writer = _csv.DictWriter(fh, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(tests)
+        topology_csv = str(topology_csv_path)
+        output_files["topology_test_results"] = topology_csv
+
     data: dict[str, Any] = {
         "cmd": effective_cmd,
         "tool_stderr": tool_stderr,
@@ -537,13 +553,16 @@ def _assemble_topology_result(
         ),
         "tests": tests,
         "warnings": warnings,
+        "output_files": output_files,
     }
-    # Only include optional file-path fields when the files actually exist,
-    # so validate_result_json does not trip on None-valued strings.
     if iqtree_report.exists():
-        data["log_iqtree"] = str(iqtree_report.name)
+        data["log_iqtree"] = str(iqtree_report)
+        output_files["iqtree_report"] = str(iqtree_report)
     if iqtree_log.exists():
-        data["tool_log"] = str(iqtree_log.name)
+        data["tool_log"] = str(iqtree_log)
+        output_files["iqtree_log"] = str(iqtree_log)
+    if optimized_trees:
+        output_files["optimized_trees"] = str(output_dir / optimized_trees)
 
     return {
         "status": "success" if returncode == 0 else "error",

@@ -1067,6 +1067,7 @@ def run_metrics(
     wall_time = time.monotonic() - t0
 
     data = {
+        "output_files": {"metrics_table": str(metrics_path)},
         "summary": {
             "n_markers": len(paired),
             "n_success": n_success,

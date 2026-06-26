@@ -652,6 +652,7 @@ def run_mcmc(
         "error_category": "tool" if posterior_failed else None,
         "data": {
             "diagnostics": diag_summary,
+            "output_files": diag_summary.pop("output_files", {}),
             "warnings": all_warnings,
             "return_codes": {
                 **{f"{rd.name}:posterior": procs[rd.name].returncode

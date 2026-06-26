@@ -485,8 +485,11 @@ def run_taper(
     dropped = [r for r in file_results if r.get("status") != "success"]
 
     if not dry_run:
-        _write_csv_table([{"locus": r["locus"]} for r in retained], output_dir / f"retained_loci{suffix}", ["locus"], delimiter)
-        _write_csv_table([{"locus": r["locus"], "reason": r.get("reason", "")} for r in dropped], output_dir / f"dropped_loci{suffix}", ["locus", "reason"], delimiter)
+        retained_csv = output_dir / f"retained_loci{suffix}"
+        dropped_csv = output_dir / f"dropped_loci{suffix}"
+        filter_decisions_csv = output_dir / f"filter_decisions{suffix}"
+        _write_csv_table([{"locus": r["locus"]} for r in retained], retained_csv, ["locus"], delimiter)
+        _write_csv_table([{"locus": r["locus"], "reason": r.get("reason", "")} for r in dropped], dropped_csv, ["locus", "reason"], delimiter)
         decision_columns = ["locus", "status", "new_masked_sites", "masked_taxa_count"]
         decisions = [
             {
@@ -500,7 +503,14 @@ def run_taper(
         ]
         if show_masked_sites:
             decision_columns.append("masked_taxa_detail")
-        _write_csv_table(decisions, output_dir / f"filter_decisions{suffix}", decision_columns, delimiter)
+        _write_csv_table(decisions, filter_decisions_csv, decision_columns, delimiter)
+        taper_output_files = {
+            "retained_loci": str(retained_csv),
+            "dropped_loci": str(dropped_csv),
+            "filter_decisions": str(filter_decisions_csv),
+        }
+    else:
+        taper_output_files = {}
 
     wall_time = time.monotonic() - start
     total_masked_sites = sum(r.get("new_masked_sites", 0) for r in file_results)
@@ -539,6 +549,7 @@ def run_taper(
         "error": None if retained else "All loci failed TAPER.",
         "data": {
             "files": files_list,
+            "output_files": taper_output_files,
             "summary": {
                 "n_input": len(file_results),
                 "n_retained": len(retained),
@@ -716,12 +727,26 @@ def run_treeshrink(
             file_results.append({"locus": locus, "status": "failed", "reason": "output missing"})
 
     if not dry_run:
-        _write_csv_table([{"locus": r["locus"]} for r in retained], output_dir / f"retained_loci{suffix}", ["locus"], delimiter)
-        _write_csv_table(dropped, output_dir / f"dropped_loci{suffix}", ["locus", "reason"], delimiter)
-        _write_csv_table(modified_loci, output_dir / f"modified_loci{suffix}", ["locus", "removed_count"], delimiter)
-        _write_csv_table(removed_taxa, output_dir / f"removed_taxa{suffix}", ["locus", "taxon"], delimiter)
+        ts_retained_csv = output_dir / f"retained_loci{suffix}"
+        ts_dropped_csv = output_dir / f"dropped_loci{suffix}"
+        ts_modified_csv = output_dir / f"modified_loci{suffix}"
+        ts_removed_taxa_csv = output_dir / f"removed_taxa{suffix}"
+        ts_filter_decisions_csv = output_dir / f"filter_decisions{suffix}"
+        _write_csv_table([{"locus": r["locus"]} for r in retained], ts_retained_csv, ["locus"], delimiter)
+        _write_csv_table(dropped, ts_dropped_csv, ["locus", "reason"], delimiter)
+        _write_csv_table(modified_loci, ts_modified_csv, ["locus", "removed_count"], delimiter)
+        _write_csv_table(removed_taxa, ts_removed_taxa_csv, ["locus", "taxon"], delimiter)
         decisions = [{"locus": r.get("locus", ""), "status": r.get("status", "failed"), "removed_count": sum(1 for t in removed_taxa if t["locus"] == r.get("locus", ""))} for r in file_results]
-        _write_csv_table(decisions, output_dir / f"filter_decisions{suffix}", ["locus", "status", "removed_count"], delimiter)
+        _write_csv_table(decisions, ts_filter_decisions_csv, ["locus", "status", "removed_count"], delimiter)
+        ts_output_files = {
+            "retained_loci": str(ts_retained_csv),
+            "dropped_loci": str(ts_dropped_csv),
+            "modified_loci": str(ts_modified_csv),
+            "removed_taxa": str(ts_removed_taxa_csv),
+            "filter_decisions": str(ts_filter_decisions_csv),
+        }
+    else:
+        ts_output_files = {}
 
     if not keep_work_dir:
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -758,6 +783,7 @@ def run_treeshrink(
         "data": {
             "cmd": cmd,
             "tool_stderr": merged_stderr,
+            "output_files": ts_output_files,
             "summary": {
                 "n_input": len(pairing.paired),
                 "n_retained": len(retained) - len(modified_loci),
@@ -932,10 +958,13 @@ def run_metrics_filter(
         return {"status": "success", "command": command, "wall_time": 0, "tool_versions": {}, "params": params, "key_results": {"n_total": len(rows), "n_retained": len(retained), "n_dropped": len(dropped)}, "error": None, "data": {"condition_failure_counts": failure_counts}}
     _common_output_conflict(output_dir, overwrite)
     output_dir.mkdir(parents=True, exist_ok=True)
-    _write_csv_table([{loci_column: r[loci_column]} for r in retained], output_dir / f"retained_loci{suffix}", [loci_column], delimiter_out)
-    _write_csv_table([{loci_column: d[loci_column], "reason": d.get("_filter_reason", "")} for d in dropped], output_dir / f"dropped_loci{suffix}", [loci_column, "reason"], delimiter_out)
+    mf_retained_csv = output_dir / f"retained_loci{suffix}"
+    mf_dropped_csv = output_dir / f"dropped_loci{suffix}"
+    mf_filter_decisions_csv = output_dir / f"filter_decisions{suffix}"
+    _write_csv_table([{loci_column: r[loci_column]} for r in retained], mf_retained_csv, [loci_column], delimiter_out)
+    _write_csv_table([{loci_column: d[loci_column], "reason": d.get("_filter_reason", "")} for d in dropped], mf_dropped_csv, [loci_column, "reason"], delimiter_out)
     decisions = [{loci_column: r[loci_column], "status": "retained", "reason": ""} for r in retained] + [{loci_column: d[loci_column], "status": "dropped", "reason": d.get("_filter_reason", "")} for d in dropped]
-    _write_csv_table(decisions, output_dir / f"filter_decisions{suffix}", [loci_column, "status", "reason"], delimiter_out)
+    _write_csv_table(decisions, mf_filter_decisions_csv, [loci_column, "status", "reason"], delimiter_out)
     copied_msa, copied_tree = 0, 0
     msa_map = scan_msa_dir(msa_dir) if msa_dir else {}
     tree_map = scan_tree_dir(tree_dir) if tree_dir else {}
@@ -982,6 +1011,11 @@ def run_metrics_filter(
         "error": None,
         "data": {
             "files": files_list,
+            "output_files": {
+                "retained_loci": str(mf_retained_csv),
+                "dropped_loci": str(mf_dropped_csv),
+                "filter_decisions": str(mf_filter_decisions_csv),
+            },
             "summary": {
                 "n_total": len(rows),
                 "n_retained": len(retained),
@@ -1805,6 +1839,35 @@ def run_cluster_filter(
             entry["warnings"].append("outlier_cluster")
         files_list.append(entry)
 
+    cluster_output_files = {
+        "features_used": str(input_dir / f"features_used{suffix}"),
+        "reduction": str(reduction_dir / f"reduction{suffix}"),
+        "clusters": str(clustering_dir / f"clusters{suffix}"),
+        "cluster_summary": str(clustering_dir / f"cluster_summary{suffix}"),
+        "cluster_metric_means": str(diagnostics_dir / f"cluster_metric_means{suffix}"),
+        "cluster_metric_heatmap": str(means_path),
+    }
+    if selection_rows:
+        cluster_output_files["cluster_selection"] = str(reduction_dir / f"cluster_selection{suffix}")
+    if umap_replicate_rows:
+        cluster_output_files["umap_replicates"] = str(reduction_dir / f"umap_replicates{suffix}")
+    for i, pdf in enumerate(plot_paths):
+        cluster_output_files[f"cluster_scatter_{i}"] = pdf
+    for i, pdf in enumerate(boxplot_paths):
+        cluster_output_files[f"cluster_metric_boxplots_{i}"] = pdf
+    for c in range(selected_k):
+        cluster_output_files[f"cluster_{c}"] = str(cluster_loci_dir / f"cluster_{c}{suffix}")
+    if drop_outlier_clusters == "auto" and drop_clusters:
+        cluster_output_files.update({
+            "outlier_retained_loci": str(outlier_dir / f"retained_loci{suffix}"),
+            "outlier_dropped_loci": str(outlier_dir / f"dropped_loci{suffix}"),
+            "outlier_filter_decisions": str(outlier_dir / f"filter_decisions{suffix}"),
+            "outlier_comparison": str(outlier_dir / f"outlier_comparison{suffix}"),
+            "outlier_wilcoxon": str(outlier_dir / f"outlier_wilcoxon{suffix}"),
+        })
+        for i, pdf in enumerate(outer_plot_paths):
+            cluster_output_files[f"outlier_boxplots_{i}"] = pdf
+
     payload = {
         "status": "success", "command": command, "wall_time": round(wall_time, 2),
         "tool_versions": {}, "params": params,
@@ -1818,6 +1881,7 @@ def run_cluster_filter(
         "error": None,
         "data": {
             "files": files_list,
+            "output_files": cluster_output_files,
             "summary": {
                 "n_loci": len(rows),
                 "n_valid_loci": len(valid_loci),
@@ -1830,7 +1894,6 @@ def run_cluster_filter(
                 "cluster_sizes": {int(c): int((labels == c).sum()) for c in range(selected_k)},
                 "drop_clusters": [int(c) for c in sorted(drop_clusters)],
                 "retained_msa_stats": msa_stats,
-                "plot_paths": plot_paths + boxplot_paths + [means_path] + outer_plot_paths,
                 "umap_replicates": umap_replicate_rows,
             },
         },
@@ -2205,16 +2268,20 @@ def run_symtest(
         delimiter = _table_delimiter(table_format)
         suffix = _table_suffix(table_format)
 
+        sym_retained_csv = output_dir / f"retained_loci{suffix}"
+        sym_dropped_csv = output_dir / f"dropped_loci{suffix}"
+        sym_filter_decisions_csv = output_dir / f"filter_decisions{suffix}"
+
         _write_csv_table(
-            retained, output_dir / f"retained_loci{suffix}",
+            retained, sym_retained_csv,
             ["locus"], delimiter,
         )
         _write_csv_table(
-            dropped, output_dir / f"dropped_loci{suffix}",
+            dropped, sym_dropped_csv,
             ["locus", "reason"], delimiter,
         )
         _write_csv_table(
-            decisions, output_dir / f"filter_decisions{suffix}",
+            decisions, sym_filter_decisions_csv,
             ["locus", "status", "p_value", "symtest_type",
              "sym_pval", "mar_pval", "int_pval",
              "sym_sig", "sym_non", "mar_sig", "mar_non", "int_sig", "int_non"],
@@ -2255,6 +2322,11 @@ def run_symtest(
             "data": {
                 "cmd": cmd,
                 "tool_stderr": merged_stderr,
+                "output_files": {
+                    "retained_loci": str(sym_retained_csv),
+                    "dropped_loci": str(sym_dropped_csv),
+                    "filter_decisions": str(sym_filter_decisions_csv),
+                },
                 "summary": {
                     "n_input": len(symtest_results),
                     "n_retained": len(retained),

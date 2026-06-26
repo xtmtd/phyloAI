@@ -443,10 +443,25 @@ def _assemble_result(params: dict[str, Any], command: str, wall_time: float, too
     if final_convergence:
         all_warnings.extend(final_convergence.get("warnings", []))
     consensus_tree: str | None = None
+    output_files: dict[str, str] = {}
     if final_convergence is not None and output_dir is not None:
         candidate = output_dir / "convergence" / "bpcomp_all.con.tre"
         if candidate.exists():
             consensus_tree = "convergence/bpcomp_all.con.tre"
+        trace_pdf = output_dir / "convergence" / "trace_plots.pdf"
+        if trace_pdf.exists():
+            output_files["trace_plots"] = str(trace_pdf)
+        conv_render = output_dir / "convergence" / "convergence_render.txt"
+        if conv_render.exists():
+            output_files["convergence_render"] = str(conv_render)
+        bpcomp_patterns = sorted((output_dir / "convergence").glob("bpcomp_*"))
+        for p in bpcomp_patterns:
+            key = p.name.replace(".", "_")
+            output_files[key] = str(p)
+        tracecomp_patterns = sorted((output_dir / "convergence").glob("tracecomp_*"))
+        for p in tracecomp_patterns:
+            key = p.name.replace(".", "_")
+            output_files[key] = str(p)
     return {
         "status": status,
         "command": command,
@@ -464,6 +479,7 @@ def _assemble_result(params: dict[str, Any], command: str, wall_time: float, too
             "chain_cmds": chain_cmds,
             "tool_stderr": tool_outputs,
             "tool_logs": {name: f"chains/{name}.log" for name in chain_cmds},
+            "output_files": output_files,
             "interrupted": interrupted,
             "warnings": all_warnings,
         },
