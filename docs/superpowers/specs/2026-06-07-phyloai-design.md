@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-21 (extracted JSON output details to `2026-06-21-phyloai-json-output-standard.md`; Section 9.4 slimmed to reference)  
+**Last updated:** 2026-06-26 (updated report module design; Section 3, 4.1, 6, 7 revised to match `2026-06-26-phyloai-report-design.md`)  
 **Status:** Approved for implementation
 
 ---
@@ -74,9 +74,12 @@ phyloai/
 │   └── simulate.py     # AliSim (MSA simulation), gene-jackknife resampling
 │
 ├── report/
-│   ├── collector.py    # cross-module JSON aggregation
-│   ├── methods.py      # Methods paragraph generation from run record
-│   └── summary.py      # statistical summary, run_record.yaml output
+│   ├── collector.py    # directory scanning, result.json discovery, step ordering
+│   ├── templates.py    # per-command methods text generation (Python functions)
+│   ├── schema.py       # ReportRecord dataclass; report.json structure
+│   ├── renderer.py     # report.json → report.html via Jinja2
+│   └── html/
+│       └── report.html.j2  # Jinja2 HTML template
 │
 └── cli/
     ├── main.py         # `phyloai` entry point
@@ -130,8 +133,10 @@ phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk
 phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
 
-# Report
-phyloai report generate --run-dir ./runs
+# Report (see 2026-06-26-phyloai-report-design.md)
+phyloai report --run-dir ./runs/run/faa      # single pipeline run
+phyloai report --run-dir ./runs/pretree      # single module run
+phyloai report --run-dir ./runs              # auto-discover all runs
 
 # One-click pipeline
 phyloai run --seq-dir ./raw --output-dir ./runs/run --mode supermatrix
@@ -251,10 +256,9 @@ runs/
 │   ├── signal/
 │   ├── syserror/
 │   └── simulate/
-└── report/
-    ├── summary.json
-    ├── methods.txt
-    └── run_record.yaml
+└── <run-dir>/report/               # written alongside the run being reported
+    ├── report.json                 # machine-readable source of truth; AI/MCP entry point
+    └── report.html                 # human-readable; embedded PDF figures, sortable tables
 ```
 
 ### 6.1 `result.json` — the single source of truth
@@ -279,21 +283,35 @@ Batch pipeline commands (`align`, `trim`, `fasttree`, `iqtree`) write `checkpoin
 
 ## 7. Report Module
 
-- Each module writes `result.json` with `params` and `key_results` on completion.
-- `report collector` aggregates all JSON files from a run directory tree.
-- `report methods` renders a Methods paragraph from the aggregated record.
-- `report summary` outputs `run_record.yaml`.
-- `report figures` renders tables and plots from `key_results`.
+> **Full specification:** `docs/superpowers/specs/2026-06-26-phyloai-report-design.md`
 
-`pretree stats` and `pretree convert` are utility commands and do not contribute to `report`.
+`phyloai report --run-dir <path>` is a single command that produces two output files:
+
+- **`report.json`** — machine-readable source of truth; structured entry point for AI/MCP diagnostics, reproducibility audits, and archival. Contains all step records, parameters, key results, methods text per step, and indices of all figures and tables.
+- **`report.html`** — human-readable report; embeds PDF figures natively, renders sortable/collapsible tables, and includes a copyable Methods paragraph draft suitable for journal submission.
+
+`report.html` is fully derived from `report.json` and can be re-rendered at any time without re-scanning the run directory.
+
+**Directory auto-detection:** `report` identifies three run structures automatically:
+- `pipeline` — `phyloai run` two-layer output (top-level `result.json` + per-step subdirectories)
+- `module` — single-module output (one or more step subdirectories without a pipeline-level `result.json`)
+- `multi` — top-level directory containing multiple pipeline or module runs
+
+**Methods paragraph:** Generated from per-command Python template functions in `templates.py`. Each template describes the tool used, key scientific parameters and their meaning, inputs, and quantitative outcomes. Templates are deterministic (no LLM involvement) and cover all scientific parameters; technical parameters (threads, paths) are omitted.
+
+**Figures:** PDF figures produced by `pretree metrics`, `pretree filter cluster`, `tree bi`, and `posttree dating` are embedded directly in `report.html` via `<object>` tags, preserving vector quality. Figure paths are recorded in `report.json:figures_index`.
+
+**Incomplete runs:** Report generation always succeeds regardless of step failures. Failed steps are included in `report.json` with full error details; their `methods_text` is empty and they are excluded from the methods paragraph. `report.html` marks failed steps visually and expands their detail cards by default.
+
+All steps including `pretree convert`, `pretree stats`, and `pretree metrics` contribute `methods_text` to the report.
 
 ---
 
 ## 8. AI Integration (Post-CLI Phase)
 
-**MCP Server:** Expose all CLI commands as MCP tools with JSON I/O, reading `result.json` for structured results.
+**MCP Server:** Expose all CLI commands as MCP tools with JSON I/O, reading `result.json` for structured results. `report.json` serves as the primary structured context for AI-assisted run diagnostics and guided re-analysis.
 
-**AI Coding Assistant Skill:** Workflow orchestration on top of MCP tools — parameter recommendation, result interpretation, Methods paragraph generation trigger, dynamic next-step suggestion.
+**AI Coding Assistant Skill:** Workflow orchestration on top of MCP tools — parameter recommendation, result interpretation, dynamic next-step suggestion. The `report.json` produced by `phyloai report` is the recommended entry point for AI diagnostics: it aggregates all step records, parameters, key results, and figure paths into a single queryable document, eliminating the need to traverse individual `result.json` files.
 
 **Systematic error diagnosis** (`posttree syserror`) exposes atomic operations individually via CLI. The Skill layer orchestrates them into a guided interactive sub-workflow. This cannot be encoded as a single CLI command.
 
@@ -471,7 +489,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 3 | `tree/` modules | ml, bi, msc, cf | Phase 1 |
 | 4 | `posttree/` modules | topology, dating, signal, syserror, simulate | Phases 2–3 |
 | 5 | `phyloai run` | one-click supermatrix and supertree pipelines | Phases 2–3 |
-| 6 | `report/` module | collector, methods, figures, run_record.yaml | Phases 2–4 |
+| 6 | `report/` module | collector, templates, schema, renderer; outputs report.json + report.html | Phases 2–4 |
 | 7 | MCP Server | JSON tool interface | Phases 2–6 |
 | 8 | AI Coding Assistant Skill | workflow orchestration, syserror sub-workflow | Phase 7 |
 
@@ -506,7 +524,10 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | syserror exposed as atomic ops only | Full diagnosis needs iterative human decisions; CLI atomics + Skill orchestration |
 | genetree in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
 | JSON result.json for non-doctor commands | One stable machine-readable result path for MCP wrapping |
-| JSON key_results in all pipeline modules | Enables report figures/summary without post-hoc data extraction |
+| JSON key_results in all pipeline modules | Enables report summary and methods text without post-hoc data extraction |
+| report.json as AI diagnostic entry point | Aggregates all step records into one queryable document; eliminates per-step traversal for MCP/Skill diagnostics |
+| report single command, not sub-commands | collector/templates/renderer are internal; user interface is one invocation |
+| report.html embeds PDF figures natively | Preserves vector quality without format conversion; requires no extra dependencies |
 | Logical locus matching ignores suffix vocabularies | Real datasets use inconsistent suffixes |
 | Table I/O uniform flags | Users don't relearn different table flags per command |
 | Per-subcommand design + plan docs | Each subcommand complex enough to warrant own spec; main doc stays stable |
