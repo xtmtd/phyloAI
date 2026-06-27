@@ -360,6 +360,7 @@ def run_fasttree(
     progress_callback: Callable[[Path], None] | None = None,
 ) -> dict[str, Any]:
     run_start = time.monotonic()
+    output_dir = output_dir.resolve()
 
     if (msa_dir is None and matrix is None) or (msa_dir is not None and matrix is not None):
         raise ValueError("Either --msa-dir or --matrix must be provided (not both).")

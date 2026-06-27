@@ -1492,6 +1492,14 @@ def bi_command(**kwargs) -> None:
         return
     result_path = kwargs["output_dir"] / "result.json"
     result_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Add convergence_render.txt to output_files if it exists
+    conv_path = kwargs["output_dir"] / "convergence" / "convergence_render.txt"
+    if conv_path.exists():
+        payload.setdefault("data", {}).setdefault("output_files", {})["convergence_render"] = {
+            "path": str(conv_path), "description": "Human-readable convergence diagnostic summary"
+        }
+
     if result_path.exists():
         from datetime import datetime
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")

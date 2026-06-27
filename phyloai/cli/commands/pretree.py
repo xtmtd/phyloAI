@@ -1082,6 +1082,8 @@ def metrics_group(
             1,
         )
 
+    output_dir = output_dir.resolve()
+
     progress = None
     if not quiet:
         progress = Progress(console=console, transient=True)
@@ -1142,8 +1144,8 @@ def metrics_group(
                 annot=False,
             )
             _write_correlation_csv(corr_matrix, col_names, corr_dir / f"correlation_matrix{_table_suffix(table_format)}", table_format=table_format)
-            corr_matrix_path = corr_dir / f"correlation_matrix{_table_suffix(table_format)}"
-            corr_heatmap_path = corr_dir / "correlation_heatmap.pdf"
+            corr_matrix_path = (corr_dir / f"correlation_matrix{_table_suffix(table_format)}").resolve()
+            corr_heatmap_path = (corr_dir / "correlation_heatmap.pdf").resolve()
             payload["data"]["output_files"]["correlation_matrix"] = {"path": str(corr_matrix_path), "description": "Pairwise Spearman correlation matrix for all phylogenetic metrics"}
             payload["data"]["output_files"]["correlation_heatmap"] = {"path": str(corr_heatmap_path), "description": "Spearman correlation heatmap of all computed phylogenetic informativeness metrics"}
     except Exception as exc:
@@ -1153,7 +1155,6 @@ def metrics_group(
     basic_stats_path = output_dir / f"metrics.basic_statistics{_table_suffix(table_format)}"
     payload["data"]["output_files"]["basic_statistics"] = {"path": str(basic_stats_path), "description": "Per-metric summary statistics: min, max, mean, median, standard deviation"}
     payload["data"]["output_files"]["plots_dir"] = {"path": str(plots_dir), "description": "Directory containing distribution plots for each computed metric"}
-    payload["data"]["output_files"]["n_plots"] = n_plots
 
     # Rewrite result.json with updated output_files
     with open(output_dir / "result.json", "w") as fh:

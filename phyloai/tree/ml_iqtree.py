@@ -966,6 +966,7 @@ def run_iqtree(
     progress_callback: Callable[[Path], None] | None = None,
 ) -> dict[str, Any]:
     run_start = _time.monotonic()
+    output_dir = output_dir.resolve()
 
     # --- Input mutual exclusivity ---
     if (msa_dir is None and matrix is None) or (msa_dir is not None and matrix is not None):

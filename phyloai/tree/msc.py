@@ -282,6 +282,7 @@ def _assemble_wastral_result(
     extra_rounds: bool,
     tool_stderr: str = "",
     tree_boot_type: str,
+    resolved_boot_type: str | None = None,
     tree_boot_min: float | None,
     tree_boot_max: float | None,
     outgroup: str | None,
@@ -379,7 +380,7 @@ def _assemble_wastral_result(
             "mode": mode,
             "boot": boot,
             "extra_rounds": extra_rounds,
-            "tree_boot_type": tree_boot_type,
+            "tree_boot_type": resolved_boot_type if resolved_boot_type else tree_boot_type,
             "outgroup": outgroup,
             "n_input_trees": n_input_trees,
             "input_mode": input_mode,
@@ -609,6 +610,20 @@ def run_wastral(
 
     wall_time = _time.monotonic() - run_start
 
+    # Resolve tree_boot_type from wastral stderr when set to "auto".
+    # Keep the original user value in params; only key_results gets the
+    # resolved value.
+    resolved_boot_type = tree_boot_type
+    if tree_boot_type == "auto" and proc.stderr:
+        import re
+        stderr_lower = proc.stderr.lower()
+        if "bootstrap-like" in stderr_lower:
+            resolved_boot_type = "bootstrap"
+        elif "posterior probability" in stderr_lower or "abayes" in stderr_lower:
+            resolved_boot_type = "abayes"
+        elif "likelihood" in stderr_lower and "support" in stderr_lower:
+            resolved_boot_type = "likelihood"
+
     if proc.returncode != 0:
         return _assemble_wastral_result(
             run_start=run_start,
@@ -662,6 +677,7 @@ def run_wastral(
         mode=mode, boot=boot, extra_rounds=extra_rounds,
         tree_boot_type=tree_boot_type, tree_boot_min=tree_boot_min,
         tree_boot_max=tree_boot_max,
+        resolved_boot_type=resolved_boot_type,
         outgroup=outgroup,
         threads=threads, wastral_path=wastral_path, tool_args=tool_args,
         overwrite=overwrite,

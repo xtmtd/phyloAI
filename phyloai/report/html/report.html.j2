@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhyloAI Report — {{ report.run_dir.split('/')[-1] or report.run_dir }}</title>
+<style>
+  :root {
+    --fg: #1a1a1a; --bg: #fafafa; --muted: #666;
+    --border: #ddd; --accent: #2563eb; --success: #16a34a;
+    --fail: #dc2626; --warn: #f59e0b; --surface: #fff;
+    --code-bg: #f3f4f6; --radius: 6px;
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--fg); line-height: 1.6; max-width: 960px;
+         margin: 0 auto; padding: 2rem 1.5rem; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.3rem; margin: 2rem 0 0.75rem; padding-bottom: 0.25rem; border-bottom: 2px solid var(--accent); }
+  h3 { font-size: 1.05rem; margin: 1rem 0 0.5rem; }
+
+  .header { margin-bottom: 1.5rem; }
+  .header .meta { color: var(--muted); font-size: 0.85rem; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+
+  .summary-cards { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+          padding: 0.75rem 1rem; min-width: 180px; }
+  .card .value { font-size: 1.3rem; font-weight: 600; }
+  .card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .card.fail { border-color: var(--fail); }
+
+  .failed-list { color: var(--fail); margin: 0.5rem 0; font-size: 0.9rem; }
+
+  .methods-block { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+                   padding: 1.25rem; position: relative; line-height: 1.8; }
+  .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; background: var(--code-bg);
+              border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.5rem;
+              cursor: pointer; font-size: 0.75rem; }
+  .copy-btn:hover { background: var(--border); }
+  .methods-item { margin-bottom: 0.75rem; }
+  .methods-disclaimer { font-size: 0.8rem; color: var(--warn); margin-bottom: 0.5rem; }
+  .step-ref { font-size: 0.7rem; color: var(--accent); text-decoration: none;
+              border: 1px solid var(--border); border-radius: 3px;
+              padding: 0.1rem 0.35rem; margin-right: 0.4rem; white-space: nowrap; }
+  .step-ref:hover { background: var(--accent); color: #fff; }
+
+  details { background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius); margin-bottom: 0.5rem; }
+  details.failed { border-color: var(--fail); }
+  details summary { padding: 0.6rem 1rem; cursor: pointer; font-weight: 500; }
+  details summary:hover { background: var(--code-bg); }
+  details .detail-body { padding: 0 1rem 1rem; }
+  .step-status { font-weight: 600; }
+  .step-status.ok { color: var(--success); }
+  .step-status.fail { color: var(--fail); }
+
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+  th { background: var(--code-bg); font-weight: 600; cursor: pointer; user-select: none; }
+  th:hover { background: var(--border); }
+  tr:hover td { background: var(--code-bg); }
+  .param-table { max-height: 300px; overflow-y: auto; }
+
+  figure { margin: 1.5rem 0; }
+  figure object { display: block; border: 1px solid var(--border); border-radius: var(--radius); }
+  figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
+  figcaption strong { color: var(--fg); }
+  figcaption a { color: var(--accent); word-break: break-all; }
+
+  .mono { font-family: "SF Mono", "Fira Code", monospace; font-size: 0.82rem; }
+  .cmd-block { background: var(--code-bg); padding: 0.5rem 0.75rem; border-radius: var(--radius);
+               overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0.5rem 0; }
+  .warnings { background: #fffbeb; border: 1px solid var(--warn); border-radius: var(--radius);
+              padding: 0.5rem 0.75rem; margin: 0.5rem 0; font-size: 0.85rem; }
+  .error-msg { background: #fef2f2; border: 1px solid var(--fail); border-radius: var(--radius);
+               padding: 0.5rem 0.75rem; margin: 0.5rem 0; font-size: 0.85rem; color: var(--fail); }
+
+  .progress-bar { display: flex; gap: 2px; margin: 0.5rem 0; }
+  .progress-step { height: 6px; flex: 1; border-radius: 3px; }
+  .progress-step.ok { background: var(--success); }
+  .progress-step.fail { background: var(--fail); }
+  .progress-step.pending { background: var(--border); }
+
+  .back-link { font-size: 0.75rem; color: var(--muted); margin-left: 0.5rem; }
+  .back-link::before { content: "\2191 "; }
+
+  @media print {
+    body { max-width: none; padding: 0; }
+    details { border: none; break-inside: avoid; }
+    details[open] .detail-body { display: block; }
+    .copy-btn { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>PhyloAI Report</h1>
+  <div class="meta">
+    <span>Run: <code>{{ report.run_dir.split('/')[-1] or report.run_dir }}</code></span>
+    <span>Generated: {{ report.generated_at[:19] }}</span>
+    <span>phyloai {{ report.phyloai_version }}</span>
+  </div>
+</div>
+
+<!-- Panel A: Run Summary -->
+<h2>Run Summary</h2>
+{% set ps = report.pipeline_summary %}
+<div class="summary-cards">
+  <div class="card">
+    <div class="value">{{ ps.n_steps_total }}</div>
+    <div class="label">Total Steps</div>
+  </div>
+  <div class="card">
+    <div class="value" style="color: var(--success)">{{ ps.n_steps_success }}</div>
+    <div class="label">Succeeded</div>
+  </div>
+  {% if ps.n_steps_failed %}
+  <div class="card fail">
+    <div class="value" style="color: var(--fail)">{{ ps.n_steps_failed }}</div>
+    <div class="label">Failed</div>
+  </div>
+  {% endif %}
+  <div class="card">
+    <div class="value">
+      {% set h = (ps.total_wall_time / 3600)|int %}
+      {% set m = ((ps.total_wall_time % 3600) / 60)|int %}
+      {% set s = (ps.total_wall_time % 60)|int %}
+      {% if h %}{{ h }}h {% endif %}{{ m }}m {{ s }}s
+    </div>
+    <div class="label">Wall Time</div>
+  </div>
+</div>
+
+{% set failed_steps = steps | selectattr("status", "equalto", "error") | list %}
+{% if failed_steps %}
+<div class="failed-list">
+  Failed: {{ failed_steps | map(attribute="step_id") | join(", ") }}
+</div>
+{% endif %}
+
+{% if report.run_mode == "pipeline" %}
+<div class="progress-bar">
+{% for s in steps %}
+  <div class="progress-step {% if s.status == 'success' %}ok{% elif s.status == 'error' %}fail{% else %}pending{% endif %}"
+       title="{{ s.step_id }}: {{ s.status }}"></div>
+{% endfor %}
+</div>
+{% endif %}
+
+<!-- Panel B: Methods -->
+<h2>Methods</h2>
+<p class="methods-disclaimer">&#9888; Auto-generated — verify all details before use in publications.</p>
+<div class="methods-block" id="methods-text">
+  <button class="copy-btn" onclick="var el=document.getElementById('methods-paragraph'); navigator.clipboard.writeText(el.innerText.trim())">Copy</button>
+  {% for mb in report.methods_blocks %}
+  <p id="methods-{{ loop.index }}" class="methods-item">
+    <a href="#step-{{ mb.step_index }}" class="step-ref" title="Jump to details">{{ mb.step_id }}</a>
+    {{ mb.text }}
+  </p>
+  {% endfor %}
+  <div id="methods-paragraph" style="display:none">{{ report.methods_paragraph }}</div>
+</div>
+
+<!-- Panel C: Steps Detail -->
+<h2>Steps Detail</h2>
+{% for s in steps %}
+<details id="step-{{ loop.index0 }}" class="{% if s.status == 'error' %}failed{% endif %}" {% if s.status == 'error' %}open{% endif %}>
+  <summary>
+    <span class="step-status {% if s.status == 'success' %}ok{% else %}fail{% endif %}">
+      {{ "\u2713" if s.status == "success" else "\u2717" }}
+    </span>
+    {{ s.step_id }}
+    {% if s.tool_versions %}
+      {% set primary_tool = s.tool_versions.keys() | first %}
+       <span style="color: var(--muted)"> · {{ primary_tool }} v{{ s.tool_versions[primary_tool] }}</span>
+    {% endif %}
+    <span style="color: var(--muted); font-weight: 400;"> · {{ "%.1f"|format(s.wall_time) }}s</span>
+  </summary>
+  <div class="detail-body">
+    {% if s.error %}
+    <div class="error-msg"><strong>Error:</strong> {{ s.error }}</div>
+    {% endif %}
+
+    {% if s.methods_link %}
+    <p style="font-size:0.8rem; color:var(--muted); margin-bottom:0.5rem;">
+      <a href="#methods-{{ s.methods_link }}">&#8593; Methods</a>
+    </p>
+    {% endif %}
+
+    {% if s.scientific_params %}
+    {% set n = s.scientific_params | length %}
+    <details {% if n > 10 %}open{% endif %}>
+      <summary>Parameters ({{ n }})</summary>
+      <div class="param-table">
+        <table>
+          <tr><th>Parameter</th><th>Value</th></tr>
+          {% for k, v in s.scientific_params.items() %}
+          <tr><td><code>{{ k }}</code></td><td><code>{{ v }}</code></td></tr>
+          {% endfor %}
+        </table>
+      </div>
+    </details>
+    {% endif %}
+
+    {% if s.key_results and s.key_results.keys() | list | length > 0 %}
+    <details open>
+      <summary>Key Results</summary>
+      <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        {% for k, v in s.key_results.items() %}
+        <tr><td>{{ k }}</td><td>{{ v }}</td></tr>
+        {% endfor %}
+      </table>
+    </details>
+    {% endif %}
+
+    {% if s.csv_tables %}
+    {% for ct in s.csv_tables %}
+    <details>
+      <summary>{{ ct.label }} — {{ ct.n_rows }} rows, {{ ct.headers | length }} columns</summary>
+      <div style="max-height:400px; overflow:auto;">
+        <table class="sortable">
+          <thead>
+            <tr>
+              <th onclick="sortCSV(this, 0)">#</th>
+              {% for h in ct.headers %}<th onclick="sortCSV(this, {{ loop.index }})">{{ h }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in ct.rows %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              {% for cell in row %}<td>{{ cell }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:0.75rem; color:var(--muted); margin-top:0.25rem;">
+        Source: <a href="{{ ct.rel_path }}">{{ ct.rel_path }}</a>
+      </div>
+    </details>
+    {% endfor %}
+    {% endif %}
+
+    {% if s.warnings %}
+    <div class="warnings">
+      <strong>Warnings:</strong>
+      {% for w in s.warnings %}<div>{{ w }}</div>{% endfor %}
+    </div>
+    {% endif %}
+
+    <details>
+      <summary>Full Command</summary>
+      <div class="cmd-block mono">{{ s.command }}</div>
+    </details>
+  </div>
+</details>
+{% endfor %}
+
+<!-- Panel D: Figures -->
+{% if figures %}
+<h2>Figures</h2>
+{% for fig in figures %}
+<figure id="{{ fig.figure_id }}">
+  {% if fig.type == "pdf" %}
+  <object data="{{ fig.rel_path }}" type="application/pdf" width="100%" height="600px">
+    <p>PDF viewer not available. <a href="{{ fig.rel_path }}">Download {{ fig.figure_id }}</a></p>
+  </object>
+  {% else %}
+  <img src="{{ fig.rel_path }}" alt="{{ fig.caption }}" style="max-width:100%; border:1px solid var(--border); border-radius: var(--radius);">
+  {% endif %}
+  <figcaption>
+    <strong>{{ fig.figure_id }}</strong> {{ fig.caption }}
+    <span class="back-link">{{ fig.step_id }}</span><br>
+    <a href="{{ fig.rel_path }}">{{ fig.path }}</a>
+  </figcaption>
+</figure>
+{% endfor %}
+{% endif %}
+
+<!-- Panel E: Output Files Index -->
+<h2>Output Files Index</h2>
+{% set file_count = all_files | length %}
+{% if all_files %}
+<div style="margin-bottom:0.5rem; color: var(--muted); font-size: 0.85rem;">
+  {{ file_count }} output file{{ "s" if file_count != 1 }} across all steps.
+  Source: aggregated from result.json:data.output_files across all steps.
+</div>
+
+{% if file_count > 20 %}
+<details>
+  <summary>Show all {{ file_count }} output files</summary>
+{% endif %}
+
+<table id="files-table">
+  <thead>
+    <tr>
+      <th onclick="sortTable(0)">#</th>
+      <th onclick="sortTable(1)">Step</th>
+      <th onclick="sortTable(2)">Label</th>
+      <th onclick="sortTable(3)">Description</th>
+      <th onclick="sortTable(4)">File</th>
+      <th onclick="sortTable(5)">Type</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in all_files %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ f.step_id }}</td>
+      <td><code>{{ f.label }}</code></td>
+      <td>{{ f.description }}</td>
+      <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        <a href="{{ f.rel_path }}" style="font-size:0.8rem;">{{ f.path }}</a>
+      </td>
+      <td>{{ f.type }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if file_count > 20 %}
+</details>
+{% endif %}
+{% else %}
+<p style="color: var(--muted)">No output files recorded.</p>
+{% endif %}
+
+<script>
+function sortTable(col) {
+  const table = document.getElementById("files-table");
+  const tbody = table.tBodies[0];
+  const rows = Array.from(tbody.rows);
+  const asc = table.dataset.sortCol == col ? !(table.dataset.sortAsc == "true") : true;
+  rows.sort((a, b) => {
+    const va = a.cells[col].textContent.trim();
+    const vb = b.cells[col].textContent.trim();
+    const na = parseFloat(va), nb = parseFloat(vb);
+    if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+  });
+  rows.forEach(r => tbody.appendChild(r));
+    table.dataset.sortCol = col;
+    table.dataset.sortAsc = asc;
+  }
+  function sortCSV(th, col) {
+    const table = th.closest("table");
+    const tbody = table.tBodies[0];
+    const rows = Array.from(tbody.rows);
+    const asc = table.dataset.sortCol == col ? !(table.dataset.sortAsc == "true") : true;
+    rows.sort((a, b) => {
+      const va = a.cells[col].textContent.trim();
+      const vb = b.cells[col].textContent.trim();
+      const na = parseFloat(va), nb = parseFloat(vb);
+      if (!isNaN(na) && !isNaN(nb)) return asc ? na - nb : nb - na;
+      return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    table.dataset.sortCol = col;
+    table.dataset.sortAsc = asc;
+  }
+</script>
+
+</body>
+</html>

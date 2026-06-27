@@ -1,7 +1,8 @@
 # PhyloAI Report Module Design
 
 **Date:** 2026-06-26  
-**Status:** Approved  
+**Last updated:** 2026-06-27 (implementation iteration: filter/tree/posttree template enrichment, module path fixes, key_results merge extensions, HTML polish, CSV embedding)  
+**Status:** Implemented (phyloai 0.1.0)  
 **Depends on:** All analysis phases (pretree, tree, posttree) finalized
 
 ---
@@ -104,12 +105,11 @@ renderer.py
 
 **Rationale for priority 1 before priority 2:** Both `pipeline` and single-command `module` runs have a top-level `result.json`. The distinguishing feature of `pipeline` is the simultaneous presence of per-step subdirectory `result.json` files. Checking for subdirectory files first prevents a pipeline run directory from being misclassified as a single-command run.
 
-Scan depth:
+**Pipeline step detection is purely filesystem-based.** The top-level `result.json:data.steps[]` is read only for optional metadata (mode, speed) enrichment; step `result.json` paths come from directory scanning, not from `data.steps[]`. This avoids coupling report discovery to the internal `phyloai run` data format.
 
-| run_mode | Depth | Typical path |
-|----------|-------|--------------|
-| `module` | 1–2 levels | `runs/pretree/2-align/result.json` |
-| `pipeline` | 2–3 levels | `runs/run/faa/pretree/2-align/result.json` |
+Scan depth (implemented as a BFS walk): default `max_depth=2`, excluding `report/`, `logs/`, and dot-prefixed directories.
+
+**`step_id` parsing** from the `command` field uses a known-root lookup table. Flag tokens (starting with `-`) are dropped; the first token matching a known root (`pretree`, `tree`, `posttree`, `run`, `doctor`) determines the root command, and subsequent known subcommand tokens build the full `step_id`. Flag values (e.g. `./runs` from `--run-dir ./runs`) are harmless noise that don't match any root. Boolean flags before the root (e.g. `--quiet pretree align`) are handled correctly because only the flag token is dropped, not the subsequent root token.
 
 ---
 
@@ -232,6 +232,10 @@ STEP_ORDER = [
   ],
 
   "methods_paragraph": "Raw sequence files were converted... [full concatenated paragraph]",
+  "methods_blocks": [
+    {"step_id": "pretree.convert", "text": "Raw sequence files were converted...", "step_index": 0},
+    {"step_id": "pretree.stats", "text": "Sequence statistics were computed...", "step_index": 1}
+  ],
 
   "figures_index": [
     {
@@ -283,10 +287,13 @@ STEP_ORDER = [
 - `status`: `"complete"` | `"partial"` | `"failed"`
 - `steps[].params`: the **complete** `params` dict copied verbatim from `result.json` (all parameters including `threads`, paths, flags); this preserves full reproducibility. Methods templates read from this complete dict but only describe scientifically meaningful parameters in the generated text — technical parameters are ignored inside the template function.
 - `steps[].methods_text`: empty string `""` for failed steps; excluded from `methods_paragraph`
-- `steps[].output_files`: copied directly from `result.json:data.output_files` for that step (see JSON Output Standard Section 5.4); each value is an object with required `"path"` and optional `"description"`; `{}` when the step produces no tables or figures
-- `figures_index`: global index of all PDF/PNG figures across all steps, built by filtering `output_files` entries whose paths end in `.pdf` or `.png`; enables AI diagnostics and HTML renderer to locate all figures without traversing individual step records. Each entry includes a `description` field copied from the source `output_files` entry, describing what the figure shows and its analytical purpose.
-- `tables_index`: global index of all CSV/TSV tables across all steps, built by filtering `output_files` entries whose paths end in `.csv` or `.tsv`. Each entry includes a `description` field copied from the source `output_files` entry.
+- `steps[].output_files`: copied from `result.json:data.output_files`. Non-dict entries (legacy bare ints, redundant keys like `n_plots`) are purged at assembly time. Each retained value is a `{path, description}` object.
+- `steps[].key_results`: may include values merged from `data.summary` (e.g. convert module) or flat `data.*` scalars (e.g. stats single-file). Nested numeric dicts (e.g. `length_before: {mean, min, max}`) are flattened into `length_before_mean`, `length_before_min`, etc. This enrichment runs in both the CLI handler (before template generation) and `assemble_report` (for report.json fidelity).
+- `methods_paragraph`: plain text concatenation of all successful step methods texts; intended for copy-to-clipboard.
+- `methods_blocks`: annotated per-step methods list. Each entry has `step_id`, `text`, and `step_index` (index into `steps` for anchor linking). HTML Panel B renders each block as a separate paragraph with a clickable `[step_id]` tag linking to the Step Detail card. No text deduplication — each result.json is an independent analysis.
 - `figure_id` and `table_id`: sequential numbering by section group (see Section 11), e.g. `Fig-3.1`, `Table-3.1`
+- `figures_index`: built by filtering `output_files` for `.pdf`/`.png` extensions.  
+- `tables_index`: built by filtering `output_files` for `.csv`/`.tsv` extensions. Small CSV files (≤200 rows, ≤500KB) are additionally embedded inline in the HTML Step Detail cards as sortable tables.
 - `label`: the snake_case key from `data.output_files` in the source `result.json`
 
 ---
@@ -397,31 +404,34 @@ Failed steps listed by name in red below the cards. For `run_mode: pipeline`, a 
 
 ### Panel B — Methods
 
-Full `methods_paragraph` in a styled block with a "Copy to clipboard" button. Each sentence is linked (via anchor) to its corresponding Step Detail card. Intended for direct use in manuscript Methods sections.
+Uses **`methods_blocks`** from `report.json`. Each block is rendered as its own paragraph with a clickable `[step_id]` badge linking to the corresponding Step Detail card via anchor (`#step-{index}`). A "Copy to clipboard" button copies the plain text `methods_paragraph` (without badges). Intended for direct use in manuscript Methods sections.
 
 ### Panel C — Steps Detail
 
 One collapsible card per step, ordered by `STEP_ORDER`:
 
 ```html
-<details>  <!-- success: collapsed by default -->
-<details open>  <!-- failed: expanded by default -->
+<details id="step-{index}">  <!-- success: collapsed by default -->
+<details id="step-{index}" open>  <!-- failed: expanded by default -->
   <summary>
     [✓|✗] {step_id} · {primary_tool} v{version} · {wall_time}s
   </summary>
 
-  <!-- methods_text for this step -->
+  <!-- Link back to the corresponding Methods paragraph (Panel B) -->
 
-  <!-- Parameters table (scientific params only) -->
-  <!-- If > 10 rows, wrapped in inner <details> -->
+  <!-- Parameters table (scientific params only; >10 rows wrapped) -->
 
   <!-- Key Results table -->
+
+  <!-- Embedded CSV tables (≤200 rows, ≤500KB) -->
 
   <!-- Warnings (if any), styled amber -->
 
   <!-- Full CLI command, monospace, copyable -->
 </details>
 ```
+
+Steps do **not** repeat the methods text from Panel B; instead they provide a `↑ Methods` back-link. This keeps Panel B (the manuscript-readable Methods draft) and Panel C (the per-step audit trail) cleanly separated.
 
 ### Panel D — Figures
 

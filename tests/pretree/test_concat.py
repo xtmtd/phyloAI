@@ -599,7 +599,7 @@ def test_run_concat_dry_run_reports_planned_variants(tmp_path: Path) -> None:
         str(output_dir / "matrix.translated.fa"),
         str(output_dir / "matrix.cds12.fa"),
     ]
-    assert [v["variant"] for v in payload["data"]["variants"]] == [
+    assert [v["variant"] for v in payload["data"]["variant_stats"]] == [
         "original", "recoded", "translated", "cds12",
     ]
     assert not output_dir.exists()
