@@ -486,6 +486,12 @@ Follows the JSON output standard (`2026-06-21-phyloai-json-output-standard.md`).
       "chain3": ""
     },
     "interrupted": true,
+    "output_files": {
+      "trace_plots": {
+        "path": "/abs/path/trace_plots.pdf",
+        "description": "MCMC trace plots showing parameter sampling over iterations for all chains"
+      }
+    },
     "warnings": []
   }
 }

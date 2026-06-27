@@ -148,18 +148,37 @@ Used by: `concat`, `msc`, `cf` (all sub-modes), `filter treeshrink`, `filter sym
 
 ### 5.4 Output Files Convention
 
-**All non-`doctor` commands that produce table files (CSV/TSV) or figure files (PDF/PNG) MUST list them under `data.output_files`**, a flat `{label: abs_path}` dict. This ensures every generated file is discoverable from `result.json` alone.
+**All non-`doctor` commands that produce persistent output files MUST list them under `data.output_files`**, a flat `{label: file_object}` dict. This includes CSV/TSV tables, PDF/PNG figures, and any other user-facing output files (FASTA matrices, Newick tree files, partition files, etc.). Intermediate log files and raw tool dumps MAY be omitted; the intent is that every file a user or downstream tool needs is discoverable from `result.json` alone.
+
+Each file object contains the absolute path and an optional human-readable description:
 
 ```json
 {
   "data": {
     "output_files": {
-      "retained_loci": "/abs/path/retained_loci.csv",
-      "dropped_loci": "/abs/path/dropped_loci.csv",
-      "filter_decisions": "/abs/path/filter_decisions.csv",
-      "metrics_table": "/abs/path/metrics.csv",
-      "correlation_heatmap": "/abs/path/correlation_heatmap.pdf",
-      "trace_run1_posterior": "/abs/path/traces/mcmc_trace_run1_posterior.pdf"
+      "retained_loci": {
+        "path": "/abs/path/retained_loci.csv",
+        "description": "Loci retained after TAPER masking"
+      },
+      "dropped_loci": {
+        "path": "/abs/path/dropped_loci.csv",
+        "description": "Loci excluded by TAPER masking criteria"
+      },
+      "filter_decisions": {
+        "path": "/abs/path/filter_decisions.csv"
+      },
+      "metrics_table": {
+        "path": "/abs/path/metrics.csv",
+        "description": "Phylogenetic informativeness metrics per locus"
+      },
+      "correlation_heatmap": {
+        "path": "/abs/path/correlation_heatmap.pdf",
+        "description": "Spearman correlation heatmap of all metrics"
+      },
+      "trace_run1_posterior": {
+        "path": "/abs/path/traces/mcmc_trace_run1_posterior.pdf",
+        "description": "MCMC trace plot for posterior run 1"
+      }
     }
   }
 }
@@ -167,7 +186,7 @@ Used by: `concat`, `msc`, `cf` (all sub-modes), `filter treeshrink`, `filter sym
 
 **Hard requirements:**
 1. Labels are short, descriptive, and snake_case (e.g. `"retained_loci"`, `"correlation_heatmap"`, `"trace_run1_posterior"`).
-2. Values are absolute file paths as strings, even when written relative to the output directory.
+2. Each value is an object with a required `"path"` (absolute file path string) and an optional `"description"` (human-readable summary of what the file contains and its analytical role). Descriptions SHOULD be provided for user-facing files (figures, tables, result summaries, FASTA/Nexus outputs) and MAY be omitted for intermediate files and raw tool output dumps. When `description` is absent, report renderers fall back to the `label` field.
 3. When the same logical file type is written per-run or per-component, enumerate with indexed labels (e.g. `"trace_run1_posterior"`, `"trace_run1_prior"`) or descriptive keys.
 4. Files written to directories outside `output_dir` are still valid entries.
 
@@ -221,16 +240,16 @@ Commands without external tool invocations per task (e.g., `pretree metrics`, `p
 | Module | `command` full? | `params` full? | `data.output_files` | `data.cmd` | `data.tool_stderr` | `data.tool_log` | `files[].cmd` | `files[].log_file` | `files[].wall_time` |
 |--------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | convert | ✓ | ✓ | — | — | — | — | — | — | — |
-| stats | ✓ | ✓ | ✓ (per-gene table when --per-gene) | — | — | — | — | — | — |
+| stats | ✓ | ✓ | ✓ (per_gene_table when --per-gene) | — | — | — | — | — | — |
 | align | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
 | trim | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
-| metrics | ✓ | ✓ | ✓ (metrics.csv, plots/, basic statistics, correlation) | — | — | — | — | — | — |
+| metrics | ✓ | ✓ | ✓ (scan: metrics_table; analyze: + correlation_matrix, correlation_heatmap, basic_statistics, plots_dir; correlate: correlation_heatmap, correlation_matrix) | — | — | — | — | — | — |
 | filter taper | ✓ | ✓ | ✓ (retained_loci, dropped_loci, filter_decisions) | — | — | — | ✓ | ✓ | ✓ |
 | filter treeshrink | ✓ | ✓ | ✓ (retained_loci, dropped_loci, modified_loci, removed_taxa, filter_decisions) | ✓ | ✓ | — | — | — | — |
 | filter symtest | ✓ | ✓ | ✓ (retained_loci, dropped_loci, filter_decisions) | ✓ | ✓ | — | — | — | — |
 | filter metrics | ✓ | ✓ | ✓ (retained_loci, dropped_loci, filter_decisions) | — | — | — | — | — | — |
-| filter cluster | ✓ | ✓ | ✓ (all CSVs + PDFs: cluster assignments, reduction, metric means, scatter, boxplots, outlier diagnostics) | — | — | — | — | — | — |
-| concat | ✓ | ✓ | — | ✓ ([] ok) | ✓ | — | — | — | — |
+| filter cluster | ✓ | ✓ | ✓ (cluster diagnostics: CSVs, PDFs; optional outlier diagnostics) | — | — | — | — | — | — |
+| concat | ✓ | ✓ | ✓ (matrix_*, partitions_* per variant) | ✓ ([] ok) | ✓ | — | — | — | — |
 | fasttree (batch) | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
 | fasttree (single) | ✓ | ✓ | — | ✓ | ✓¹ | — | — | — | — |
 | iqtree (batch) | ✓ | ✓ | — | — | — | — | ✓ | ✓ | ✓ |
@@ -240,8 +259,8 @@ Commands without external tool invocations per task (e.g., `pretree metrics`, `p
 | cf (qCF) | ✓ | ✓ | — | ✓ | ✓² | ✓ | — | — | — |
 | posttree topology | ✓ | ✓ | ✓ (topology_test_results.csv, iqtree_report, iqtree_log, optimized trees) | ✓ | ✓ | ✓ (IQ-TREE native .log) | — | — | — |
 | posttree dating hessian | ✓ | ✓ | ✓ (iqtree.dummy.phy, iqtree.rooted.nwk, iqtree.mcmctree.hessian) | ✓ | ✓ | — | — | — | — |
-| posttree dating mcmc | ✓ | ✓ | ✓ (diagnostics: traces, convergence, infinite-sites, posterior-vs-prior PDFs/CSVs) | ✓ | ✓ | — | — | — | — |
-| tree bi | ✓ | ✓ | ✓ (trace_plots.pdf, convergence_render.txt, bpcomp/tracecomp files) | — | ✓ | — | — | — | — |
+| posttree dating mcmc | ✓ | ✓ | ✓ (trace_\*, convergence_\*, infinite_sites_\*, posterior_vs_prior_\* PDFs/CSVs, spearman_correlations CSV) | ✓ | ✓ | — | — | — | — |
+| tree bi | ✓ | ✓ | ✓ (trace_plots.pdf, bpcomp_*, tracecomp_*) | — | ✓ | — | — | — | — |
 
 `—` = not required. `opt` = optional (pure-Python batch). `[] ok` = empty array valid when no external tool invoked.
 `✓¹` = MAY be `""` when per-locus diagnostic output is captured in `output/<locus>.log` (single-mode FastTree/IQ-TREE).

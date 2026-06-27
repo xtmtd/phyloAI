@@ -443,25 +443,22 @@ def _assemble_result(params: dict[str, Any], command: str, wall_time: float, too
     if final_convergence:
         all_warnings.extend(final_convergence.get("warnings", []))
     consensus_tree: str | None = None
-    output_files: dict[str, str] = {}
+    output_files: dict[str, dict[str, str]] = {}
     if final_convergence is not None and output_dir is not None:
         candidate = output_dir / "convergence" / "bpcomp_all.con.tre"
         if candidate.exists():
             consensus_tree = "convergence/bpcomp_all.con.tre"
         trace_pdf = output_dir / "convergence" / "trace_plots.pdf"
         if trace_pdf.exists():
-            output_files["trace_plots"] = str(trace_pdf)
-        conv_render = output_dir / "convergence" / "convergence_render.txt"
-        if conv_render.exists():
-            output_files["convergence_render"] = str(conv_render)
+            output_files["trace_plots"] = {"path": str(trace_pdf), "description": "MCMC trace plots showing parameter sampling over iterations for all chains"}
         bpcomp_patterns = sorted((output_dir / "convergence").glob("bpcomp_*"))
         for p in bpcomp_patterns:
             key = p.name.replace(".", "_")
-            output_files[key] = str(p)
+            output_files[key] = {"path": str(p), "description": f"PhyloBayes bpcomp output: {p.name}"}
         tracecomp_patterns = sorted((output_dir / "convergence").glob("tracecomp_*"))
         for p in tracecomp_patterns:
             key = p.name.replace(".", "_")
-            output_files[key] = str(p)
+            output_files[key] = {"path": str(p), "description": f"PhyloBayes tracecomp output: {p.name}"}
     return {
         "status": status,
         "command": command,
@@ -725,6 +722,7 @@ def run_bi(
     quiet: bool = False,
 ) -> dict[str, Any]:
     run_start = time.monotonic()
+    output_dir = output_dir.resolve()
     if overwrite and resume is not None:
         raise ValueError("--overwrite and --resume are mutually exclusive")
     if resume is None and matrix is None:

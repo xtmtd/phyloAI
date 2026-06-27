@@ -582,7 +582,12 @@ When `metrics plot` is used independently, the single PDF is written directly to
   },
   "error": null,
   "data": {
-    "metrics_table": "runs/pretree/metrics/metrics.csv",
+    "output_files": {
+      "metrics_table": {
+        "path": "/abs/path/metrics.csv",
+        "description": "All phylogenetic informativeness metrics per locus: length, gap ratio, informative sites, GC content, RCFV, and tree-based metrics when available"
+      }
+    },
     "taxon_mismatches": [
       {"marker": "gene_042", "msa_only": ["taxon_X"], "tree_only": ["taxon_Y"]}
     ],

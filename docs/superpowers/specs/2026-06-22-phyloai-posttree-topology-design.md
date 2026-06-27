@@ -351,6 +351,24 @@ Example:
   },
   "error": null,
   "data": {
+    "output_files": {
+      "topology_test_results": {
+        "path": "/abs/path/topology_test_results.csv",
+        "description": "AU, WKH, and WSH topology test p-values for each candidate tree against the best tree"
+      },
+      "iqtree_report": {
+        "path": "/abs/path/raw.iqtree",
+        "description": "IQ-TREE native report with full model-fit and topology test details"
+      },
+      "iqtree_log": {
+        "path": "/abs/path/raw.log",
+        "description": "IQ-TREE run log including parameter estimates and tree search diagnostics"
+      },
+      "optimized_trees": {
+        "path": "/abs/path/raw.treels.trees",
+        "description": "Set of optimised tree topologies ordered by likelihood"
+      }
+    },
     "cmd": ["iqtree3", "-s", "/abs/raw.fa", "-z", "/abs/trees", "--prefix", "raw", "-m", "LG+F+R4", "-n", "0", "-zb", "10000", "-zw", "-au", "-T", "20"],
     "tool_stderr": "# merged stdout/stderr from IQ-TREE",
     "log_iqtree": "raw.iqtree",

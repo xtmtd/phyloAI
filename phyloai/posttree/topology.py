@@ -427,8 +427,7 @@ def _assemble_topology_result(
     # included so the result is reproducible and spec-compliant).
     cmd_parts = ["phyloai", "posttree", "topology"]
     cmd_parts.extend(["--matrix", str(matrix)])
-    for ct in candidate_trees_raw:
-        cmd_parts.extend(["--candidate-trees", str(ct)])
+    cmd_parts.extend(["--candidate-trees", ",".join(str(ct) for ct in candidate_trees_raw)])
     cmd_parts.extend(["--input-format", params.get("input_format", "auto")])
     if params.get("model_expr"):
         cmd_parts.extend(["--model-expr", params["model_expr"]])
@@ -527,7 +526,7 @@ def _assemble_topology_result(
     }
 
     # Write test results to CSV for external consumption
-    output_files: dict[str, str] = {}
+    output_files: dict[str, dict[str, str]] = {}
     topology_csv: str | None = None
     if tests:
         import csv as _csv
@@ -540,7 +539,7 @@ def _assemble_topology_result(
             writer.writeheader()
             writer.writerows(tests)
         topology_csv = str(topology_csv_path)
-        output_files["topology_test_results"] = topology_csv
+        output_files["topology_test_results"] = {"path": topology_csv, "description": "AU, WKH, and WSH topology test p-values for each candidate tree against the best tree"}
 
     data: dict[str, Any] = {
         "cmd": effective_cmd,
@@ -557,12 +556,12 @@ def _assemble_topology_result(
     }
     if iqtree_report.exists():
         data["log_iqtree"] = str(iqtree_report)
-        output_files["iqtree_report"] = str(iqtree_report)
+        output_files["iqtree_report"] = {"path": str(iqtree_report), "description": "IQ-TREE native report with full model-fit and topology test details"}
     if iqtree_log.exists():
         data["tool_log"] = str(iqtree_log)
-        output_files["iqtree_log"] = str(iqtree_log)
+        output_files["iqtree_log"] = {"path": str(iqtree_log), "description": "IQ-TREE run log including parameter estimates and tree search diagnostics"}
     if optimized_trees:
-        output_files["optimized_trees"] = str(output_dir / optimized_trees)
+        output_files["optimized_trees"] = {"path": str(output_dir / optimized_trees), "description": "Set of optimised tree topologies ordered by likelihood"}
 
     return {
         "status": "success" if returncode == 0 else "error",
@@ -620,8 +619,8 @@ def _build_partial_result(
     cmd_parts = ["phyloai", "posttree", "topology"]
     if isinstance(matrix, Path):
         cmd_parts.extend(["--matrix", resolved_matrix])
-    for ct in candidate_trees:
-        cmd_parts.extend(["--candidate-trees", str(ct)])
+    if candidate_trees:
+        cmd_parts.extend(["--candidate-trees", ",".join(str(ct) for ct in candidate_trees)])
     cmd_parts.extend(["--input-format", input_format])
     if model_expr:
         cmd_parts.extend(["--model-expr", model_expr])

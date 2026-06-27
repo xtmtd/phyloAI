@@ -499,6 +499,7 @@ def run_concat(
     quiet: bool = False,
 ) -> dict[str, Any]:
     start_time = time.time()
+    output_dir = output_dir.resolve()
 
     if not msa_dir.exists():
         raise ValueError(f"MSA directory '{msa_dir}' does not exist")
@@ -825,6 +826,22 @@ def run_concat(
         "data": {
             "cmd": [],
             "tool_stderr": "",
+            "output_files": {
+                **{
+                    f"matrix_{v['variant']}": {
+                        "path": v["path"],
+                        "description": f"Concatenated supermatrix ({v['variant']} variant): {len(all_taxa)} taxa, {v['length']} {v['seq_type']} positions",
+                    }
+                    for v in variants
+                },
+                **{
+                    f"partitions_{v['variant']}": {
+                        "path": str(output_dir / f"{prefix}{'.' + v['variant'] if v['variant'] != 'original' else ''}.partitions"),
+                        "description": f"RAxML-style partition file mapping loci to supermatrix column ranges ({v['variant']} variant)",
+                    }
+                    for v in variants
+                },
+            },
             "character_summary": orig_stats["character_summary"],
             "site_patterns": orig_stats["site_patterns"],
             "variant_stats": variant_stats,
@@ -839,7 +856,6 @@ def run_concat(
                 }
                 for path in kept_paths
             ],
-            "variants": variants,
             "recoding_warnings": recoding_warnings,
             "normalization_replacements": all_normalization_replacements,
         },

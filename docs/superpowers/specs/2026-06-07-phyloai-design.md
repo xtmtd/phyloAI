@@ -297,7 +297,7 @@ Batch pipeline commands (`align`, `trim`, `fasttree`, `iqtree`) write `checkpoin
 
 **Methods paragraph:** Generated from per-command Python template functions in `templates.py`. Each template describes the tool used, key scientific parameters and their meaning, inputs, and quantitative outcomes. Templates are deterministic (no LLM involvement) and cover all scientific parameters; technical parameters (threads, paths) are omitted.
 
-**Figures and tables:** Every command records all CSV/TSV tables and PDF/PNG figures it produces under `data.output_files` in its `result.json` (see JSON Output Standard Section 5.4). `phyloai report` reads `data.output_files` from each step to build `report.json:figures_index` and `tables_index` — no hardcoded paths are needed. PDF figures are embedded directly in `report.html` via `<object>` tags, preserving vector quality.
+**Figures and tables:** Every command records all persistent output files it produces under `data.output_files` in its `result.json` (see JSON Output Standard Section 5.4). Each entry is an object with a required `"path"` and an optional `"description"` describing the file's content and analytical role. `phyloai report` reads `data.output_files` from each step to build `report.json:figures_index` (`.pdf`/`.png`) and `tables_index` (`.csv`/`.tsv`) — no hardcoded paths are needed. PDF figures are embedded directly in `report.html` via `<object>` tags, preserving vector quality.
 
 **Incomplete runs:** Report generation always succeeds regardless of step failures. Failed steps are included in `report.json` with full error details; their `methods_text` is empty and they are excluded from the methods paragraph. `report.html` marks failed steps visually and expands their detail cards by default.
 

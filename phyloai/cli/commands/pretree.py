@@ -327,6 +327,7 @@ def _run_stats_command(
 ) -> None:
     """Run the stats command after CLI validation."""
     start = time.monotonic()
+    output_dir = output_dir.resolve()
     result_path = output_dir / "result.json"
     params: dict = {
         "seq_dir": str(seq_dir) if seq_dir is not None else None,
@@ -403,12 +404,12 @@ def _run_stats_command(
     summary = aggregate_summary(results)
     summary["warnings"] = warnings
     data: dict = {"summary": summary}
-    output_files: dict[str, str] = {}
+    output_files: dict[str, dict[str, str]] = {}
     if per_gene:
         per_gene_path = output_dir / f"per-gene.{table_format}"
         _write_per_gene_csv(results, per_gene_path, table_format, is_aligned=is_aligned)
         data["per_gene"] = results
-        output_files["per_gene_table"] = str(per_gene_path)
+        output_files["per_gene_table"] = {"path": str(per_gene_path), "description": "Per-locus sequence statistics: length, taxon count, gap ratio for each input file"}
         if not quiet:
             click.echo(f"Per-gene table saved to {per_gene_path}", err=True)
     data["output_files"] = output_files
@@ -1143,15 +1144,15 @@ def metrics_group(
             _write_correlation_csv(corr_matrix, col_names, corr_dir / f"correlation_matrix{_table_suffix(table_format)}", table_format=table_format)
             corr_matrix_path = corr_dir / f"correlation_matrix{_table_suffix(table_format)}"
             corr_heatmap_path = corr_dir / "correlation_heatmap.pdf"
-            payload["data"]["output_files"]["correlation_matrix"] = str(corr_matrix_path)
-            payload["data"]["output_files"]["correlation_heatmap"] = str(corr_heatmap_path)
+            payload["data"]["output_files"]["correlation_matrix"] = {"path": str(corr_matrix_path), "description": "Pairwise Spearman correlation matrix for all phylogenetic metrics"}
+            payload["data"]["output_files"]["correlation_heatmap"] = {"path": str(corr_heatmap_path), "description": "Spearman correlation heatmap of all computed phylogenetic informativeness metrics"}
     except Exception as exc:
         if not quiet:
             click.echo(f"\n[WARN] Correlation generation failed: {exc}", err=True)
 
     basic_stats_path = output_dir / f"metrics.basic_statistics{_table_suffix(table_format)}"
-    payload["data"]["output_files"]["basic_statistics"] = str(basic_stats_path)
-    payload["data"]["output_files"]["plots_dir"] = str(plots_dir)
+    payload["data"]["output_files"]["basic_statistics"] = {"path": str(basic_stats_path), "description": "Per-metric summary statistics: min, max, mean, median, standard deviation"}
+    payload["data"]["output_files"]["plots_dir"] = {"path": str(plots_dir), "description": "Directory containing distribution plots for each computed metric"}
     payload["data"]["output_files"]["n_plots"] = n_plots
 
     # Rewrite result.json with updated output_files
@@ -1237,6 +1238,7 @@ def metrics_plot_command(
 
     if output_dir is None:
         output_dir = csv_path.parent / f"plot_{metric}"
+    output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if not overwrite and (output_dir / f"{metric}.pdf").exists():
@@ -1316,7 +1318,7 @@ def metrics_plot_command(
                    "xmin": xmin, "xmax": xmax, "title": title, "xlabel": xlabel, "ylabel": ylabel,
                    "color": color, "output_dir": str(output_dir), "overwrite": overwrite},
         "key_results": {"n_filtered": n_filtered}, "error": None,
-        "data": {"cmd": [], "tool_stderr": "", "output_files": {"plot": str(out_path)}},
+        "data": {"cmd": [], "tool_stderr": "", "output_files": {"plot": {"path": str(out_path), "description": f"Histogram of {metric} values"}}},
     }
     with open(output_dir / "result.json", "w") as fh:
         json.dump(payload, fh, indent=2)
@@ -1385,6 +1387,7 @@ def metrics_correlate_command(
     title: str | None, output_dir: Path, overwrite: bool, quiet: bool,
 ) -> None:
     start = time.monotonic()
+    output_dir = output_dir.resolve()
     import csv as _csv_mod
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1463,7 +1466,10 @@ def metrics_correlate_command(
                    "label_angle": label_angle, "title": title, "output_dir": str(output_dir),
                    "overwrite": overwrite, "cluster_rectangles": cluster_rectangles},
         "key_results": {"n_variables": len(col_names) if col_names else 0}, "error": None,
-        "data": {"cmd": [], "tool_stderr": "", "output_files": {"correlation_heatmap": str(heatmap_path), "correlation_matrix": str(output_dir / "correlation_matrix.csv")}},
+        "data": {"cmd": [], "tool_stderr": "", "output_files": {
+            "correlation_heatmap": {"path": str(heatmap_path), "description": "Spearman correlation heatmap of selected phylogenetic metrics"},
+            "correlation_matrix": {"path": str(output_dir / "correlation_matrix.csv"), "description": "Pairwise Spearman correlation matrix in tabular format"},
+        }},
     }
     with open(output_dir / "result.json", "w") as fh:
         json.dump(payload, fh, indent=2)

@@ -659,7 +659,9 @@ No top-level `<step>.log` file is written.
   "params": {},
   "key_results": {},
   "error": null,
-  "data": {}
+  "data": {
+    "output_files": {}
+  }
 }
 ```
 
@@ -670,6 +672,41 @@ Mode-specific key results:
 - `treeshrink`: input loci, retained loci, modified loci, dropped loci, removed taxon count, output paths
 - `metrics`: retained/dropped counts, condition failure counts, copied MSA/tree counts, retained MSA statistics
 - `cluster`: selected reduction, selected UMAP replicate if applicable, selected `k`, cluster sizes, outlier clusters if any, retained/dropped counts if dropping
+
+**Mode-specific `data.output_files` entries** (descriptions describe the file's content and analytical purpose):
+
+| Mode | Label | Type | Description |
+|------|-------|------|-------------|
+| taper | `retained_loci` | CSV | Loci that passed TAPER masking and were retained |
+| taper | `dropped_loci` | CSV | Loci excluded for failing TAPER masking criteria |
+| taper | `filter_decisions` | CSV | Per-locus TAPER masking decisions with site-level detail |
+| treeshrink | `retained_loci` | CSV | Loci retained after TreeShrink taxon pruning |
+| treeshrink | `dropped_loci` | CSV | Loci fully excluded by TreeShrink |
+| treeshrink | `modified_loci` | CSV | Loci where some taxa were pruned but the locus was retained |
+| treeshrink | `removed_taxa` | CSV | Taxa removed by TreeShrink across all loci |
+| treeshrink | `filter_decisions` | CSV | Per-locus TreeShrink pruning decisions |
+| metrics | `retained_loci` | CSV | Loci that matched the metric-rule filter criteria |
+| metrics | `dropped_loci` | CSV | Loci excluded for failing one or more metric-rule conditions |
+| metrics | `filter_decisions` | CSV | Per-locus metric values evaluated against the filtering rules |
+| cluster | `features_used` | CSV | Features selected for dimensionality reduction and clustering |
+| cluster | `reduction` | CSV | Dimensionality reduction coordinates and parameters |
+| cluster | `clusters` | CSV | Cluster assignment for each locus |
+| cluster | `cluster_summary` | CSV | Per-cluster size and statistics summary |
+| cluster | `cluster_metric_means` | CSV | Per-cluster mean value of each phylogenetic metric for characterising cluster properties |
+| cluster | `cluster_metric_heatmap` | PDF | Heatmap of z-score normalised mean metric values (rows: clusters, columns: metrics, cells: deviation from global mean) |
+| cluster | `cluster_selection`* | CSV | Cluster count evaluation: scores from three indices (silhouette, Davies-Bouldin, Calinski-Harabasz) per candidate k, ranked to select the optimal number of clusters |
+| cluster | `umap_replicates`* | CSV | UMAP projection coordinates from replicate runs, used to assess projection stability and confirm chosen cluster count |
+| cluster | `cluster_scatter_{i}`* | PDF | UMAP visualisation (2D scatter and optionally 3D perspective view): loci coloured by cluster assignment |
+| cluster | `cluster_metric_boxplots_{i}`* | PDF | Per-metric boxplots comparing distributions across clusters; each subplot shows one metric, bars coloured by cluster |
+| cluster | `cluster_{c}`* | CSV | Loci assigned to cluster c |
+| cluster | `outlier_retained_loci`* | CSV | Loci retained after outlier cluster removal |
+| cluster | `outlier_dropped_loci`* | CSV | Loci dropped as outlier clusters |
+| cluster | `outlier_filter_decisions`* | CSV | Per-locus outlier filtering decisions |
+| cluster | `outlier_comparison`* | CSV | Per-metric descriptive statistics (mean, median, std) comparing retained and outlier clusters |
+| cluster | `outlier_wilcoxon`* | CSV | Wilcoxon rank-sum test results per metric: U statistic, p-value, direction of difference |
+| cluster | `outlier_boxplots_{i}`* | PDF | Per-metric boxplots comparing retained vs outlier clusters, annotated with Wilcoxon test significance |
+
+`*` = conditional (depends on analysis options and auto-drop settings).
 
 ---
 

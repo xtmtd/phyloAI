@@ -883,6 +883,7 @@ def run_metrics(
     table_format: str = "csv",
 ) -> dict:
     t0 = time.monotonic()
+    output_dir = output_dir.resolve()
     per_marker_stderr: list[str] = []
     cmd_str = _build_metrics_command(msa_dir, tree_dir, seq_type, threads, output_dir, decimal_places, skip_freq_statistics, pseudo_tree_metrics, fasttree_path, skip_pairwise_identity, outgroup_list, ref_tree, overwrite, dry_run, quiet, table_format)
 
@@ -1067,7 +1068,7 @@ def run_metrics(
     wall_time = time.monotonic() - t0
 
     data = {
-        "output_files": {"metrics_table": str(metrics_path)},
+        "output_files": {"metrics_table": {"path": str(metrics_path), "description": "All phylogenetic informativeness metrics per locus: length, gap ratio, informative sites, GC content, RCFV, and tree-based metrics when available"}},
         "summary": {
             "n_markers": len(paired),
             "n_success": n_success,

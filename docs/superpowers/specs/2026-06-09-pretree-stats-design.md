@@ -232,7 +232,13 @@ Rich tables, panels, and progress bars are rendered to the terminal unless `--qu
   "error": null,
   "data": {
     "summary": { },
-    "per_gene": [ ]
+    "per_gene": [ ],
+    "output_files": {
+      "per_gene_table": {
+        "path": "/abs/path/per_gene_stats.csv",
+        "description": "Per-locus sequence statistics: length, taxon count, gap ratio for each input file"
+      }
+    }
   }
 }
 ```

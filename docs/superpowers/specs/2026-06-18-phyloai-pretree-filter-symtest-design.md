@@ -204,6 +204,20 @@ Follows single-pattern schema (JSON Output Standard §5.2). Key results:
   },
   "error": null,
   "data": {
+    "output_files": {
+      "retained_loci": {
+        "path": "/abs/path/retained_loci.csv",
+        "description": "Loci that passed the symmetry test and were retained"
+      },
+      "dropped_loci": {
+        "path": "/abs/path/dropped_loci.csv",
+        "description": "Loci excluded for failing the symmetry test at the given p-value threshold"
+      },
+      "filter_decisions": {
+        "path": "/abs/path/filter_decisions.csv",
+        "description": "Per-locus symmetry test results including p-values and decision status"
+      }
+    },
     "cmd": ["iqtree3", "-s", "symtest_matrix.fa", "-p", "symtest_partitions.txt", "--symtest-only", "-T", "4"],
     "tool_stderr": "IQ-TREE symtest output ...",
     "summary": {

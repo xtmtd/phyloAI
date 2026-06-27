@@ -162,6 +162,7 @@ def run_hessian(
     stream_output: bool = True,
 ) -> dict[str, Any]:
     t0 = time.time()
+    output_dir = output_dir.resolve()
 
     errors = _validate_hessian_inputs(
         matrix=matrix, rooted_tree=rooted_tree,
@@ -314,6 +315,10 @@ def run_hessian(
             "cmd": cmd,
             "tool_stderr": getattr(proc, "stderr", ""),
             "warnings": warnings,
-            "output_files": {f: str(output_dir / f) for f in HESSIAN_OUTPUT_FILES},
+            "output_files": {
+                "iqtree.dummy.phy": {"path": str(output_dir / "iqtree.dummy.phy"), "description": "Dummy PHYLIP alignment for MCMCTree approximate likelihood calculation"},
+                "iqtree.rooted.nwk": {"path": str(output_dir / "iqtree.rooted.nwk"), "description": "Rooted, calibrated tree in Newick format with fossil constraints for MCMCTree"},
+                "iqtree.mcmctree.hessian": {"path": str(output_dir / "iqtree.mcmctree.hessian"), "description": "Gradient and Hessian matrix for approximate likelihood dating (renamed to in.BV for mcmc step)"},
+            },
         },
     }

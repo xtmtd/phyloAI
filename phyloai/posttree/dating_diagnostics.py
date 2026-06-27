@@ -246,7 +246,7 @@ def generate_all_diagnostics(
     import itertools
     warnings: list[str] = []
     corr_rows: list[dict] = []
-    output_files: dict[str, str] = {}
+    output_files: dict[str, dict[str, str]] = {}
 
     def _add_corr(comparison: str, stats: dict[str, float]) -> None:
         row = {"comparison": comparison}
@@ -304,7 +304,7 @@ def generate_all_diagnostics(
                 trace_pdf,
                 title=f"MCMC trace — {run_label} {kind}",
             )
-            output_files[f"trace_{run_label}_{kind}"] = str(trace_pdf)
+            output_files[f"trace_{run_label}_{kind}"] = {"path": str(trace_pdf), "description": f"MCMC trace plot: {run_label} {kind}, parameter sampling over iterations"}
 
     if n_runs >= 2:
         for kind_label, times_list, out_name in [
@@ -330,7 +330,7 @@ def generate_all_diagnostics(
                     combined_table,
                     conv_csv,
                 )
-                output_files[f"convergence_{out_name}"] = str(conv_csv)
+                output_files[f"convergence_{out_name}"] = {"path": str(conv_csv), "description": f"Combined {kind_label} node age estimates from all valid runs"}
 
             pairs = list(itertools.combinations(range(len(times_list)), 2))
             for a, b in pairs:
@@ -351,7 +351,7 @@ def generate_all_diagnostics(
                     )
                     _add_corr(f"convergence_{kind_label}_{label_a}_vs_{label_b}", stats)
                     generated.append(f"convergence_{kind_label}_{label_a}_vs_{label_b}")
-                    output_files[f"convergence_{kind_label}_{label_a}_vs_{label_b}"] = str(conv_pdf)
+                    output_files[f"convergence_{kind_label}_{label_a}_vs_{label_b}"] = {"path": str(conv_pdf), "description": f"{kind_label.capitalize()} convergence diagnostic: scatter plot with regression for {label_a} vs {label_b}"}
                 else:
                     skipped.append({"reason": f"{kind_label} mcmctree.out empty/missing",
                                     "run": f"{label_a}_vs_{label_b}"})
@@ -383,7 +383,7 @@ def generate_all_diagnostics(
             )
             _add_corr(f"infinite_sites_{run_label}_{kind}", stats)
             generated.append(f"infinite_sites_{run_label}_{kind}")
-            output_files[f"infinite_sites_{run_label}_{kind}"] = str(inf_pdf)
+            output_files[f"infinite_sites_{run_label}_{kind}"] = {"path": str(inf_pdf), "description": f"Infinite-sites diagnostic: {run_label} {kind}, mean age vs 95% credible interval width"}
 
         if post and prior:
             post_by_node = {r["node"]: r["mean"] for r in post}
@@ -404,7 +404,7 @@ def generate_all_diagnostics(
                 )
                 _add_corr(f"posterior_vs_prior_{run_label}", stats)
                 generated.append(f"posterior_vs_prior_{run_label}")
-                output_files[f"posterior_vs_prior_{run_label}"] = str(pvp_pdf)
+                output_files[f"posterior_vs_prior_{run_label}"] = {"path": str(pvp_pdf), "description": f"Posterior vs prior mean node age comparison for {run_label}"}
             else:
                 skipped.append({"reason": "No shared nodes between posterior and prior",
                                 "run": run_label})
@@ -423,7 +423,7 @@ def generate_all_diagnostics(
             )
             writer.writeheader()
             writer.writerows(corr_rows)
-        output_files["spearman_correlations"] = str(corr_path)
+        output_files["spearman_correlations"] = {"path": str(corr_path), "description": "Spearman rank correlations and regression statistics for convergence assessments"}
 
     return {"spearman": corr_rows, "warnings": warnings,
             "generated": generated, "skipped": skipped,

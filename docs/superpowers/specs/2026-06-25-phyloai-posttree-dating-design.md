@@ -619,6 +619,55 @@ back to scanning `iqtree.dummy.phy` content when the field is absent.
 from `result.json`. The `hessian` step stores the original partition count
 in `params.n_partitions` (1 for unpartitioned) for reporting only.
 
+### result.json schema (hessian step)
+
+```json
+{
+  "status": "success",
+  "command": "phyloai posttree dating hessian ...",
+  "wall_time": 3421.5,
+  "tool_versions": {"iqtree3": "3.1.3"},
+  "params": {
+    "matrix": "/abs/path/matrix.fa",
+    "rooted_tree": "/abs/path/calib.tre",
+    "model_expr": "LG+F+R4",
+    "partitions": null,
+    "seq_type": "AA",
+    "n_partitions": 1,
+    "output_dir": "runs/posttree/dating/hessian",
+    "threads": 4,
+    "overwrite": false,
+    "resume": false,
+    "dry_run": false,
+    "quiet": false
+  },
+  "key_results": {
+    "n_partitions": 1,
+    "seq_type": "AA",
+    "ndata_raw": 1
+  },
+  "error": null,
+  "data": {
+    "output_files": {
+      "iqtree_dummy_phy": {
+        "path": "/abs/path/iqtree.dummy.phy",
+        "description": "Dummy PHYLIP alignment for MCMCTree approximate likelihood calculation"
+      },
+      "iqtree_rooted_nwk": {
+        "path": "/abs/path/iqtree.rooted.nwk",
+        "description": "Rooted, calibrated tree in Newick format with fossil constraints for MCMCTree"
+      },
+      "iqtree_hessian": {
+        "path": "/abs/path/iqtree.mcmctree.hessian",
+        "description": "Gradient and Hessian matrix for approximate likelihood dating (renamed to in.BV for mcmc step)"
+      }
+    },
+    "cmd": ["iqtree3", "-s", "/abs/path/matrix.fa", "-m", "LG+F+R4", "-te", "/abs/path/calib.tre", "--dating", "mcmctree", "--prefix", "iqtree", "-T", "4"],
+    "tool_stderr": ""
+  }
+}
+```
+
 ### result.json schema (mcmc step)
 
 ```json
@@ -639,6 +688,56 @@ in `params.n_partitions` (1 for unpartitioned) for reporting only.
     "convergence_rho_posterior": 0.998
   },
   "data": {
+    "output_files": {
+      "trace_run1_posterior": {
+        "path": "/abs/path/diagnostics/traces/mcmc_trace_run1_posterior.pdf",
+        "description": "MCMC trace plot for posterior run 1 showing parameter sampling over iterations"
+      },
+      "trace_run2_posterior": {
+        "path": "/abs/path/diagnostics/traces/mcmc_trace_run2_posterior.pdf",
+        "description": "MCMC trace plot for posterior run 2"
+      },
+      "trace_run1_prior": {
+        "path": "/abs/path/diagnostics/traces/mcmc_trace_run1_prior.pdf",
+        "description": "MCMC trace plot for prior run 1"
+      },
+      "trace_run2_prior": {
+        "path": "/abs/path/diagnostics/traces/mcmc_trace_run2_prior.pdf",
+        "description": "MCMC trace plot for prior run 2"
+      },
+      "convergence_posterior": {
+        "path": "/abs/path/diagnostics/convergence/convergence_posterior_run1_vs_run2.pdf",
+        "description": "Posterior convergence diagnostic: scatter plot with regression and y=x line for run 1 vs run 2 node ages"
+      },
+      "convergence_prior": {
+        "path": "/abs/path/diagnostics/convergence/convergence_prior_run1_vs_run2.pdf",
+        "description": "Prior convergence diagnostic: scatter plot of prior node ages between run 1 and run 2"
+      },
+      "infinite_sites_run1_posterior": {
+        "path": "/abs/path/diagnostics/infinite_sites/infinite_sites_run1_posterior.pdf",
+        "description": "Infinite-sites diagnostic: mean age vs 95% credible interval width for posterior run 1"
+      },
+      "infinite_sites_run2_posterior": {
+        "path": "/abs/path/diagnostics/infinite_sites/infinite_sites_run2_posterior.pdf",
+        "description": "Infinite-sites diagnostic for posterior run 2"
+      },
+      "posterior_vs_prior_run1": {
+        "path": "/abs/path/diagnostics/posterior_vs_prior/posterior_vs_prior_run1.pdf",
+        "description": "Posterior vs prior mean node age comparison for run 1"
+      },
+      "posterior_vs_prior_run2": {
+        "path": "/abs/path/diagnostics/posterior_vs_prior/posterior_vs_prior_run2.pdf",
+        "description": "Posterior vs prior mean node age comparison for run 2"
+      },
+      "convergence_summary": {
+        "path": "/abs/path/diagnostics/spearman_correlations.csv",
+        "description": "Spearman rank correlation and convergence statistics for posterior run comparisons"
+      },
+      "node_ages": {
+        "path": "/abs/path/diagnostics/convergence/posterior_times.csv",
+        "description": "Posterior node age estimates with 95% HPD intervals per node"
+      }
+    },
     "diagnostics": {"spearman": [...], "warnings": [], "generated": [...], "skipped": [...]},
     "warnings": [],
     "return_codes": {"run1:posterior": 0, "run1:prior": 0, ...}

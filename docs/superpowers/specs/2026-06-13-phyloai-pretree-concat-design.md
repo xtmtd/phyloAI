@@ -247,6 +247,24 @@ files are written):
   },
   "error": null,
   "data": {
+    "output_files": {
+      "matrix_original": {
+        "path": "/abs/path/matrix.fa",
+        "description": "Concatenated supermatrix (original variant): 100 taxa, 250000 AA positions"
+      },
+      "partitions_original": {
+        "path": "/abs/path/matrix.partitions",
+        "description": "RAxML-style partition file mapping loci to supermatrix column ranges (original variant)"
+      },
+      "matrix_recoded": {
+        "path": "/abs/path/matrix.recoded.fa",
+        "description": "Concatenated supermatrix (recoded variant): 100 taxa, 250000 positions collapsed to 6 biochemical categories"
+      },
+      "partitions_recoded": {
+        "path": "/abs/path/matrix.recoded.partitions",
+        "description": "RAxML-style partition file for recoded variant"
+      }
+    },
     "cmd": [],
     "tool_stderr": "",
     "character_summary": {
@@ -271,10 +289,6 @@ files are written):
     ],
     "per_gene_occupancy": [
       {"gene": "gene001.fa", "n_present": 95, "n_missing": 5, "occupancy_ratio": 0.95}
-    ],
-    "variants": [
-      {"variant": "original", "path": "runs/pretree/concat/matrix.fa", "seq_type": "AA", "length": 250000},
-      {"variant": "recoded", "path": "runs/pretree/concat/matrix.recoded.fa", "seq_type": "other", "length": 250000}
     ],
     "variant_stats": [
       {

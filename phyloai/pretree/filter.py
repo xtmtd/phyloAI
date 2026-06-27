@@ -308,6 +308,7 @@ def run_taper(
     if overwrite and resume:
         raise ValueError("--overwrite and --resume are mutually exclusive.")
 
+    output_dir = output_dir.resolve()
     env = ToolEnv()
     julia_exe = str(julia_path) if julia_path else str(env.require("julia"))
     taper_script = str(taper_path) if taper_path else str(env.require("correction_multi.jl"))
@@ -505,9 +506,9 @@ def run_taper(
             decision_columns.append("masked_taxa_detail")
         _write_csv_table(decisions, filter_decisions_csv, decision_columns, delimiter)
         taper_output_files = {
-            "retained_loci": str(retained_csv),
-            "dropped_loci": str(dropped_csv),
-            "filter_decisions": str(filter_decisions_csv),
+            "retained_loci": {"path": str(retained_csv), "description": "Loci that passed TAPER masking and were retained"},
+            "dropped_loci": {"path": str(dropped_csv), "description": "Loci excluded for failing TAPER masking criteria"},
+            "filter_decisions": {"path": str(filter_decisions_csv), "description": "Per-locus TAPER masking decisions with site-level detail"},
         }
     else:
         taper_output_files = {}
@@ -614,6 +615,7 @@ def run_treeshrink(
     quiet: bool = False, table_format: str = "csv",
 ) -> dict[str, Any]:
     start = time.monotonic()
+    output_dir = output_dir.resolve()
     tool_paths = {"run_treeshrink.py": treeshrink_path} if treeshrink_path else {}
     env = ToolEnv(tool_paths=tool_paths)
     treeshrink_exe = str(env.require("run_treeshrink.py"))
@@ -739,11 +741,11 @@ def run_treeshrink(
         decisions = [{"locus": r.get("locus", ""), "status": r.get("status", "failed"), "removed_count": sum(1 for t in removed_taxa if t["locus"] == r.get("locus", ""))} for r in file_results]
         _write_csv_table(decisions, ts_filter_decisions_csv, ["locus", "status", "removed_count"], delimiter)
         ts_output_files = {
-            "retained_loci": str(ts_retained_csv),
-            "dropped_loci": str(ts_dropped_csv),
-            "modified_loci": str(ts_modified_csv),
-            "removed_taxa": str(ts_removed_taxa_csv),
-            "filter_decisions": str(ts_filter_decisions_csv),
+            "retained_loci": {"path": str(ts_retained_csv), "description": "Loci retained after TreeShrink taxon pruning"},
+            "dropped_loci": {"path": str(ts_dropped_csv), "description": "Loci fully excluded by TreeShrink"},
+            "modified_loci": {"path": str(ts_modified_csv), "description": "Loci where some taxa were pruned but the locus was retained"},
+            "removed_taxa": {"path": str(ts_removed_taxa_csv), "description": "Taxa removed by TreeShrink across all loci"},
+            "filter_decisions": {"path": str(ts_filter_decisions_csv), "description": "Per-locus TreeShrink pruning decisions"},
         }
     else:
         ts_output_files = {}
@@ -932,6 +934,7 @@ def run_metrics_filter(
     table_format: str = "csv",
 ) -> dict[str, Any]:
     start = time.monotonic()
+    output_dir = output_dir.resolve()
     if copy and not msa_dir and not tree_dir:
         raise ValueError("--copy requires at least one of --msa-dir or --tree-dir.")
     delimiter_in = _detect_input_delimiter(table_path, input_format)
@@ -1012,9 +1015,9 @@ def run_metrics_filter(
         "data": {
             "files": files_list,
             "output_files": {
-                "retained_loci": str(mf_retained_csv),
-                "dropped_loci": str(mf_dropped_csv),
-                "filter_decisions": str(mf_filter_decisions_csv),
+                "retained_loci": {"path": str(mf_retained_csv), "description": "Loci that matched the metric-rule filter criteria"},
+                "dropped_loci": {"path": str(mf_dropped_csv), "description": "Loci excluded for failing one or more metric-rule conditions"},
+                "filter_decisions": {"path": str(mf_filter_decisions_csv), "description": "Per-locus metric values evaluated against the filtering rules"},
             },
             "summary": {
                 "n_total": len(rows),
@@ -1634,6 +1637,7 @@ def run_cluster_filter(
     table_format: str = "csv",
 ) -> dict[str, Any]:
     start = time.monotonic()
+    output_dir = output_dir.resolve()
     if reduction == "umap":
         try:
             import umap  # noqa: F401
@@ -1840,33 +1844,33 @@ def run_cluster_filter(
         files_list.append(entry)
 
     cluster_output_files = {
-        "features_used": str(input_dir / f"features_used{suffix}"),
-        "reduction": str(reduction_dir / f"reduction{suffix}"),
-        "clusters": str(clustering_dir / f"clusters{suffix}"),
-        "cluster_summary": str(clustering_dir / f"cluster_summary{suffix}"),
-        "cluster_metric_means": str(diagnostics_dir / f"cluster_metric_means{suffix}"),
-        "cluster_metric_heatmap": str(means_path),
+        "features_used": {"path": str(input_dir / f"features_used{suffix}"), "description": "Features selected for dimensionality reduction and clustering"},
+        "reduction": {"path": str(reduction_dir / f"reduction{suffix}"), "description": "Dimensionality reduction coordinates and parameters"},
+        "clusters": {"path": str(clustering_dir / f"clusters{suffix}"), "description": "Cluster assignment for each locus"},
+        "cluster_summary": {"path": str(clustering_dir / f"cluster_summary{suffix}"), "description": "Per-cluster size and statistics summary"},
+        "cluster_metric_means": {"path": str(diagnostics_dir / f"cluster_metric_means{suffix}"), "description": "Per-cluster mean value of each phylogenetic metric, used to characterise cluster properties"},
+        "cluster_metric_heatmap": {"path": str(means_path), "description": "Heatmap of z-score normalised mean metric values: rows are clusters, columns are metrics, cell intensity shows how each cluster deviates from the global mean for that metric"},
     }
     if selection_rows:
-        cluster_output_files["cluster_selection"] = str(reduction_dir / f"cluster_selection{suffix}")
+        cluster_output_files["cluster_selection"] = {"path": str(reduction_dir / f"cluster_selection{suffix}"), "description": "Cluster count evaluation: scores from three indices (silhouette, Davies-Bouldin, Calinski-Harabasz) per candidate k and UMAP parameter combination, ranked to select the optimal number of clusters"}
     if umap_replicate_rows:
-        cluster_output_files["umap_replicates"] = str(reduction_dir / f"umap_replicates{suffix}")
+        cluster_output_files["umap_replicates"] = {"path": str(reduction_dir / f"umap_replicates{suffix}"), "description": "UMAP projection coordinates from replicate runs with different random seeds, used to assess projection stability and confirm the chosen cluster count"}
     for i, pdf in enumerate(plot_paths):
-        cluster_output_files[f"cluster_scatter_{i}"] = pdf
+        cluster_output_files[f"cluster_scatter_{i}"] = {"path": pdf, "description": f"UMAP {'3D perspective view' if i > 0 else '2D scatter plot'}: loci coloured by cluster assignment, showing cluster separation in {'three' if i > 0 else 'two'} dimensions"}
     for i, pdf in enumerate(boxplot_paths):
-        cluster_output_files[f"cluster_metric_boxplots_{i}"] = pdf
+        cluster_output_files[f"cluster_metric_boxplots_{i}"] = {"path": pdf, "description": "Per-metric boxplots comparing distributions across clusters; each subplot shows one metric, bars coloured by cluster"}
     for c in range(selected_k):
-        cluster_output_files[f"cluster_{c}"] = str(cluster_loci_dir / f"cluster_{c}{suffix}")
+        cluster_output_files[f"cluster_{c}"] = {"path": str(cluster_loci_dir / f"cluster_{c}{suffix}"), "description": f"Loci assigned to cluster {c}"}
     if drop_outlier_clusters == "auto" and drop_clusters:
         cluster_output_files.update({
-            "outlier_retained_loci": str(outlier_dir / f"retained_loci{suffix}"),
-            "outlier_dropped_loci": str(outlier_dir / f"dropped_loci{suffix}"),
-            "outlier_filter_decisions": str(outlier_dir / f"filter_decisions{suffix}"),
-            "outlier_comparison": str(outlier_dir / f"outlier_comparison{suffix}"),
-            "outlier_wilcoxon": str(outlier_dir / f"outlier_wilcoxon{suffix}"),
+            "outlier_retained_loci": {"path": str(outlier_dir / f"retained_loci{suffix}"), "description": "Loci retained after outlier cluster removal"},
+            "outlier_dropped_loci": {"path": str(outlier_dir / f"dropped_loci{suffix}"), "description": "Loci dropped as outlier clusters"},
+            "outlier_filter_decisions": {"path": str(outlier_dir / f"filter_decisions{suffix}"), "description": "Per-locus outlier filtering decisions"},
+            "outlier_comparison": {"path": str(outlier_dir / f"outlier_comparison{suffix}"), "description": "Per-metric descriptive statistics comparing retained and outlier clusters (mean, median, std for each group)"},
+            "outlier_wilcoxon": {"path": str(outlier_dir / f"outlier_wilcoxon{suffix}"), "description": "Wilcoxon rank-sum test results per metric: U statistic, p-value, and direction of difference between retained and outlier clusters"},
         })
         for i, pdf in enumerate(outer_plot_paths):
-            cluster_output_files[f"outlier_boxplots_{i}"] = pdf
+            cluster_output_files[f"outlier_boxplots_{i}"] = {"path": pdf, "description": "Per-metric boxplots comparing retained vs outlier clusters; each subplot shows one metric with Wilcoxon test significance stars"}
 
     payload = {
         "status": "success", "command": command, "wall_time": round(wall_time, 2),
@@ -2124,6 +2128,7 @@ def run_symtest(
     provided it is built via :func:`scan_msa_dir`.
     """
     start = time.monotonic()
+    output_dir = output_dir.resolve()
     tool_paths = {"iqtree3": iqtree_path} if iqtree_path else {}
     env = ToolEnv(tool_paths=tool_paths)
     iqtree_exe = str(env.require("iqtree3"))
@@ -2323,9 +2328,9 @@ def run_symtest(
                 "cmd": cmd,
                 "tool_stderr": merged_stderr,
                 "output_files": {
-                    "retained_loci": str(sym_retained_csv),
-                    "dropped_loci": str(sym_dropped_csv),
-                    "filter_decisions": str(sym_filter_decisions_csv),
+                    "retained_loci": {"path": str(sym_retained_csv), "description": "Loci that passed the symmetry test and were retained"},
+                    "dropped_loci": {"path": str(sym_dropped_csv), "description": "Loci excluded for failing the symmetry test at the given p-value threshold"},
+                    "filter_decisions": {"path": str(sym_filter_decisions_csv), "description": "Per-locus symmetry test results including p-values and decision status"},
                 },
                 "summary": {
                     "n_input": len(symtest_results),
