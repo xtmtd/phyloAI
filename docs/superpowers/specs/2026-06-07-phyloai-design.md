@@ -125,8 +125,8 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree-dir ./genetrees/
 
 # Post-tree
 phyloai posttree topology    --matrix ./matrix.fa --candidate-trees candidate.trees
-phyloai posttree dating      --tree ./tree.nwk --matrix ./matrix.fa \
-                             --calibrations calibrations.txt
+phyloai posttree dating hessian --matrix ./matrix.fa --rooted-tree calib.tre
+phyloai posttree dating mcmc  --hessian-dir ./hessian
 phyloai posttree signal      --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk
 phyloai posttree simulate    --tree ./tree.nwk --replicates 100 --tool alisim
 phyloai posttree syserror brlen  --tree ./tree.nwk
@@ -307,11 +307,17 @@ All steps including `pretree convert`, `pretree stats`, and `pretree metrics` co
 
 ## 8. AI Integration (Post-CLI Phase)
 
-**MCP Server:** Expose all CLI commands as MCP tools with JSON I/O, reading `result.json` for structured results. `report.json` serves as the primary structured context for AI-assisted run diagnostics and guided re-analysis.
+> **Full specification:** `docs/superpowers/specs/2026-06-27-phyloai-ai-integration-design.md`
 
-**AI Coding Assistant Skill:** Workflow orchestration on top of MCP tools — parameter recommendation, result interpretation, dynamic next-step suggestion. The `report.json` produced by `phyloai report` is the recommended entry point for AI diagnostics: it aggregates all step records, parameters, key results, and figure paths into a single queryable document, eliminating the need to traverse individual `result.json` files.
+Two components built on top of the stable CLI:
 
-**Systematic error diagnosis** (`posttree syserror`) exposes atomic operations individually via CLI. The Skill layer orchestrates them into a guided interactive sub-workflow. This cannot be encoded as a single CLI command.
+```
+用户 ←→ Skill (对话/决策/解读) ←→ MCP Server (执行桥) ←→ phyloai CLI ←→ 文件系统
+```
+
+**MCP Server (Phase 7):** One tool per CLI subcommand. Schemas generated dynamically from the Click command tree at startup — zero manual sync. All commands fire-and-forget; `output_dir` is the persistent job handle across sessions. Transport: stdio.
+
+**Skill `phyloai-workflow` (Phase 8):** Guided workflow with parameter confirmation cards, result interpretation, session recovery via `report.json`, demo mode, and error handling. Lives in `skills/phyloai-workflow/` inside this repo, version-coupled to CLI. Future: `phyloai-syserror` sub-workflow Skill and AI-assisted report review (separate specs).
 
 ---
 
@@ -488,8 +494,10 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 4 | `posttree/` modules | topology, dating, signal, syserror, simulate | Phases 2–3 |
 | 5 | `phyloai run` | one-click supermatrix and supertree pipelines | Phases 2–3 |
 | 6 | `report/` module | collector, templates, schema, renderer; outputs report.json + report.html | Phases 2–4 |
-| 7 | MCP Server | JSON tool interface | Phases 2–6 |
-| 8 | AI Coding Assistant Skill | workflow orchestration, syserror sub-workflow | Phase 7 |
+| 7 | MCP Server | All CLI tools wrapped (fine-grained, one tool per subcommand); check_status / read_result / read_report / get_command_schema utilities; stub tools for future commands; stdio transport | Phases 1–6 |
+| 8 | `phyloai-workflow` Skill | Full guided workflow; parameter cards with runtime schema; result interpretation; session recovery via report.json; demo mode; error handling (catalog + AI) | Phase 7 |
+| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (brlen → cca → sites) | syserror CLI (Phase 4) + Phase 7 |
+| 10 | Report AI review | `polish_methods` MCP tool + Skill integration; scientific accuracy verification of methods text | Separate spec required |
 
 **Spec granularity:** Phase 1 has one spec+plan. Phases 2–4 have one spec+plan per subcommand under `docs/superpowers/specs/` and `docs/superpowers/plans/`. Phases 5–8 have one spec+plan each. Every subcommand spec must be consistent with Section 9 conventions.
 
@@ -523,9 +531,11 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | genetree in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
 | JSON result.json for non-doctor commands | One stable machine-readable result path for MCP wrapping |
 | JSON key_results in all pipeline modules | Enables report summary and methods text without post-hoc data extraction |
-| report.json as AI diagnostic entry point | Aggregates all step records into one queryable document; eliminates per-step traversal for MCP/Skill diagnostics |
+| report.json as session recovery entry point | Aggregates all step records; Skill calls read_report at session start to reconstruct run state without user explanation |
+| report.json not auto-generated after each step | report generation scans all steps; too expensive for routine post-command use; per-step result.json used for immediate interpretation |
 | report single command, not sub-commands | collector/templates/renderer are internal; user interface is one invocation |
 | report.html embeds PDF figures natively | Preserves vector quality without format conversion; requires no extra dependencies |
+| AI integration design decisions | See `docs/superpowers/specs/2026-06-27-phyloai-ai-integration-design.md` |
 | Logical locus matching ignores suffix vocabularies | Real datasets use inconsistent suffixes |
 | Table I/O uniform flags | Users don't relearn different table flags per command |
 | Per-subcommand design + plan docs | Each subcommand complex enough to warrant own spec; main doc stays stable |

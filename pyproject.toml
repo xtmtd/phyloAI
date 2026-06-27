@@ -11,6 +11,7 @@ requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = [
     "click>=8.1",
+    "mcp>=1.0",
     "rich>=13.0",
     "biopython>=1.81",
     "clipkit>=2.0",
@@ -29,6 +30,7 @@ packages = ["phyloai"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "phyloai/bundled" = "phyloai/bundled"
+"skills" = "skills"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -9,6 +9,7 @@ from phyloai.cli.commands.pretree import pretree
 from phyloai.cli.commands.report import report
 from phyloai.cli.commands.run import run
 from phyloai.cli.commands.tree import tree
+from phyloai.cli.commands.mcp_server import mcp_server
 from phyloai.cli.completion import completion
 from phyloai.cli.doctor import doctor
 
@@ -17,7 +18,7 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 class _RootGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["completion", "doctor", "run", "pretree", "tree", "posttree", "report"]
+        return ["completion", "doctor", "run", "pretree", "tree", "posttree", "report", "mcp-server"]
 
 
 @click.group(context_settings=CONTEXT_SETTINGS, cls=_RootGroup)
@@ -37,6 +38,7 @@ cli.add_command(pretree)
 cli.add_command(tree)
 cli.add_command(posttree)
 cli.add_command(report)
+cli.add_command(mcp_server)
 
 
 if __name__ == "__main__":

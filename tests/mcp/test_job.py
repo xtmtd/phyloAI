@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+import click
+
+from phyloai.mcp.job import build_cli_argv, launch_cli, read_job_json, write_job_json
+
+
+def test_write_and_read_job_json() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp)
+        payload = write_job_json(output_dir, pid=12345, command="phyloai pretree align")
+
+        assert (output_dir / "job.json").exists()
+        assert payload["pid"] == 12345
+        assert payload["command"] == "phyloai pretree align"
+        assert "started_at" in payload
+        assert read_job_json(output_dir) == payload
+
+
+def test_build_cli_argv_uses_click_params() -> None:
+    cmd = click.Command(
+        "align",
+        params=[
+            click.Option(["--seq-dir"], required=True),
+            click.Option(["--method"], default="linsi"),
+            click.Option(["-t", "--threads"], type=int, default=4),
+            click.Option(["--tool-args"], default=None),
+            click.Option(["--overwrite"], is_flag=True, default=False),
+        ],
+    )
+    argv = build_cli_argv(
+        {"command_path": ["pretree", "align"], "click_command": cmd},
+        {"seq_dir": "./raw", "method": "auto", "threads": 8, "tool_args": None, "overwrite": True},
+    )
+
+    assert argv == ["phyloai", "pretree", "align", "--seq-dir", "./raw", "--method", "auto", "--threads", "8", "--overwrite"]
+
+
+def test_launch_cli_writes_job_json_for_running_process() -> None:
+    cmd = click.Command(
+        "sleep",
+        params=[click.Option(["--output-dir"], type=click.Path(path_type=Path), required=True)],
+    )
+    descriptor = {"command_path": ["-c", "import time; time.sleep(5)"], "click_command": cmd, "executable": sys.executable}
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "job"
+        result_dir, pid = launch_cli(descriptor, {"output_dir": str(output_dir)}, output_dir)
+        job = read_job_json(result_dir)
+
+    assert result_dir == output_dir.resolve()
+    assert job is not None
+    assert job["pid"] == pid
