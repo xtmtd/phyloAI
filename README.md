@@ -82,6 +82,10 @@ phyloai completion fish > ~/.config/fish/completions/phyloai.fish
 
 Fish loads completions from that directory automatically in new shells, so you do not need to add an extra `source` line to `config.fish`.
 
+## AI Integration
+
+PhyloAI includes an MCP server and a guided-workflow Skill for conversational analysis. See [docs/commands/ai-integration.md](docs/commands/ai-integration.md) for setup and usage with OpenCode, Claude Code, or Codex.
+
 ## Commands
 
 `phyloai doctor` is the only command that supports `--output-format text|json`. Other commands write structured results to `result.json` inside their output directory and use Rich terminal output unless `--quiet` is set.

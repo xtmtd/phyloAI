@@ -6,13 +6,18 @@ Run before external-tool commands when environment is unknown. Summarize missing
 
 ## Phase 1: Pretree
 
-`convert -> stats -> align -> trim -> metrics -> filter -> concat`
+- **Supermatrix**: `convert -> align -> trim -> metrics / filter -> concat`, then Phase 2 tree inference on the concatenated supermatrix.
+- **Supertree**: `convert -> align -> trim -> metrics / filter -> gene trees`, then `tree msc` for species tree from gene trees.
+- `stats` is a utility for inspecting sequences/alignments at any step; it is not part of the mandatory pipeline flow.
 
-Check file counts, skipped records, gap ratios, taxon occupancy, and output paths.
+Check file counts, skipped records, gap ratios, taxon occupancy, and output paths after each step.
 
 ## Phase 2: Tree
 
-Use `tree ml iqtree` for final ML inference or `tree ml fasttree` for fast exploration. Use `msc` for species tree from gene trees and `cf` for concordance factors.
+- **iqtree + msc** as primary tree inference: `tree ml iqtree` for ML trees (gene trees or supermatrix), `tree msc` for coalescent species tree from gene trees.
+- **fasttree** for quick exploration: `tree ml fasttree` for fast gene trees or preliminary supermatrix trees.
+- **bi** as optional: `tree bi` for Bayesian inference when MCMC convergence diagnostics are needed.
+- `cf` for concordance factors on any species tree.
 
 ## Phase 3: Posttree
 

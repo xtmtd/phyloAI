@@ -24,10 +24,16 @@ Guide users through PhyloAI CLI analyses through the local MCP server.
 
 ## Workflow
 
-- Pretree: `convert -> stats -> align -> trim -> metrics -> filter -> concat`.
-- Tree: `tree ml iqtree` or `tree ml fasttree`, then optional `msc` and `cf`.
+- Pretree: `convert -> align -> trim -> metrics / filter -> concat` (supermatrix) or `... -> gene trees` (supertree). `stats` inspects results at any step.
+- Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi` optional, `cf` on species trees.
 - Posttree: `topology`, `dating hessian`, `dating mcmc`.
 - Report: run `report` only when the user requests a report/methods draft or recovery needs `report.json`.
+
+## Demo Data
+
+- Bundled demo data contains 20 genes and 6 species, with AA (`faa/`) and NT (`fna/`) raw inputs.
+- Per-step demo directories include aligned, trimmed, concatenated, gene-tree, topology-test, and dating entry points when present.
+- Demo runs must write new outputs to a user run directory, not back into `phyloai/demo_data/`.
 
 ## Error Handling
 

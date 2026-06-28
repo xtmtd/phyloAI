@@ -1,0 +1,525 @@
+{
+  "status": "success",
+  "command": "phyloai pretree trim --msa-dir aligned/seqs/faa --output-dir trimmed --tool trimal --seq-type AA --threads 8 --nt-dir aligned/seqs/fna --trimal-method automated1 --overwrite",
+  "wall_time": 0.590758833000109,
+  "tool_versions": {
+    "trimal": "1.5.rev1"
+  },
+  "params": {
+    "msa_dir": "aligned/seqs/faa",
+    "nt_dir": "aligned/seqs/fna",
+    "seq_type": "AA",
+    "tool": "trimal",
+    "threads": 8,
+    "tool_args": null,
+    "output_dir": "trimmed",
+    "overwrite": true,
+    "dry_run": false,
+    "resume": false,
+    "quiet": false,
+    "trimal_method": "automated1",
+    "trimal_path": null,
+    "bmge_matrix": null,
+    "bmge_entropy": null,
+    "bmge_path": null,
+    "clipkit_method": null,
+    "clipkit_path": null
+  },
+  "key_results": {
+    "total_genes": 20,
+    "trimmed_genes": 20,
+    "skipped_genes": 0,
+    "skipped_reasons": {},
+    "length_before": {
+      "mean": 460.1,
+      "min": 255,
+      "max": 813
+    },
+    "length_after": {
+      "mean": 280.2,
+      "min": 216,
+      "max": 367
+    },
+    "columns_removed_pct": {
+      "mean": 31.4,
+      "min": 0.9,
+      "max": 72.2
+    }
+  },
+  "error": null,
+  "data": {
+    "mode": "AA+NT",
+    "summary": {
+      "n_input_files": 20,
+      "n_trimmed": 20,
+      "n_skipped": 0
+    },
+    "skipped": [],
+    "warnings": [
+      "seq_type auto-detected as 'AA'."
+    ],
+    "dry_run_cmds": [],
+    "files": [
+      {
+        "gene": "EOG090X0A0V",
+        "length_before": 618,
+        "length_after": 235,
+        "columns_removed": 383,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A0V.fa",
+          "trimmed/seqs/fna/EOG090X0A0V.fa"
+        ],
+        "log_file": "logs/EOG090X0A0V.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A0V.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A0V.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_ju50wqd9/EOG090X0A0V_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.01624120899987247
+      },
+      {
+        "gene": "EOG090X0A1W",
+        "length_before": 331,
+        "length_after": 289,
+        "columns_removed": 42,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A1W.fa",
+          "trimmed/seqs/fna/EOG090X0A1W.fa"
+        ],
+        "log_file": "logs/EOG090X0A1W.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A1W.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A1W.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_j3a1z76j/EOG090X0A1W_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.016269040999759454
+      },
+      {
+        "gene": "EOG090X0A11",
+        "length_before": 813,
+        "length_after": 226,
+        "columns_removed": 587,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A11.fa",
+          "trimmed/seqs/fna/EOG090X0A11.fa"
+        ],
+        "log_file": "logs/EOG090X0A11.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A11.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A11.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_w3jnderj/EOG090X0A11_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.021728417000304034
+      },
+      {
+        "gene": "EOG090X0A2Q",
+        "length_before": 298,
+        "length_after": 281,
+        "columns_removed": 17,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A2Q.fa",
+          "trimmed/seqs/fna/EOG090X0A2Q.fa"
+        ],
+        "log_file": "logs/EOG090X0A2Q.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A2Q.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A2Q.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_mp72n29y/EOG090X0A2Q_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.013661040999977558
+      },
+      {
+        "gene": "EOG090X0A3R",
+        "length_before": 394,
+        "length_after": 336,
+        "columns_removed": 58,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A3R.fa",
+          "trimmed/seqs/fna/EOG090X0A3R.fa"
+        ],
+        "log_file": "logs/EOG090X0A3R.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A3R.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A3R.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_4c96iqnd/EOG090X0A3R_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.012162209000052826
+      },
+      {
+        "gene": "EOG090X0A56",
+        "length_before": 255,
+        "length_after": 236,
+        "columns_removed": 19,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A56.fa",
+          "trimmed/seqs/fna/EOG090X0A56.fa"
+        ],
+        "log_file": "logs/EOG090X0A56.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A56.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A56.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim__ud7gp1e/EOG090X0A56_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007533874999353429
+      },
+      {
+        "gene": "EOG090X0A5B",
+        "length_before": 657,
+        "length_after": 269,
+        "columns_removed": 388,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A5B.fa",
+          "trimmed/seqs/fna/EOG090X0A5B.fa"
+        ],
+        "log_file": "logs/EOG090X0A5B.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A5B.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A5B.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim__9j4dj9s/EOG090X0A5B_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.008074500000020635
+      },
+      {
+        "gene": "EOG090X0A4V",
+        "length_before": 405,
+        "length_after": 358,
+        "columns_removed": 47,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A4V.fa",
+          "trimmed/seqs/fna/EOG090X0A4V.fa"
+        ],
+        "log_file": "logs/EOG090X0A4V.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A4V.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A4V.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_sv1zhxge/EOG090X0A4V_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.01053029200011224
+      },
+      {
+        "gene": "EOG090X0A5G",
+        "length_before": 306,
+        "length_after": 242,
+        "columns_removed": 64,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A5G.fa",
+          "trimmed/seqs/fna/EOG090X0A5G.fa"
+        ],
+        "log_file": "logs/EOG090X0A5G.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A5G.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A5G.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_vqmlwxwf/EOG090X0A5G_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.00789033399996697
+      },
+      {
+        "gene": "EOG090X0A5K",
+        "length_before": 365,
+        "length_after": 320,
+        "columns_removed": 45,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A5K.fa",
+          "trimmed/seqs/fna/EOG090X0A5K.fa"
+        ],
+        "log_file": "logs/EOG090X0A5K.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A5K.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A5K.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_wvlh2jue/EOG090X0A5K_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007442957999955979
+      },
+      {
+        "gene": "EOG090X0A5X",
+        "length_before": 792,
+        "length_after": 254,
+        "columns_removed": 538,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A5X.fa",
+          "trimmed/seqs/fna/EOG090X0A5X.fa"
+        ],
+        "log_file": "logs/EOG090X0A5X.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A5X.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A5X.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_69mg_s0x/EOG090X0A5X_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007346207999944454
+      },
+      {
+        "gene": "EOG090X0A6P",
+        "length_before": 368,
+        "length_after": 219,
+        "columns_removed": 149,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A6P.fa",
+          "trimmed/seqs/fna/EOG090X0A6P.fa"
+        ],
+        "log_file": "logs/EOG090X0A6P.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A6P.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A6P.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_e9frd9dq/EOG090X0A6P_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007032209000044531
+      },
+      {
+        "gene": "EOG090X0A8E",
+        "length_before": 376,
+        "length_after": 300,
+        "columns_removed": 76,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A8E.fa",
+          "trimmed/seqs/fna/EOG090X0A8E.fa"
+        ],
+        "log_file": "logs/EOG090X0A8E.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A8E.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A8E.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_kvkarw98/EOG090X0A8E_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007457417000296118
+      },
+      {
+        "gene": "EOG090X0A8N",
+        "length_before": 651,
+        "length_after": 234,
+        "columns_removed": 417,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A8N.fa",
+          "trimmed/seqs/fna/EOG090X0A8N.fa"
+        ],
+        "log_file": "logs/EOG090X0A8N.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A8N.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A8N.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_l_4utpwq/EOG090X0A8N_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007080083000346349
+      },
+      {
+        "gene": "EOG090X0A9P",
+        "length_before": 573,
+        "length_after": 296,
+        "columns_removed": 277,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A9P.fa",
+          "trimmed/seqs/fna/EOG090X0A9P.fa"
+        ],
+        "log_file": "logs/EOG090X0A9P.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A9P.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A9P.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_a_hnvxg9/EOG090X0A9P_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.0067639580001923605
+      },
+      {
+        "gene": "EOG090X0ABW",
+        "length_before": 270,
+        "length_after": 216,
+        "columns_removed": 54,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0ABW.fa",
+          "trimmed/seqs/fna/EOG090X0ABW.fa"
+        ],
+        "log_file": "logs/EOG090X0ABW.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0ABW.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0ABW.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_5dja2hv0/EOG090X0ABW_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.0064647919998606085
+      },
+      {
+        "gene": "EOG090X0A90",
+        "length_before": 350,
+        "length_after": 347,
+        "columns_removed": 3,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0A90.fa",
+          "trimmed/seqs/fna/EOG090X0A90.fa"
+        ],
+        "log_file": "logs/EOG090X0A90.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0A90.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0A90.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_m26eevkn/EOG090X0A90_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007607916999859299
+      },
+      {
+        "gene": "EOG090X0AAB",
+        "length_before": 537,
+        "length_after": 345,
+        "columns_removed": 192,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0AAB.fa",
+          "trimmed/seqs/fna/EOG090X0AAB.fa"
+        ],
+        "log_file": "logs/EOG090X0AAB.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0AAB.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0AAB.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_pi8m3e1p/EOG090X0AAB_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.007653208000192535
+      },
+      {
+        "gene": "EOG090X0ACL",
+        "length_before": 286,
+        "length_after": 234,
+        "columns_removed": 52,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0ACL.fa",
+          "trimmed/seqs/fna/EOG090X0ACL.fa"
+        ],
+        "log_file": "logs/EOG090X0ACL.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0ACL.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0ACL.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_f2mhd5c5/EOG090X0ACL_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.005990499999370513
+      },
+      {
+        "gene": "EOG090X0ACU",
+        "length_before": 556,
+        "length_after": 367,
+        "columns_removed": 189,
+        "outputs": [
+          "trimmed/seqs/faa/EOG090X0ACU.fa",
+          "trimmed/seqs/fna/EOG090X0ACU.fa"
+        ],
+        "log_file": "logs/EOG090X0ACU.log",
+        "cmd": [
+          "/Users/zf/tools/trimAl-1.5.1/trimal",
+          "-in",
+          "aligned/seqs/faa/EOG090X0ACU.fa",
+          "-out",
+          "trimmed/seqs/fna/EOG090X0ACU.fa",
+          "-automated1",
+          "-backtrans",
+          "/var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/phyloai_trim_582vdips/EOG090X0ACU_cds.fa",
+          "-ignorestopcodon"
+        ],
+        "wall_time": 0.0064123339998332085
+      }
+    ]
+  }
+}

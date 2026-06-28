@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "step": "tree.ml.iqtree",
+  "command": "phyloai tree ml iqtree --msa-dir trimmed/seqs/faa --seq-type AA --model LG --state-freq +F --rate-heterogeneity +R4 --mode normal -o /Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees -t 8 --boot 1000 --alrt 1000 --overwrite",
+  "status": "success",
+  "params_hash": "sha256:5a4255bdbda8bd6f997aa4d046dff1ac1f3051fa10f58c29b7e4b17197356a70",
+  "params": {
+    "msa_dir": "trimmed/seqs/faa",
+    "matrix": null,
+    "seq_type": "AA",
+    "model": "LG",
+    "state_freq": "+F",
+    "rate_heterogeneity": "+R4",
+    "modelfinder": "none",
+    "mset": null,
+    "msub": null,
+    "mode": "normal",
+    "boot": 1000,
+    "alrt": 1000,
+    "bnni": false,
+    "partitions": null,
+    "rclusterf": null,
+    "rcluster_max": null,
+    "pmsf_base_model": null,
+    "guide_tree": null,
+    "qmax": null,
+    "rate": false,
+    "wslr": false,
+    "constraint": null,
+    "outgroup": null,
+    "prefix": null,
+    "output_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees",
+    "threads": "8",
+    "overwrite": true,
+    "iqtree_path": null,
+    "tool_args": null
+  },
+  "started_at": "2026-06-28T02:09:34+00:00",
+  "updated_at": "2026-06-28T02:09:38+00:00",
+  "completed_at": "2026-06-28T02:09:38+00:00",
+  "tasks": [
+    {
+      "task_id": "EOG090X0A0V",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A0V.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A0V.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A0V.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:35+00:00"
+    },
+    {
+      "task_id": "EOG090X0A11",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A11.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A11.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A11.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:35+00:00"
+    },
+    {
+      "task_id": "EOG090X0A1W",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A1W.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A1W.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A1W.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:35+00:00"
+    },
+    {
+      "task_id": "EOG090X0A2Q",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A2Q.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A2Q.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A2Q.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:35+00:00"
+    },
+    {
+      "task_id": "EOG090X0A3R",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A3R.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A3R.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A3R.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:36+00:00"
+    },
+    {
+      "task_id": "EOG090X0A4V",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A4V.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A4V.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A4V.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:36+00:00"
+    },
+    {
+      "task_id": "EOG090X0A56",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A56.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A56.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A56.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:35+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5B",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A5B.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A5B.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A5B.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:35+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5G",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A5G.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A5G.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A5G.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:36+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5K",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A5K.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A5K.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A5K.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:36+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5X",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A5X.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A5X.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A5X.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:36+00:00"
+    },
+    {
+      "task_id": "EOG090X0A6P",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A6P.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A6P.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A6P.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:37+00:00"
+    },
+    {
+      "task_id": "EOG090X0A8E",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A8E.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A8E.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A8E.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:37+00:00"
+    },
+    {
+      "task_id": "EOG090X0A8N",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A8N.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A8N.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A8N.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:37+00:00"
+    },
+    {
+      "task_id": "EOG090X0A90",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A90.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A90.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A90.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:37+00:00"
+    },
+    {
+      "task_id": "EOG090X0A9P",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0A9P.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0A9P.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0A9P.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:38+00:00"
+    },
+    {
+      "task_id": "EOG090X0AAB",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0AAB.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0AAB.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0AAB.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:38+00:00"
+    },
+    {
+      "task_id": "EOG090X0ABW",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0ABW.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0ABW.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0ABW.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:37+00:00"
+    },
+    {
+      "task_id": "EOG090X0ACL",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0ACL.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0ACL.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0ACL.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:37+00:00"
+    },
+    {
+      "task_id": "EOG090X0ACU",
+      "status": "success",
+      "input": "trimmed/seqs/faa/EOG090X0ACU.fa",
+      "outputs": {
+        "tree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/trees/EOG090X0ACU.treefile",
+        "iqtree": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/gen_trees/logs/EOG090X0ACU.iqtree"
+      },
+      "attempts": 1,
+      "reason": null,
+      "updated_at": "2026-06-28T02:09:38+00:00"
+    }
+  ]
+}

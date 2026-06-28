@@ -1,0 +1,3 @@
+(Zootermopsis_nevadensis,(Thrips_palmi,Maconellicoccus_hirsutus),(Pediculus_humanus,Hypothenemus_hampei,Drosophila_melanogaster));
+(Zootermopsis_nevadensis,(Pediculus_humanus,Thrips_palmi,Maconellicoccus_hirsutus),(Hypothenemus_hampei,Drosophila_melanogaster));
+(Zootermopsis_nevadensis,(Pediculus_humanus,Thrips_palmi),(Hypothenemus_hampei,Drosophila_melanogaster,Maconellicoccus_hirsutus));

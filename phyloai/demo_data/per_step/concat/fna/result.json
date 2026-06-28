@@ -1,0 +1,356 @@
+{
+  "status": "success",
+  "command": "phyloai pretree concat --msa-dir trimmed/seqs/fna --output-dir /Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna --prefix matrix --seq-type CODON --taxa-occupancy 0.5 --to fasta --recoding RY-nucleotide --outgroup Zootermopsis_nevadensis --exclude-codon3 --overwrite",
+  "wall_time": 0.074,
+  "tool_versions": {},
+  "params": {
+    "msa_dir": "trimmed/seqs/fna",
+    "output_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna",
+    "prefix": "matrix",
+    "seq_type": "CODON",
+    "taxa_occupancy": 0.5,
+    "recoding": "RY-nucleotide",
+    "outgroup": "Zootermopsis_nevadensis",
+    "to": "fasta",
+    "translate_codon": false,
+    "exclude_codon3": true,
+    "dry_run": false,
+    "overwrite": true,
+    "quiet": false
+  },
+  "key_results": {
+    "n_taxa": 6,
+    "n_msa_input": 20,
+    "n_msa_used": 20,
+    "n_msa_dropped": 0,
+    "total_length": 16812,
+    "variants_produced": [
+      "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.fa",
+      "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.recoded.fa",
+      "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.cds12.fa"
+    ]
+  },
+  "error": null,
+  "data": {
+    "cmd": [],
+    "tool_stderr": "",
+    "output_files": {
+      "matrix_original": {
+        "path": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.fa",
+        "description": "Concatenated supermatrix (original variant): 6 taxa, 16812 CODON positions"
+      },
+      "matrix_recoded": {
+        "path": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.recoded.fa",
+        "description": "Concatenated supermatrix (recoded variant): 6 taxa, 16812 other positions"
+      },
+      "matrix_cds12": {
+        "path": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.cds12.fa",
+        "description": "Concatenated supermatrix (cds12 variant): 6 taxa, 11208 NT positions"
+      },
+      "partitions_original": {
+        "path": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.partitions",
+        "description": "RAxML-style partition file mapping loci to supermatrix column ranges (original variant)"
+      },
+      "partitions_recoded": {
+        "path": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.recoded.partitions",
+        "description": "RAxML-style partition file mapping loci to supermatrix column ranges (recoded variant)"
+      },
+      "partitions_cds12": {
+        "path": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/concat/fna/matrix.cds12.partitions",
+        "description": "RAxML-style partition file mapping loci to supermatrix column ranges (cds12 variant)"
+      }
+    },
+    "character_summary": {
+      "gap_ratio": 0.026519,
+      "ambiguous_ratio": 0.0,
+      "gap_ambiguous_ratio": 0.026519,
+      "standard_ratio": 0.973481
+    },
+    "site_patterns": {
+      "alignment_length": 16812,
+      "distinct_patterns": {
+        "count": 3860,
+        "ratio": 0.229598
+      },
+      "constant_sites": {
+        "count": 4605,
+        "ratio": 0.273911
+      },
+      "parsimony_informative": {
+        "count": 6848,
+        "ratio": 0.407328
+      },
+      "singleton_sites": {
+        "count": 5359,
+        "ratio": 0.31876
+      }
+    },
+    "variant_stats": [
+      {
+        "variant": "original",
+        "seq_type": "CODON",
+        "total_length": 16812,
+        "character_summary": {
+          "gap_ratio": 0.026519,
+          "ambiguous_ratio": 0.0,
+          "gap_ambiguous_ratio": 0.026519,
+          "standard_ratio": 0.973481
+        },
+        "site_patterns": {
+          "alignment_length": 16812,
+          "distinct_patterns": {
+            "count": 3860,
+            "ratio": 0.229598
+          },
+          "constant_sites": {
+            "count": 4605,
+            "ratio": 0.273911
+          },
+          "parsimony_informative": {
+            "count": 6848,
+            "ratio": 0.407328
+          },
+          "singleton_sites": {
+            "count": 5359,
+            "ratio": 0.31876
+          }
+        }
+      },
+      {
+        "variant": "recoded",
+        "seq_type": "other",
+        "total_length": 16812,
+        "character_summary": {
+          "gap_ratio": 0.0265,
+          "ambiguous_ratio": 0.0,
+          "gap_ambiguous_ratio": 0.0265,
+          "standard_ratio": 0.9735
+        },
+        "site_patterns": {
+          "alignment_length": 16812,
+          "distinct_patterns": {
+            "count": 376,
+            "ratio": 0.0224
+          },
+          "constant_sites": {
+            "count": 7637,
+            "ratio": 0.4543
+          },
+          "parsimony_informative": {
+            "count": 5096,
+            "ratio": 0.3031
+          },
+          "singleton_sites": {
+            "count": 4079,
+            "ratio": 0.2426
+          }
+        }
+      },
+      {
+        "variant": "cds12",
+        "seq_type": "NT",
+        "total_length": 11208,
+        "character_summary": {
+          "gap_ratio": 0.026514,
+          "ambiguous_ratio": 0.0,
+          "gap_ambiguous_ratio": 0.026514,
+          "standard_ratio": 0.973486
+        },
+        "site_patterns": {
+          "alignment_length": 11208,
+          "distinct_patterns": {
+            "count": 2495,
+            "ratio": 0.222609
+          },
+          "constant_sites": {
+            "count": 4382,
+            "ratio": 0.390971
+          },
+          "parsimony_informative": {
+            "count": 3210,
+            "ratio": 0.286403
+          },
+          "singleton_sites": {
+            "count": 3616,
+            "ratio": 0.322627
+          }
+        }
+      }
+    ],
+    "dropped_alignments": [],
+    "per_taxon": [
+      {
+        "name": "Zootermopsis_nevadensis",
+        "raw_length": 16812,
+        "ungapped_length": 16635,
+        "gap_ratio": 0.010528,
+        "ambiguous_ratio": 0.0,
+        "standard_ratio": 0.989472
+      },
+      {
+        "name": "Pediculus_humanus",
+        "raw_length": 16812,
+        "ungapped_length": 16528,
+        "gap_ratio": 0.016893,
+        "ambiguous_ratio": 0.0,
+        "standard_ratio": 0.983107
+      },
+      {
+        "name": "Drosophila_melanogaster",
+        "raw_length": 16812,
+        "ungapped_length": 16266,
+        "gap_ratio": 0.032477,
+        "ambiguous_ratio": 0.0,
+        "standard_ratio": 0.967523
+      },
+      {
+        "name": "Hypothenemus_hampei",
+        "raw_length": 16812,
+        "ungapped_length": 15954,
+        "gap_ratio": 0.051035,
+        "ambiguous_ratio": 0.0,
+        "standard_ratio": 0.948965
+      },
+      {
+        "name": "Maconellicoccus_hirsutus",
+        "raw_length": 16812,
+        "ungapped_length": 16119,
+        "gap_ratio": 0.041221,
+        "ambiguous_ratio": 0.0,
+        "standard_ratio": 0.958779
+      },
+      {
+        "name": "Thrips_palmi",
+        "raw_length": 16812,
+        "ungapped_length": 16695,
+        "gap_ratio": 0.006959,
+        "ambiguous_ratio": 0.0,
+        "standard_ratio": 0.993041
+      }
+    ],
+    "per_gene_occupancy": [
+      {
+        "gene": "EOG090X0A0V.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A11.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A1W.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A2Q.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A3R.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A4V.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A56.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A5B.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A5G.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A5K.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A5X.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A6P.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A8E.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A8N.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A90.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0A9P.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0AAB.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0ABW.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0ACL.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      },
+      {
+        "gene": "EOG090X0ACU.fa",
+        "n_present": 6,
+        "n_missing": 0,
+        "occupancy_ratio": 1.0
+      }
+    ],
+    "recoding_warnings": [],
+    "normalization_replacements": {}
+  }
+}

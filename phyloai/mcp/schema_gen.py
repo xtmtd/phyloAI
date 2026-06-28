@@ -7,6 +7,8 @@ from typing import Any
 
 import click
 
+_EXCLUDED_TOOL_NAMES = {"mcp-server", "completion_bash", "completion_zsh", "completion_fish"}
+
 
 def walk_click_tree(root: click.Group) -> list[dict[str, Any]]:
     """Return leaf Click commands as MCP command descriptors."""
@@ -20,18 +22,25 @@ def walk_click_tree(root: click.Group) -> list[dict[str, Any]]:
             next_parts = parts + [name]
             if isinstance(command, click.Group):
                 if command.invoke_without_command and command.callback is not None:
-                    descriptors.append(_descriptor(next_parts, command))
+                    descriptor = _descriptor(next_parts, command)
+                    if descriptor is not None:
+                        descriptors.append(descriptor)
                 walk(command, next_parts)
             else:
-                descriptors.append(_descriptor(next_parts, command))
+                descriptor = _descriptor(next_parts, command)
+                if descriptor is not None:
+                    descriptors.append(descriptor)
 
     walk(root, [])
     return descriptors
 
 
-def _descriptor(parts: list[str], command: click.Command) -> dict[str, Any]:
+def _descriptor(parts: list[str], command: click.Command) -> dict[str, Any] | None:
+    tool_name = "_".join(parts)
+    if tool_name in _EXCLUDED_TOOL_NAMES:
+        return None
     return {
-        "tool_name": "_".join(parts),
+        "tool_name": tool_name,
         "command_path": parts,
         "click_command": command,
         "help": command.help or "",
@@ -58,10 +67,15 @@ def click_param_to_json_schema(param: click.Parameter) -> dict[str, Any]:
         schema["type"] = "string"
 
     if getattr(param, "default", None) is not None and param.default is not ...:
-        default = param.default
-        if isinstance(default, Path):
-            default = str(default)
-        schema["default"] = default
+        from click._utils import Sentinel
+
+        if isinstance(param.default, Sentinel):
+            pass
+        else:
+            default = param.default
+            if isinstance(default, Path):
+                default = str(default)
+            schema["default"] = default
     return schema
 
 

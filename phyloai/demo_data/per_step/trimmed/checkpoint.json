@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "step": "pretree.trim",
+  "command": "phyloai pretree trim --msa-dir aligned/seqs/faa --output-dir trimmed --tool trimal --seq-type AA --threads 8 --nt-dir aligned/seqs/fna --trimal-method automated1 --overwrite",
+  "status": "success",
+  "params_hash": "sha256:e92d53e73c0efb0ad47da98b34c767ef7a9b9def37f2fd9ef6cc08d96103c214",
+  "params": {
+    "msa_dir": "aligned/seqs/faa",
+    "nt_dir": "aligned/seqs/fna",
+    "seq_type": "AA",
+    "tool": "trimal",
+    "threads": 8,
+    "tool_args": null,
+    "output_dir": "trimmed",
+    "overwrite": true,
+    "dry_run": false,
+    "resume": false,
+    "quiet": false,
+    "trimal_method": "automated1",
+    "trimal_path": null,
+    "bmge_matrix": null,
+    "bmge_entropy": null,
+    "bmge_path": null,
+    "clipkit_method": null,
+    "clipkit_path": null
+  },
+  "started_at": "2026-06-28T02:03:26+00:00",
+  "updated_at": "2026-06-28T02:03:26+00:00",
+  "completed_at": "2026-06-28T02:03:26+00:00",
+  "tasks": [
+    {
+      "task_id": "EOG090X0A0V",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A0V.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A0V.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A0V.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A11",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A11.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A11.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A11.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A1W",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A1W.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A1W.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A1W.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A2Q",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A2Q.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A2Q.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A2Q.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A3R",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A3R.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A3R.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A3R.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A4V",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A4V.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A4V.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A4V.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A56",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A56.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A56.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A56.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5B",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A5B.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A5B.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A5B.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5G",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A5G.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A5G.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A5G.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5K",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A5K.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A5K.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A5K.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5X",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A5X.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A5X.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A5X.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A6P",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A6P.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A6P.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A6P.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A8E",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A8E.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A8E.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A8E.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A8N",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A8N.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A8N.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A8N.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A90",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A90.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A90.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A90.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0A9P",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0A9P.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0A9P.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0A9P.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0AAB",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0AAB.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0AAB.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0AAB.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0ABW",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0ABW.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0ABW.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0ABW.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0ACL",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0ACL.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0ACL.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0ACL.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    },
+    {
+      "task_id": "EOG090X0ACU",
+      "status": "success",
+      "input": "aligned/seqs/faa/EOG090X0ACU.fa",
+      "outputs": {
+        "aa": "trimmed/seqs/faa/EOG090X0ACU.fa",
+        "nt": "trimmed/seqs/fna/EOG090X0ACU.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:03:26+00:00"
+    }
+  ]
+}

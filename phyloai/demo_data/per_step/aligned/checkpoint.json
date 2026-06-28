@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "step": "pretree.align",
+  "command": "phyloai pretree align --seq-dir /Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa --output-dir /Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned --method linsi --seq-type AA --threads 8 --backtrans --nt-dir /Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/fna --overwrite",
+  "status": "success",
+  "params_hash": "sha256:2c5f753dc632afb969c57604a82b7188f3f782dae9e41fc4ba04824b006ca5fd",
+  "params": {
+    "seq_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa",
+    "output_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned",
+    "method": "linsi",
+    "seq_type": "AA",
+    "backtrans": true,
+    "nt_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/fna",
+    "threads": 8,
+    "tool_args": null,
+    "mafft_path": "/usr/local/bin/mafft",
+    "magus_path": "magus",
+    "trimal_path": "/Users/zf/tools/trimAl-1.5.1/trimal",
+    "quiet": false
+  },
+  "started_at": "2026-06-28T02:01:23+00:00",
+  "updated_at": "2026-06-28T02:01:24+00:00",
+  "completed_at": "2026-06-28T02:01:24+00:00",
+  "tasks": [
+    {
+      "task_id": "EOG090X0A0V",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A0V.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A0V.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A0V.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A11",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A11.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A11.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A11.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A1W",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A1W.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A1W.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A1W.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A2Q",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A2Q.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A2Q.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A2Q.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A3R",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A3R.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A3R.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A3R.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A4V",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A4V.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A4V.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A4V.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A56",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A56.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A56.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A56.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5B",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5B.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5B.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5B.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5G",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5G.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5G.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5G.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5K",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5K.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5K.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5K.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:23+00:00"
+    },
+    {
+      "task_id": "EOG090X0A5X",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5X.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5X.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5X.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0A6P",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A6P.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A6P.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A6P.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0A8E",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A8E.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A8E.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A8E.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0A8N",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A8N.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A8N.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A8N.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0A90",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A90.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A90.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A90.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0A9P",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A9P.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A9P.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A9P.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0AAB",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0AAB.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0AAB.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0AAB.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0ABW",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ABW.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0ABW.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0ABW.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0ACL",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ACL.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0ACL.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0ACL.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    },
+    {
+      "task_id": "EOG090X0ACU",
+      "status": "success",
+      "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ACU.fa",
+      "outputs": {
+        "aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0ACU.fa",
+        "nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0ACU.fa"
+      },
+      "attempts": 2,
+      "reason": null,
+      "updated_at": "2026-06-28T02:01:24+00:00"
+    }
+  ]
+}

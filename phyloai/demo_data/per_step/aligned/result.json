@@ -1,0 +1,434 @@
+{
+  "status": "success",
+  "command": "phyloai pretree align --seq-dir /Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa --output-dir /Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned --method linsi --seq-type AA --threads 8 --backtrans --nt-dir /Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/fna --overwrite",
+  "wall_time": 1.1335185419998197,
+  "tool_versions": {
+    "mafft": "7.526",
+    "trimal": "1.5.rev1"
+  },
+  "params": {
+    "seq_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa",
+    "output_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned",
+    "method": "linsi",
+    "seq_type": "AA",
+    "backtrans": true,
+    "nt_dir": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/fna",
+    "threads": 8,
+    "tool_args": null,
+    "mafft_path": "/usr/local/bin/mafft",
+    "magus_path": "magus",
+    "trimal_path": "/Users/zf/tools/trimAl-1.5.1/trimal",
+    "quiet": false,
+    "overwrite": true,
+    "resume": false,
+    "dry_run": false
+  },
+  "key_results": {
+    "n_aligned": 20,
+    "n_skipped": 1,
+    "method": "linsi",
+    "backtrans": true,
+    "mean_alignment_length": 460.1,
+    "mean_n_taxa": 6.0
+  },
+  "error": null,
+  "data": {
+    "summary": {
+      "n_input_files": 21,
+      "n_aligned": 20,
+      "n_backtrans": 20,
+      "n_skipped": 1
+    },
+    "files": [
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A0V.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A0V.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A0V.fa",
+        "n_taxa": 6,
+        "alignment_length": 618,
+        "wall_time": 0.23808045899977515,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A0V.fa"
+        ],
+        "log_file": "logs/EOG090X0A0V.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A11.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A11.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A11.fa",
+        "n_taxa": 6,
+        "alignment_length": 813,
+        "wall_time": 0.20116708299974562,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A11.fa"
+        ],
+        "log_file": "logs/EOG090X0A11.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A1W.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A1W.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A1W.fa",
+        "n_taxa": 6,
+        "alignment_length": 331,
+        "wall_time": 0.17737079100015762,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A1W.fa"
+        ],
+        "log_file": "logs/EOG090X0A1W.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A2Q.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A2Q.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A2Q.fa",
+        "n_taxa": 6,
+        "alignment_length": 298,
+        "wall_time": 0.1678189580002254,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A2Q.fa"
+        ],
+        "log_file": "logs/EOG090X0A2Q.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A3R.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A3R.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A3R.fa",
+        "n_taxa": 6,
+        "alignment_length": 394,
+        "wall_time": 0.17514383300022018,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A3R.fa"
+        ],
+        "log_file": "logs/EOG090X0A3R.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A4V.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A4V.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A4V.fa",
+        "n_taxa": 6,
+        "alignment_length": 405,
+        "wall_time": 0.17844700000023295,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A4V.fa"
+        ],
+        "log_file": "logs/EOG090X0A4V.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A56.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A56.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A56.fa",
+        "n_taxa": 6,
+        "alignment_length": 255,
+        "wall_time": 0.16410075000021607,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A56.fa"
+        ],
+        "log_file": "logs/EOG090X0A56.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5B.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5B.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5B.fa",
+        "n_taxa": 6,
+        "alignment_length": 657,
+        "wall_time": 0.17686700000012934,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5B.fa"
+        ],
+        "log_file": "logs/EOG090X0A5B.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5G.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5G.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5G.fa",
+        "n_taxa": 6,
+        "alignment_length": 306,
+        "wall_time": 0.17025995800031524,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5G.fa"
+        ],
+        "log_file": "logs/EOG090X0A5G.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5K.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5K.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5K.fa",
+        "n_taxa": 6,
+        "alignment_length": 365,
+        "wall_time": 0.17873270800009777,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5K.fa"
+        ],
+        "log_file": "logs/EOG090X0A5K.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5X.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A5X.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A5X.fa",
+        "n_taxa": 6,
+        "alignment_length": 792,
+        "wall_time": 0.22799266700030785,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A5X.fa"
+        ],
+        "log_file": "logs/EOG090X0A5X.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A6P.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A6P.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A6P.fa",
+        "n_taxa": 6,
+        "alignment_length": 368,
+        "wall_time": 0.18348479199994472,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A6P.fa"
+        ],
+        "log_file": "logs/EOG090X0A6P.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A8E.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A8E.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A8E.fa",
+        "n_taxa": 6,
+        "alignment_length": 376,
+        "wall_time": 0.18537129200012714,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A8E.fa"
+        ],
+        "log_file": "logs/EOG090X0A8E.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A8N.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A8N.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A8N.fa",
+        "n_taxa": 6,
+        "alignment_length": 651,
+        "wall_time": 0.23370212500003618,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A8N.fa"
+        ],
+        "log_file": "logs/EOG090X0A8N.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A90.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A90.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A90.fa",
+        "n_taxa": 6,
+        "alignment_length": 350,
+        "wall_time": 0.17451700000037818,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A90.fa"
+        ],
+        "log_file": "logs/EOG090X0A90.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A9P.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0A9P.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0A9P.fa",
+        "n_taxa": 6,
+        "alignment_length": 573,
+        "wall_time": 0.24714312500009328,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0A9P.fa"
+        ],
+        "log_file": "logs/EOG090X0A9P.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0AAB.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0AAB.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0AAB.fa",
+        "n_taxa": 6,
+        "alignment_length": 537,
+        "wall_time": 0.18277170900000783,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0AAB.fa"
+        ],
+        "log_file": "logs/EOG090X0AAB.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ABW.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0ABW.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0ABW.fa",
+        "n_taxa": 6,
+        "alignment_length": 270,
+        "wall_time": 0.14876445799973226,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ABW.fa"
+        ],
+        "log_file": "logs/EOG090X0ABW.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ACL.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0ACL.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0ACL.fa",
+        "n_taxa": 6,
+        "alignment_length": 286,
+        "wall_time": 0.1480373750000581,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ACL.fa"
+        ],
+        "log_file": "logs/EOG090X0ACL.log"
+      },
+      {
+        "input": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ACU.fa",
+        "output_aa": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/faa/EOG090X0ACU.fa",
+        "output_nt": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/aligned/seqs/fna/EOG090X0ACU.fa",
+        "n_taxa": 6,
+        "alignment_length": 556,
+        "wall_time": 0.1746720420001111,
+        "warnings": [],
+        "cmd": [
+          "/usr/local/bin/mafft",
+          "--maxiterate",
+          "1000",
+          "--localpair",
+          "--thread",
+          "1",
+          "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/EOG090X0ACU.fa"
+        ],
+        "log_file": "logs/EOG090X0ACU.log"
+      }
+    ],
+    "skipped": [
+      {
+        "path": "/Users/zf/data/coding/phyloAI/phyloai/demo_data/end_to_end/raw/faa/.DS_Store",
+        "reason": "unrecognized extension"
+      }
+    ],
+    "warnings": [
+      "seq_type auto-detected as 'AA' from input files."
+    ]
+  }
+}

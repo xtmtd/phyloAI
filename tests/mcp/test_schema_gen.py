@@ -43,6 +43,15 @@ def test_walk_click_tree_finds_leaf_commands_only() -> None:
     assert "posttree_dating" not in tool_names
 
 
+def test_walk_click_tree_excludes_non_analysis_commands() -> None:
+    tool_names = {d["tool_name"] for d in walk_click_tree(cli)}
+
+    assert "mcp-server" not in tool_names
+    assert "completion_bash" not in tool_names
+    assert "completion_zsh" not in tool_names
+    assert "completion_fish" not in tool_names
+
+
 def test_build_mcp_tool_doctor_exposes_runtime_schema() -> None:
     doctor_descriptor = next(d for d in walk_click_tree(cli) if d["tool_name"] == "doctor")
     tool_def = build_mcp_tool(doctor_descriptor)

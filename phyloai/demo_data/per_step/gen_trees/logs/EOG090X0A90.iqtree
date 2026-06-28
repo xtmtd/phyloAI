@@ -1,0 +1,154 @@
+IQ-TREE 3.1.2 built May  7 2026
+
+Input file name: /Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/trimmed/seqs/faa/EOG090X0A90.fa
+Type of analysis: tree reconstruction + ultrafast bootstrap (1000 replicates)
+Random seed number: 304908
+
+REFERENCES
+----------
+
+To cite IQ-TREE 3 please use:
+
+Thomas K.F. Wong, Nhan Ly-Trong, Huaiyan Ren, Hector Banos, Andrew J. Roger,
+Edward Susko, Chris Bielow, Nicola De Maio, Nick Goldman, Matthew W. Hahn,
+Gavin Huttley, Robert Lanfear, Bui Quang Minh (2025)
+IQ-TREE 3: Phylogenomic Inference Software using Complex Evolutionary Models.
+Submitted.
+
+Since you used ultrafast bootstrap (UFBoot) please also cite: 
+
+Diep Thi Hoang, Olga Chernomor, Arndt von Haeseler, Bui Quang Minh,
+and Le Sy Vinh (2018) UFBoot2: Improving the ultrafast bootstrap
+approximation. Mol. Biol. Evol., 35:518–522.
+https://doi.org/10.1093/molbev/msx281
+
+SEQUENCE ALIGNMENT
+------------------
+
+NOTE: Alignment sequence type is auto-detected. If in doubt, specify it via -st option.
+Input data: 6 sequences with 347 amino-acid sites
+Number of constant sites: 117 (= 33.7176% of all sites)
+Number of invariant (constant or ambiguous constant) sites: 117 (= 33.7176% of all sites)
+Number of parsimony informative sites: 85
+Number of distinct site patterns: 244
+
+SUBSTITUTION PROCESS
+--------------------
+
+Model of substitution: LG+F+R4
+
+State frequencies: (empirical counts from alignment)
+
+  pi(A) = 0.0609
+  pi(R) = 0.0474
+  pi(N) = 0.0343
+  pi(D) = 0.0546
+  pi(C) = 0.0160
+  pi(Q) = 0.0338
+  pi(E) = 0.0890
+  pi(G) = 0.0532
+  pi(H) = 0.0295
+  pi(I) = 0.0653
+  pi(L) = 0.0928
+  pi(K) = 0.0938
+  pi(M) = 0.0193
+  pi(F) = 0.0314
+  pi(P) = 0.0484
+  pi(S) = 0.0803
+  pi(T) = 0.0522
+  pi(W) = 0.0092
+  pi(Y) = 0.0401
+  pi(V) = 0.0484
+
+Model of rate heterogeneity: FreeRate with 4 categories
+Site proportion and rates:  (0.3173,0.0569) (0.2750,0.7889) (0.3638,1.0907) (0.0439,8.3894)
+
+ Category  Relative_rate  Proportion
+  1         0.0569         0.3173
+  2         0.7889         0.2750
+  3         1.0907         0.3638
+  4         8.3894         0.0439
+
+MAXIMUM LIKELIHOOD TREE
+-----------------------
+
+Log-likelihood of the tree: -3314.3008 (s.e. 93.7862)
+Unconstrained log-likelihood (without tree): -1795.7922
+Number of free parameters (#branches + #model parameters): 34
+Akaike information criterion (AIC) score: 6696.6017
+Corrected Akaike information criterion (AICc) score: 6704.2299
+Bayesian information criterion (BIC) score: 6827.4787
+
+Total tree length (sum of branch lengths): 3.0457
+Sum of internal branch lengths: 0.3920 (12.8695% of tree length)
+
+NOTE: Tree is UNROOTED although outgroup taxon 'Drosophila_melanogaster' is drawn at root
+Numbers in parentheses are SH-aLRT support (%) / ultrafast bootstrap support (%)
+
++------------------------------Drosophila_melanogaster
+|
++----------Hypothenemus_hampei
+|
+|              +----------------------Maconellicoccus_hirsutus
+|    +---------| (94.2/88)
+|    |         +-------------------------------------------Pediculus_humanus
++----| (89/74)
+     |   +----------Thrips_palmi
+     +---| (87.3/78)
+         +----------------Zootermopsis_nevadensis
+
+Tree in newick format:
+
+(Drosophila_melanogaster:0.5963315912,Hypothenemus_hampei:0.2232572588,((Maconellicoccus_hirsutus:0.4402197220,Pediculus_humanus:0.8366772845)94.2/88:0.1986067903,(Thrips_palmi:0.2235026966,Zootermopsis_nevadensis:0.3337091980)87.3/78:0.0938026496)89/74:0.0995528698);
+
+CONSENSUS TREE
+--------------
+
+Consensus tree is constructed from 1000 bootstrap trees
+Log-likelihood of consensus tree: -3314.300843
+Robinson-Foulds distance between ML tree and consensus tree: 0
+
+Branches with support >0.000000% are kept (extended consensus)
+Branch lengths are optimized by maximum likelihood on original alignment
+Numbers in parentheses are bootstrap supports (%)
+
++------------------------------Drosophila_melanogaster
+|
++----------Hypothenemus_hampei
+|
+|              +----------------------Maconellicoccus_hirsutus
+|    +---------| (88)
+|    |         +-------------------------------------------Pediculus_humanus
++----| (74)
+     |   +----------Thrips_palmi
+     +---| (78)
+         +----------------Zootermopsis_nevadensis
+
+
+Consensus tree in newick format: 
+
+(Drosophila_melanogaster:0.5964251785,Hypothenemus_hampei:0.2233071642,((Maconellicoccus_hirsutus:0.4402910638,Pediculus_humanus:0.8370957626)88:0.1988306708,(Thrips_palmi:0.2235363008,Zootermopsis_nevadensis:0.3338868457)78:0.0936887730)74:0.0995334737);
+
+ALISIM COMMAND
+--------------
+To simulate an alignment of the same length as the original alignment, using the tree and model parameters estimated from this analysis, you can use the following command:
+
+--alisim simulated_MSA -t /var/folders/7x/kscdptps1735y1khdlfrk_wm0000gn/T/iqtree_EOG090X0A90__fm9ned_/EOG090X0A90.treefile -m "LG+F+R4{0.317298,0.0569146,0.275026,0.788929,0.363787,1.09066,0.043888,8.38944}" --length 347
+
+To mimic the alignment used to produce this analysis, i.e. simulate an alignment of the same length as the original alignment, using the tree and model parameters estimated from this analysis *and* copying the same gap positions as the original alignment, you can use the following command:
+
+iqtree -s /Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/trimmed/seqs/faa/EOG090X0A90.fa --alisim mimicked_MSA
+
+To simulate any number of alignments in either of the two commandlines above, use the --num-alignments options, for example mimic 100 alignments you would use the command line:
+
+iqtree -s /Users/zf/data/coding/phyloAI/phyloai/demo_data/per_step/trimmed/seqs/faa/EOG090X0A90.fa --alisim mimicked_MSA --num-alignments 100
+
+For more information on using AliSim, please visit: www.iqtree.org/doc/AliSim
+
+TIME STAMP
+----------
+
+Date and time: Sun Jun 28 10:09:37 2026
+Total CPU time used: 1.298907 seconds (0h:0m:1s)
+Total wall-clock time used: 1.309072971 seconds (0h:0m:1s)
+
