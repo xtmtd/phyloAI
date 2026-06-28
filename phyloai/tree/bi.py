@@ -566,6 +566,8 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
             proc = subprocess.Popen(cmd, cwd=output_dir / "chains", stdout=log, stderr=subprocess.STDOUT, text=True)
             proc._phyloai_log = log  # type: ignore[attr-defined]
             procs[name] = proc
+            if not quiet:
+                print(f"  Started {name} (pid {proc.pid}): {' '.join(cmd)}", flush=True)
 
         last_check = 0
         trace_lengths: dict[str, int] = {}

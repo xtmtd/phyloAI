@@ -61,6 +61,8 @@ Read-only MCP tools may be used directly for inspection:
 
 Execution MCP tools must go through `phyloai-workflow` parameter review and explicit user approval. Do not guess defaults and launch an execution tool only because the MCP schema is available.
 
+When showing a parameter card, list **every** parameter from `get_command_schema`. Do not filter out parameters. Annotations are decorations, not a display filter. Parameters without annotations must still be shown with their CLI `--help` text.
+
 Scope: this file applies to AI sessions that read the repository root. AI clients that open this repo as their workspace automatically load `AGENTS.md` — no explicit user action is needed. It does NOT activate when the working directory is outside this repo.
 
 For users who install PhyloAI elsewhere and want the same Skill-first behavior globally:
@@ -71,9 +73,9 @@ For users who install PhyloAI elsewhere and want the same Skill-first behavior g
 
 - [ ] **Step 2: Verify content exists**
 
-Run: `rg -n "phyloai-workflow|Execution MCP tools|Scope:|opencode/AGENTS.md|CLAUDE.md" AGENTS.md`
+Run: `rg -n "every.*parameter|output\.log|natural language|phyloai-workflow|Execution MCP tools|Scope:|opencode/AGENTS.md|CLAUDE.md" AGENTS.md`
 
-Expected: five matching lines, including the scope note with global path options.
+Expected: eight matching lines, including the parameter completeness and progress inquiry rules, scope note, and global path options.
 
 ---
 
@@ -408,7 +410,7 @@ Expected: matches in all three files.
 
 **Interfaces:**
 - Consumes: `docs/commands/installation.md` anchors and current Skill error-handling rules.
-- Produces: Skill instructions that catch environment/install requests, require destructive overwrite confirmation, and render concise missing-tool fix cards.
+- Produces: Skill instructions that catch environment/install requests, require destructive overwrite confirmation, render complete parameter cards (all parameters from schema), and render concise missing-tool fix cards.
 
 - [ ] **Step 1: Update Skill core rules**
 
@@ -418,12 +420,21 @@ In `skills/phyloai-workflow/SKILL.md`, add this bullet after the existing `docto
 - Use this Skill for environment and installation requests too, including `doctor failed`, `missing pb_mpi`, `install iqtree`, `缺少 MAFFT`, `环境检查失败`, and similar external-tool setup questions.
 ```
 
-- [ ] **Step 2: Add overwrite safety core rule**
+- [ ] **Step 2: Add parameter completeness and overwrite safety core rules**
 
-In `skills/phyloai-workflow/SKILL.md`, add this bullet after the parameter-card approval core rule:
+In `skills/phyloai-workflow/SKILL.md`, add these bullets after the parameter-card approval core rule:
 
 ```markdown
+- Before executing a CLI command, call `get_command_schema`, render a parameter card that lists **every** parameter from the schema, and wait for explicit user approval. Do not filter out parameters — annotations in `references/parameter-annotations.md` are decorations, not a display filter. Parameters without annotations must still be shown with their CLI `--help` text.
 - Treat `--overwrite` as destructive. When the target `--output-dir` already exists and the user has not explicitly requested overwrite, prefer suggesting a new `--output-dir` or `--resume` when available before offering `--overwrite`. If a parameter card sets `--overwrite true`, ask for separate explicit confirmation naming the affected `--output-dir`; general command approval is not enough.
+```
+
+- [ ] **Step 2b: Add progress inquiry core rule**
+
+In `skills/phyloai-workflow/SKILL.md`, add this bullet after the result-summary core rule:
+
+```markdown
+- When a user asks about progress for an MCP-launched running job, read the tail of `<output_dir>/output.log` alongside `check_status`. Summarize the progress in natural language. Do not tell the user to run `tail -f` unless they explicitly ask to see raw output. All MCP-launched PhyloAI commands write runtime output to `output.log`.
 ```
 
 - [ ] **Step 3: Update Skill references list**
@@ -432,6 +443,41 @@ In `skills/phyloai-workflow/SKILL.md`, add this reference to the `## References`
 
 ```markdown
 - `docs/commands/installation.md` for external-tool setup guidance
+```
+
+- [ ] **Step 3b: Update dialog templates**
+
+Replace the `## Parameter Card` section in `skills/phyloai-workflow/references/dialog-templates.md` with the multi-parameter template. Add a new `## Progress Inquiry` section.
+
+```text
+## Parameter Card
+
+命令: phyloai <command>
+目的: <one-line purpose>
+
+参数:
+  --paramA      <value>    <中文说明> [推荐: <value>]
+  --paramB      <value>    <中文说明 or --help text>
+  ...
+
+Schema source: runtime CLI via get_command_schema
+
+确认执行？还是需要调整参数？
+
+Rules:
+- List every parameter from get_command_schema. Do not omit any.
+- Parameters with annotations get Chinese descriptions.
+- Parameters without annotations use CLI --help text verbatim.
+```
+
+```text
+## Progress Inquiry
+
+When user asks about a running job:
+1. Call check_status for state.
+2. Read tail of <output_dir>/output.log (~30 lines).
+3. Summarize in natural language.
+4. Do not tell user to run tail -f unless they explicitly ask.
 ```
 
 - [ ] **Step 4: Expand overwrite conflict catalog guidance**
@@ -485,11 +531,11 @@ Pattern: `Java`, `Julia`, `MPI`
 Fix: Show the same missing-tool fix card. Link Java and Julia to the Runtime Dependencies section of `docs/commands/installation.md`; link MPI-related failures to the Bayesian Inference section.
 ````
 
-- [ ] **Step 6: Verify Skill trigger, overwrite warning, and fix-card text**
+- [ ] **Step 6: Verify Skill trigger, overwrite warning, parameter completeness, and progress rules**
 
-Run: `rg -n "missing pb_mpi|installation.md|状态: required|readpb_mpi|overwrite.*destructive|覆盖这个目录" skills/phyloai-workflow/SKILL.md skills/phyloai-workflow/references/error-catalog.md`
+Run: `rg -n "every.*parameter|output\.log|tail.*output\.log|natural language|missing pb_mpi|installation.md|状态: required|readpb_mpi|overwrite.*destructive|覆盖这个目录" skills/phyloai-workflow/SKILL.md skills/phyloai-workflow/references/error-catalog.md skills/phyloai-workflow/references/dialog-templates.md`
 
-Expected: all six patterns match.
+Expected: all ten patterns match across the three files.
 
 ---
 
@@ -542,6 +588,6 @@ Expected: documentation-only changes; no MCP server or CLI execution code change
 
 ## Self-Review Notes
 
-- Spec coverage: Task 1 covers Skill-first `AGENTS.md` with scope limitation and global `~/.config/opencode/AGENTS.md` / `~/.claude/CLAUDE.md` options; Task 2 covers installation with `git clone`, bundled/planned notes, uv, and `run` dependencies; Task 3 covers completion docs; Task 4 covers README/doctor/AI docs with AGENTS.md mechanism explanation; Task 5 covers Skill triggers, overwrite safety, and fix cards; Task 6 verifies links, scope with global paths, and destructive overwrite confirmation.
+- Spec coverage: Task 1 covers Skill-first `AGENTS.md` with scope limitation and global `~/.config/opencode/AGENTS.md` / `~/.claude/CLAUDE.md` options; Task 2 covers installation with `git clone`, bundled/planned notes, uv, and `run` dependencies; Task 3 covers completion docs; Task 4 covers README/doctor/AI docs with AGENTS.md mechanism explanation; Task 5 covers Skill triggers, parameter completeness (all params from schema), overwrite safety, progress inquiry via `output.log`, dialog templates, and fix cards; Task 6 verifies links, scope with global paths, parameter completeness rules, `output.log` progress rules, and destructive overwrite confirmation.
 - Placeholder scan: no task uses open-ended placeholders such as "fill in later" or unspecified tests.
 - Type consistency: no code interfaces are introduced; all referenced paths and MCP tool names match existing docs.

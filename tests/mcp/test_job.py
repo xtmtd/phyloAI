@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import click
@@ -46,11 +47,24 @@ def test_launch_cli_writes_job_json_for_running_process() -> None:
         "sleep",
         params=[click.Option(["--output-dir"], type=click.Path(path_type=Path), required=True)],
     )
-    descriptor = {"command_path": ["-c", "import time; time.sleep(5)"], "click_command": cmd, "executable": sys.executable}
+    code = (
+        "import pathlib, sys, time\n"
+        "out = pathlib.Path(sys.argv[-1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "time.sleep(2)\n"
+    )
+    descriptor = {"command_path": ["-c", code], "click_command": cmd, "executable": sys.executable}
     with tempfile.TemporaryDirectory() as tmp:
         output_dir = Path(tmp) / "job"
         result_dir, pid = launch_cli(descriptor, {"output_dir": str(output_dir)}, output_dir)
-        job = read_job_json(result_dir)
+
+        deadline = time.time() + 3
+        job = None
+        while time.time() < deadline:
+            job = read_job_json(result_dir)
+            if job is not None:
+                break
+            time.sleep(0.05)
 
     assert result_dir == output_dir.resolve()
     assert job is not None

@@ -7,12 +7,23 @@
 目的: <one-line purpose>
 
 参数:
-  --name    <value>    <中文说明> [推荐: <value if applicable>]
+  --paramA      <value>    (默认: <default>)  <中文说明> [推荐: <value>]
+  --paramB      <value>    (默认: <default>)  <中文说明 or --help text>
+  --paramC      <value>    (默认: <default>)  <中文说明 or --help text>
+  ...
 
 Schema source: runtime CLI via get_command_schema
 
 确认执行？还是需要调整参数？
 ```
+
+Rules:
+- List **every** parameter from `get_command_schema`. Do not omit any.
+- Show the schema default in parentheses for every parameter.
+- If the schema marks a parameter as required, it MUST have a value before approval — do not launch with it empty.
+- Parameters with annotations in `references/parameter-annotations.md` get Chinese descriptions.
+- Parameters without annotations use their CLI `--help` text verbatim.
+- If `--overwrite true` is present, add a separate line after the parameter block: `WARNING: --overwrite 将删除 <output-dir>。请单独确认覆盖。`
 
 ## Result Card
 

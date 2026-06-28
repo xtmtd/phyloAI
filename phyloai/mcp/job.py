@@ -6,6 +6,7 @@ import json
 import os
 import shlex
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,7 @@ import click
 
 
 def write_job_json(output_dir: Path, pid: int, command: str, *, early_exit_stderr: str = "") -> dict[str, Any]:
-    """Write `job.json` and return its payload."""
+    """Write ``job.json`` and return its payload."""
     output_dir.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = {
         "pid": pid,
@@ -29,7 +30,7 @@ def write_job_json(output_dir: Path, pid: int, command: str, *, early_exit_stder
 
 
 def read_job_json(output_dir: Path) -> dict[str, Any] | None:
-    """Read `job.json`; return None when missing or invalid."""
+    """Read ``job.json``; return None when missing or invalid."""
     path = output_dir / "job.json"
     if not path.exists():
         return None
@@ -82,7 +83,7 @@ def launch_cli(
     *,
     env: dict[str, str] | None = None,
 ) -> tuple[Path, int]:
-    """Launch a detached CLI command and write `job.json`."""
+    """Launch a detached CLI command and write ``job.json``."""
     output_dir = output_dir.resolve()
     if not output_dir.parent.exists():
         raise ValueError(f"Parent directory does not exist: {output_dir.parent}")
@@ -108,9 +109,22 @@ def launch_cli(
     try:
         _, stderr = proc.communicate(timeout=0.2)
     except subprocess.TimeoutExpired:
-        write_job_json(output_dir, proc.pid, shlex.join(argv))
+        # 等 CLI 自己创建 output_dir 后再写 job.json，避免污染目录触发冲突检查
+        _thread = threading.Thread(target=_write_job_when_ready, args=(output_dir, proc.pid, shlex.join(argv)), daemon=True)
+        _thread.start()
+        return output_dir, proc.pid
         return output_dir, proc.pid
 
     early = stderr.decode("utf-8", errors="replace")[:1000] if stderr else ""
     write_job_json(output_dir, proc.pid, shlex.join(argv), early_exit_stderr=early)
     raise ValueError(f"Process exited immediately with code {proc.returncode}. stderr: {early}")
+
+
+def _write_job_when_ready(output_dir: Path, pid: int, command: str) -> None:
+    """Write ``job.json`` once *output_dir* exists (CLI has passed its conflict check)."""
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        if output_dir.is_dir():
+            write_job_json(output_dir, pid, command)
+            return
+        time.sleep(0.05)

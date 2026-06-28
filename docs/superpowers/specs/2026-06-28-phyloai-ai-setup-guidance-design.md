@@ -134,7 +134,20 @@ Update `docs/commands/ai-integration.md` with a short warning:
 - Users should install or expose both MCP and `phyloai-workflow`.
 - Inside this repository, AI agents should follow `AGENTS.md` and use the Skill first.
 
-## 5. Skill Missing-Tool Guidance
+## 5. Skill Parameter And Progress Guidance
+
+### 5.1 Parameter Completeness
+
+The Skill's parameter card must list **every** parameter from `get_command_schema`. Annotations in `references/parameter-annotations.md` are decorations, not a display filter. Parameters without Chinese annotations must still be shown with their CLI `--help` text verbatim.
+
+Required behavior:
+
+- Render all parameters from the runtime schema. Do not omit any.
+- Parameters with annotations get Chinese descriptions and recommendations.
+- Parameters without annotations fall back to CLI `--help` text.
+- If `--overwrite true` is present, add a separate destructive-action warning.
+
+### 5.2 Missing-Tool Guidance
 
 Strengthen `skills/phyloai-workflow/SKILL.md` and `references/error-catalog.md`.
 
@@ -189,5 +202,6 @@ The Skill should not attempt to install tools automatically. It should diagnose,
 - The installation reference includes `phyloai run --mode/--speed` dependency notes.
 - Missing-tool fix cards distinguish required tool failures from optional tool warnings.
 - Any command with `--overwrite true` requires separate explicit confirmation naming the affected output directory.
+- Parameter cards include **every** parameter from `get_command_schema`, without filtering; unannotated parameters display CLI `--help` text.
 - Missing `pb_mpi` and similar failures result in actionable guidance instead of only "tool not found".
 - No MCP execution-layer changes are required.
