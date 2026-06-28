@@ -5,8 +5,10 @@ Guide users through PhyloAI CLI analyses through the local MCP server.
 ## Core Rules
 
 - Use `doctor` before commands that invoke external tools, on first run, or when the environment is unknown.
+- Use this Skill for environment and installation requests too, including `doctor failed`, `missing pb_mpi`, `install iqtree`, `缺少 MAFFT`, `环境检查失败`, and similar external-tool setup questions.
 - Read-only tools (`check_status`, `read_result`, `read_report`, `get_command_schema`) do not require `doctor` first.
 - Before executing a CLI command, call `get_command_schema`, render a parameter card, and wait for explicit user approval.
+- Treat `--overwrite` as destructive. When the target `--output-dir` already exists and the user has not explicitly requested overwrite, prefer suggesting a new `--output-dir` or `--resume` when available before offering `--overwrite`. If a parameter card sets `--overwrite true`, ask for separate explicit confirmation naming the affected `--output-dir`; general command approval is not enough.
 - Never invent parameter names, aliases, defaults, or enum values. Unknown parameters block execution.
 - After a command completes, summarize `key_results`, warnings, and next steps. Do not auto-run the next step.
 
@@ -47,3 +49,4 @@ Guide users through PhyloAI CLI analyses through the local MCP server.
 - `references/dialog-templates.md`
 - `references/demo-data.md`
 - `references/workflow.md`
+- `docs/commands/installation.md` for external-tool setup guidance

@@ -29,6 +29,15 @@ phyloai mcp-server --help
 
 Add the MCP server to your client config, then make the Skill discoverable.
 
+Do not enable only the MCP server and skip the Skill. MCP exposes execution tools, but `phyloai-workflow` is the guided layer that runs `doctor`, renders parameter cards, waits for approval, interprets results, and diagnoses missing tools.
+
+`AGENTS.md` is an AI-agent convention file at the project root. AI clients (OpenCode, Claude Code, Codex) that open this repo as their workspace automatically load it and follow its rules — no explicit user action is needed. It does NOT activate when the working directory is outside this repo.
+
+For Skill-first behavior outside the repo:
+- **OpenCode:** copy the rules from `AGENTS.md` (or the whole file) into `~/.config/opencode/AGENTS.md` for global application across all sessions.
+- **Claude Code:** copy into `~/.claude/CLAUDE.md`.
+- Or install `skills/phyloai-workflow` in your AI client's skills directory (see the sections below).
+
 ---
 
 ## OpenCode (Primary)

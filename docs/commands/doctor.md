@@ -24,6 +24,8 @@ phyloai doctor [--output-format text|json]
 
 TAPER 1.0.0 (`correction_multi.jl`) and BMGE 1.12 (`BMGE.jar`) are bundled inside the PhyloAI package and do not need separate installation. Other external tools remain environment-dependent and should be installed by the user for their operating system, package manager, cluster, or Conda environment.
 
+For practical setup guidance, see [installation.md](installation.md). It lists Python environment options, external tool groups, `phyloai run` dependency modes, and operating-system notes.
+
 ## Outputs
 
 Text output is a Rich table showing each tool, status, detected version, path, and install note when relevant.

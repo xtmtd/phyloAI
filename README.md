@@ -5,10 +5,18 @@ An AI-native modular phylogenomics analysis platform.
 ## Installation
 
 ```bash
+git clone https://github.com/xtmtd/phyloAI.git
+cd phyloAI
 pip install -e .
 ```
 
-PhyloAI bundles TAPER 1.0.0 (`correction_multi.jl`) and BMGE 1.12 (`BMGE.jar`) inside the Python package, so these two tools do not need separate installation. Other external tools, such as IQ-TREE, MAFFT, PAML, PhyloBayes, ASTRAL/ASTER, TreeShrink, Java, and Julia, should still be installed by the user according to the operating system and local environment.
+PhyloAI bundles TAPER 1.0.0 (`correction_multi.jl`) and BMGE 1.12 (`BMGE.jar`). Other external tools should be installed for your operating system and workflow, then verified with:
+
+```bash
+phyloai doctor
+```
+
+See [docs/commands/installation.md](docs/commands/installation.md) for Python environment options, external tool groups, and operating-system notes.
 
 ## Quick Start
 
@@ -39,48 +47,7 @@ phyloai completion zsh
 phyloai completion fish
 ```
 
-Generate the script once from an environment where `phyloai` is installed, save it to a persistent file, and add a `source ...` line to your shell configuration so completion is available automatically in every new terminal.
-
-Do not run `phyloai completion ...` dynamically from `.bashrc`, `.zshrc`, or other shell startup files. Generate the file once and source the saved script instead.
-
-Example for Bash:
-
-```bash
-mkdir -p ~/.config/phyloai/completion
-phyloai completion bash > ~/.config/phyloai/completion/phyloai.bash
-```
-
-Add this line to `~/.bashrc` so every new Bash shell loads the saved completion script automatically:
-
-```bash
-source ~/.config/phyloai/completion/phyloai.bash
-```
-
-If you only run `source ~/.config/phyloai/completion/phyloai.bash` manually in the current terminal, completion only works for that shell session.
-
-Example for Zsh:
-
-```bash
-mkdir -p ~/.config/phyloai/completion
-phyloai completion zsh > ~/.config/phyloai/completion/phyloai.zsh
-```
-
-Add this line to `~/.zshrc` so every new Zsh shell loads the saved completion script automatically:
-
-```bash
-source ~/.config/phyloai/completion/phyloai.zsh
-```
-
-If you only run `source ~/.config/phyloai/completion/phyloai.zsh` manually in the current terminal, completion only works for that shell session.
-
-Example for Fish:
-
-```bash
-mkdir -p ~/.config/fish/completions
-phyloai completion fish > ~/.config/fish/completions/phyloai.fish
-```
-
-Fish loads completions from that directory automatically in new shells, so you do not need to add an extra `source` line to `config.fish`.
+Generate the script once and configure your shell to load the saved file. See [docs/commands/completion.md](docs/commands/completion.md) for Bash, Zsh, and Fish setup examples.
 
 ## AI Integration
 
@@ -93,6 +60,8 @@ PhyloAI includes an MCP server and a guided-workflow Skill for conversational an
 | Command | Purpose | Documentation |
 |---------|---------|---------------|
 | `phyloai doctor` | Inspect external tool availability. | [docs/commands/doctor.md](docs/commands/doctor.md) |
+| Installation | Set up Python environments and external tools, then verify with `phyloai doctor`. | [docs/commands/installation.md](docs/commands/installation.md) |
+| `phyloai completion` | Generate static Bash, Zsh, or Fish shell completion scripts. | [docs/commands/completion.md](docs/commands/completion.md) |
 | `phyloai run`     | One-click phylogenomics pipeline from raw sequences to a species tree. | [docs/commands/run.md](docs/commands/run.md) |
 | `phyloai pretree convert` | Normalize and convert sequence files before downstream analysis. | [docs/commands/pretree-convert.md](docs/commands/pretree-convert.md) |
 | `phyloai pretree stats`   | Inspect one sequence/alignment file or summarize a directory of files. | [docs/commands/pretree-stats.md](docs/commands/pretree-stats.md)     |
