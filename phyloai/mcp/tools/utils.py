@@ -15,28 +15,33 @@ _schema_cache: dict[str, dict] | None = None
 def check_status(output_dir: str) -> dict:
     """Inspect an output directory and return job state."""
     od = Path(output_dir).resolve()
+
+    job = read_job_json(od)
+    if job is not None:
+        pid = job.get("pid")
+        if pid is not None:
+            try:
+                os.kill(int(pid), 0)
+                checkpoint = _read_json(od / "checkpoint.json")
+                response: dict = {"status": "running", "output_dir": str(od)}
+                if checkpoint is not None:
+                    response["checkpoint"] = checkpoint
+                return response
+            except (OSError, ValueError):
+                pass
+
     result = _read_json(od / "result.json")
     if result is not None:
         return {"status": result.get("status", "unknown"), "output_dir": str(od), "result": result}
 
-    checkpoint = _read_json(od / "checkpoint.json")
-    job = read_job_json(od)
-    if job is None:
-        return {"status": "not_started", "output_dir": str(od)}
+    if job is not None:
+        checkpoint = _read_json(od / "checkpoint.json")
+        response = {"output_dir": str(od), "status": "unknown", "message": "Process exited but result.json not found. Check logs/ for tool stderr."}
+        if checkpoint is not None:
+            response["checkpoint"] = checkpoint
+        return response
 
-    response = {"output_dir": str(od)}
-    if checkpoint is not None:
-        response["checkpoint"] = checkpoint
-    pid = job.get("pid")
-    if pid is not None:
-        try:
-            os.kill(int(pid), 0)
-            response["status"] = "running"
-            return response
-        except (OSError, ValueError):
-            pass
-    response.update({"status": "unknown", "message": "Process exited but result.json not found. Check logs/ for tool stderr."})
-    return response
+    return {"status": "not_started", "output_dir": str(od)}
 
 
 def read_result(output_dir: str) -> dict:

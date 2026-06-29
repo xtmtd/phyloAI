@@ -264,6 +264,11 @@ def _dispatch_step(
         _save_run_checkpoint(checkpoint, checkpoint_path, fsync=True)
         raise _RunStepError(f"Step '{step_name}' failed: {exc}") from exc
 
+    if isinstance(result, dict) and result.get("status") == "error":
+        step["status"] = "failed"
+        _save_run_checkpoint(checkpoint, checkpoint_path, fsync=True)
+        raise _RunStepError(f"Step '{step_name}' returned status=error: {result.get('error', 'unknown error')}")
+
     step["status"] = "success"
     _save_run_checkpoint(checkpoint, checkpoint_path)
     return result, False

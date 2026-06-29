@@ -131,7 +131,7 @@ PHYLIP-PAML 为 PAML 系列工具的专用双空格 PHYLIP 格式。
 用于 backtrans 模式（AA 比对时保留对应的 NT 比对）。配合 `pretree align --backtrans` 使用。
 
 #### --trimal-method
-trimAl 模式。`gap`（间隙率）、`consistency`（一致性）、`both`（两者结合）、`clipkit`（模拟 ClipKIT）。
+trimAl 模式。`automated1`（默认，自动选择）、`gappyout`（按 gap 比例裁剪）、`strict`（严格保守）、`strictplus`（加强版 strict）。
 
 #### --bmge-matrix
 BMGE 替换矩阵。可选 `BLOSUM30`/`BLOSUM45`/`BLOSUM62`/`BLOSUM90`/`PAM120`/`PAM250` 等。

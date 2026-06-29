@@ -689,10 +689,17 @@ def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: st
     except KeyboardInterrupt:
         interrupted = True
 
+    if not dry_run and not file_results and not resume_success_results:
+        raise ValueError("No genes were trimmed: all input files failed or were skipped.")
+
     if ckpt_write:
-        checkpoint.status = "interrupted" if interrupted else "success"
+        if file_results:
+            checkpoint.status = "interrupted" if interrupted else "success"
+        else:
+            checkpoint.status = "error"
         checkpoint.completed_at = None if interrupted else checkpoint.touch()
         save_checkpoint_atomic(checkpoint, ckpt_path, fsync=True)
+
     if interrupted:
         raise KeyboardInterrupt
     file_results = resume_success_results + file_results
@@ -705,8 +712,6 @@ def run_trim(msa_dir: Path, output_dir: Path, tool: str = "trimal", seq_type: st
                 log_path = log_dir / f"{locus}.log"
                 if not log_path.exists():
                     log_path.write_text("# resumed from checkpoint — original stderr unavailable\n")
-    if not dry_run and not file_results:
-        raise ValueError("No genes were trimmed: all input files failed or were skipped.")
     return _build_trim_payload(file_results=file_results, skipped=skipped, params=params, global_warnings=warnings, wall_time=time.monotonic() - start, tool_versions={} if dry_run else _detect_trim_tool_versions(tool, trimal_path, bmge_path, clipkit_path), dry_run_cmds=dry_cmds if dry_run else None)
 
 

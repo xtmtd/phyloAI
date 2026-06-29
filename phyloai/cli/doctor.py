@@ -7,7 +7,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from phyloai.core.env import TOOL_GROUPS, ToolEnv, ToolStatus
+from phyloai.core.env import TOOL_GROUPS, TOOL_REGISTRY, ToolEnv, ToolStatus
 
 console = Console()
 DISPLAY_NAMES = {"bmge": "BMGE.jar"}
@@ -58,6 +58,12 @@ def doctor(output_format: str) -> None:
             for name, info in tools.items()
         }
         click.echo(json.dumps(out, indent=2))
+        if any(
+            info.status == ToolStatus.MISSING and TOOL_REGISTRY.get(name, {}).get("required", False)
+            for name, info in tools.items()
+        ):
+            ctx = click.get_current_context()
+            ctx.exit(3)
         return
 
     # Text output: render grouped tables in TOOL_GROUPS order.
@@ -72,3 +78,10 @@ def doctor(output_format: str) -> None:
     other = {name: info for name, info in tools.items() if name not in covered}
     if other:
         console.print(_build_table("Other", other))
+
+    if any(
+        info.status == ToolStatus.MISSING and TOOL_REGISTRY.get(name, {}).get("required", False)
+        for name, info in tools.items()
+    ):
+        ctx = click.get_current_context()
+        ctx.exit(3)

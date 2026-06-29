@@ -791,7 +791,7 @@ def _assemble_result(
         first = results[0] if results else {}
         data_block = {
             "cmd": first.get("cmd", []),
-            "tool_stderr": "",
+            "tool_stderr": first.get("tool_stderr", ""),
             "output": first.get("output_tree", ""),
             "warnings": first.get("warnings", []),
         }

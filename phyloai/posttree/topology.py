@@ -879,14 +879,17 @@ def run_topology(
         if stream_output and not quiet:
             child = subprocess.Popen(
                 effective_cmd,
-                stdout=None,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=str(output_dir),
             )
-            _, stderr_text = child.communicate()
+            stdout_text, stderr_text = child.communicate()
             proc_returncode = child.returncode
-            tool_stderr_out = stderr_text.strip() if stderr_text else ""
+            tool_stderr_out = (
+                (stdout_text.strip() if stdout_text else "")
+                + ("\n" + stderr_text.strip() if stderr_text else "")
+            ).strip()
         else:
             proc = subprocess.run(
                 effective_cmd,
@@ -896,8 +899,11 @@ def run_topology(
             )
             proc_returncode = proc.returncode
             tool_stderr_out = ""
+            if proc.stdout:
+                tool_stderr_out += proc.stdout.strip()
             if proc.stderr:
-                tool_stderr_out += proc.stderr.strip()
+                sep = "\n" if tool_stderr_out else ""
+                tool_stderr_out += sep + proc.stderr.strip()
     except FileNotFoundError:
         return _assemble_topology_result(
             run_start=run_start,

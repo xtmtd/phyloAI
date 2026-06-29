@@ -27,7 +27,6 @@ class ToolInfo:
 
 TOOL_REGISTRY: dict[str, dict] = {
     "iqtree3":    {"required": True,  "version_flag": "--version",
-                    "bundled": True,
                     "install": "https://github.com/iqtree/iqtree3/releases"},
     "mafft":      {"required": True,  "version_flag": "--version",
                    "install": "https://mafft.cbrc.jp/alignment/software/"},
@@ -62,8 +61,7 @@ TOOL_REGISTRY: dict[str, dict] = {
     "julia":      {"required": False, "version_args": [["--version"]],
                    "install": "https://julialang.org/downloads/"},
     "trimal":     {"required": True,  "version_flag": "--version",
-                   "bundled": True,
-                   "install": "https://github.com/inab/trimal/releases"},
+                    "install": "https://github.com/inab/trimal/releases"},
     "bmge":       {"required": False, "version_args": [["-?"]],
                      "path_aliases": ["BMGE.jar"],
                      "install": "Install BMGE and make BMGE.jar visible on PATH, or pass --bmge-path"},

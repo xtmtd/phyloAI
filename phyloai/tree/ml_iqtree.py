@@ -1037,8 +1037,6 @@ def run_iqtree(
                     f"Output directory {output_dir} already exists and is non-empty. "
                     "Use --overwrite to replace."
                 )
-        if dry_run:
-            output_dir.mkdir(parents=True, exist_ok=True)
 
         # Resolve model default
         if model is None:
@@ -1252,9 +1250,6 @@ def run_iqtree(
                 f"Output directory {output_dir} already exists and is non-empty. "
                 "Use --overwrite to replace."
             )
-        trees_dir.mkdir(parents=True, exist_ok=True)
-        logs_dir.mkdir(parents=True, exist_ok=True)
-    else:
         trees_dir.mkdir(parents=True, exist_ok=True)
         logs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1718,7 +1713,7 @@ def _assemble_iqtree_result(
         first = results[0] if results else {}
         data_block = {
             "cmd": first.get("cmd", []),
-            "tool_stderr": "",
+            "tool_stderr": first.get("tool_stderr", ""),
             "output": first.get("output_tree", ""),
             "warnings": first.get("warnings", []),
         }

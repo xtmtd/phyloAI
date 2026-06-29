@@ -1087,7 +1087,7 @@ def run_metrics(
     }
 
     payload = {
-        "status": "success" if n_errors == 0 else "partial",
+        "status": "success" if n_errors == 0 else "error",
         "command": cmd_str,
         "wall_time": wall_time,
         "tool_versions": {},
