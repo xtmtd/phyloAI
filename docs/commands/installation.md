@@ -4,7 +4,7 @@
 
 This guide explains how to install PhyloAI, make external tools visible to the active shell environment, and verify the setup with `phyloai doctor`.
 
-PhyloAI does not install most third-party phylogenetics tools automatically. Install those tools through your operating system, Conda/Mamba environment, cluster module system, or the upstream project instructions.
+PhyloAI does not install third-party phylogenetics tools automatically. Install those tools through your operating system, Conda/Mamba environment, cluster module system, or the upstream project instructions.
 
 ## Get The Source
 
@@ -78,7 +78,7 @@ phyloai doctor --output-format json
 | MAFFT | `pretree align`, `phyloai run` | https://mafft.cbrc.jp/alignment/software/ | `mafft` | `phyloai doctor` |
 | trimAl | `pretree trim`, backtranslation, `phyloai run` | https://github.com/inab/trimal | `trimal` | `phyloai doctor` |
 
-IQ-TREE3 and trimAl are planned for future bundling or auto-download in PhyloAI. Until `phyloai doctor` reports them as bundled, treat them as external tools.
+Treat these as external tools. PhyloAI checks whether they are visible to the active shell, but does not redistribute them.
 
 ### Tree And Posttree Tools
 
@@ -109,6 +109,8 @@ If the tools are installed outside `PATH`, use `phyloai tree bi --pb-path /path/
 | TreeShrink | `pretree filter treeshrink` | https://github.com/uym2/TreeShrink | `run_treeshrink.py` | `phyloai doctor` |
 | MAGUS | `pretree align --method magus` | https://github.com/vlasmirnov/MAGUS | `magus` | `phyloai doctor` |
 | ClipKIT | `pretree trim --tool clipkit` | https://github.com/JLSteenwyk/ClipKIT | `clipkit` | `phyloai doctor` |
+| BMGE | `pretree trim --tool bmge` | https://github.com/BMGE/BMGE or upstream BMGE distribution | `BMGE.jar` | `phyloai doctor` |
+| TAPER | `pretree filter taper` | upstream TAPER distribution | `correction_multi.jl` | `phyloai doctor` |
 
 ### Runtime Dependencies
 
@@ -117,9 +119,7 @@ If the tools are installed outside `PATH`, use `phyloai tree bi --pb-path /path/
 | Java | BMGE workflows | https://www.java.com/ | `java` | `phyloai doctor` |
 | Julia | TAPER masking | https://julialang.org/downloads/ | `julia` | `phyloai doctor` |
 
-### Bundled Tools
-
-TAPER 1.0.0 (`correction_multi.jl`) and BMGE 1.12 (`BMGE.jar`) are bundled inside the PhyloAI package. They do not need separate installation. If either is missing from `phyloai doctor`, treat it as a PhyloAI packaging or installation problem rather than a missing user-installed dependency.
+If BMGE or TAPER are installed outside `PATH`, pass their file paths with `--bmge-path /path/to/BMGE.jar` or `--taper-path /path/to/correction_multi.jl`.
 
 ## Operating System Notes
 

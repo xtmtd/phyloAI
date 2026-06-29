@@ -1,6 +1,7 @@
 """Tests for phyloai.pretree.filter."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from Bio import SeqIO
@@ -24,6 +25,26 @@ class TestBuildTaperCmd:
         from phyloai.pretree.filter import _build_taper_cmd
         with pytest.raises(ValueError, match="managed"):
             _build_taper_cmd(Path("a.fa"), Path("out.fa"), "AA", 3, "julia", "/t/c.jl", "-c 5")
+
+    def test_detect_taper_version_uses_shared_tool_probe(self, tmp_path):
+        from phyloai.pretree.filter import _detect_taper_version
+        taper = tmp_path / "correction_multi.jl"
+        taper.write_text("# taper placeholder")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = type(
+                "Result", (),
+                {"stdout": "Version 1.0.0\n(type: Float64, default: 3.0)\n", "stderr": "", "returncode": 0}
+            )()
+            version = _detect_taper_version(str(taper), "/opt/julia/bin/julia")
+
+        assert version == "1.0.0"
+        mock_run.assert_called_once_with(
+            ["/opt/julia/bin/julia", str(taper), "-h"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
 
 
 class TestTaperCDSProjection:

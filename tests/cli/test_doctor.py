@@ -16,13 +16,13 @@ def _mock_tools():
         "mafft":   ToolInfo("mafft",   ToolStatus.OK,
                             Path("/usr/bin/mafft"), "7.520"),
         "bmge":    ToolInfo("bmge",    ToolStatus.OK,
-                            Path("/repo/phyloai/bundled/BMGE-1.12/BMGE.jar"), "1.12", "bundled"),
+                            Path("/usr/local/bin/BMGE.jar"), "1.12"),
         "java":    ToolInfo("java",    ToolStatus.OK,
                             Path("/usr/bin/java"), "21.0.2"),
         "julia":   ToolInfo("julia",   ToolStatus.MISSING,
                             note="install: https://julialang.org/downloads/"),
         "correction_multi.jl": ToolInfo("correction_multi.jl", ToolStatus.OK,
-                            Path("/repo/phyloai/bundled/TAPER-1.0.0/correction_multi.jl"), "1.0.0", "bundled"),
+                            Path("/usr/local/bin/correction_multi.jl"), "1.0.0"),
         "pb_mpi":  ToolInfo("pb_mpi",  ToolStatus.MISSING,
                             note="install: https://github.com/bayesiancook/pbmpi"),
         "bpcomp":  ToolInfo("bpcomp",  ToolStatus.MISSING,
@@ -113,39 +113,34 @@ def test_doctor_json_includes_runtime_checks():
     assert data["java"]["status"] == "ok"
     assert data["julia"]["status"] == "missing"
     assert data["correction_multi.jl"]["status"] == "ok"
-    assert data["correction_multi.jl"]["note"] == "bundled"
-    assert data["bmge"]["note"] == "bundled"
+    assert data["correction_multi.jl"]["note"] == ""
+    assert data["bmge"]["note"] == ""
 
 
-def test_bmge_bundled_tool_uses_bmge_jar_name(tmp_path):
+def test_bmge_jar_resolves_from_path_alias(tmp_path):
     bundled_root = tmp_path / "bundled" / "BMGE-1.12"
     bundled_root.mkdir(parents=True)
-    bmge_jar = bundled_root / "BMGE.jar"
-    bmge_jar.write_text("jar placeholder")
+    (bundled_root / "BMGE.jar").write_text("jar placeholder")
 
     env = ToolEnv()
     env._bundled_dir = tmp_path / "bundled"
 
-    with patch("shutil.which", return_value=None):
+    with patch("shutil.which", side_effect=lambda name: "/usr/local/bin/BMGE.jar" if name == "BMGE.jar" else None):
         info = env.check_all()["bmge"]
 
     assert info.status == ToolStatus.OK
-    assert info.path == bmge_jar
+    assert info.path == Path("/usr/local/bin/BMGE.jar")
 
 
-def test_explicit_bmge_path_override_is_preferred_over_bundled(tmp_path):
+def test_explicit_bmge_path_override_is_preferred_over_path(tmp_path):
     bmge_jar = tmp_path / "BMGE.jar"
     bmge_jar.write_text("jar placeholder")
 
-    bundled_root = tmp_path / "bundled" / "BMGE-1.12"
-    bundled_root.mkdir(parents=True)
-    (bundled_root / "BMGE.jar").write_text("bundled jar placeholder")
-
     env = ToolEnv(tool_paths={"bmge": bmge_jar})
-    env._bundled_dir = tmp_path / "bundled"
 
     with patch.object(env, "_get_version", return_value="1.12"):
-        info = env.check_all()["bmge"]
+        with patch("shutil.which", return_value="/usr/local/bin/BMGE.jar"):
+            info = env.check_all()["bmge"]
 
     assert info.status == ToolStatus.OK
     assert info.path == bmge_jar

@@ -45,13 +45,11 @@ TOOL_REGISTRY: dict[str, dict] = {
     "mpirun":     {"required": False, "version_flag": "--version",
                    "install": "https://www.open-mpi.org  (or: brew install open-mpi / apt install openmpi-bin)"},
     "mcmctree":   {"required": False, "version_args": [],
-                   "version_pattern": r"paml version (\d+(?:\.\d+)+)",
-                   "install": "https://github.com/abacus-gene/paml/releases"},
-    "correction_multi.jl": {"required": False, "version_flag": "",
-                   "bundled": True,
-                   "bundled_dir": "TAPER-1.0.0",
-                   "bundled_executable": "correction_multi.jl",
-                   "install": "bundled with PhyloAI"},
+                    "version_pattern": r"paml version (\d+(?:\.\d+)+)",
+                    "install": "https://github.com/abacus-gene/paml/releases"},
+    "correction_multi.jl": {"required": False, "version_args": [["-h"]],
+                   "version_pattern": r"Version\s+(\d+(?:\.\d+)+)",
+                   "install": "Install TAPER and make correction_multi.jl visible on PATH, or pass --taper-path"},
     "run_treeshrink.py": {"required": False, "version_flag": "--version",
                    "install": "https://github.com/uym2/TreeShrink"},
     "magus":      {"required": False, "version_flag": "--version",
@@ -67,11 +65,8 @@ TOOL_REGISTRY: dict[str, dict] = {
                    "bundled": True,
                    "install": "https://github.com/inab/trimal/releases"},
     "bmge":       {"required": False, "version_args": [["-?"]],
-                    "bundled_dir": "BMGE-1.12",
-                    "bundled_executable": "BMGE.jar",
-                    "path_aliases": ["BMGE.jar"],
-                    "bundled": True,
-                    "install": "bundled with PhyloAI"},
+                     "path_aliases": ["BMGE.jar"],
+                     "install": "Install BMGE and make BMGE.jar visible on PATH, or pass --bmge-path"},
     "FastTree":   {"required": False, "version_args": [[]],
                      "path_aliases": ["fasttree"],
                      "install": "Download from http://www.microbesonline.org/fasttree/"},
@@ -105,6 +100,10 @@ class ToolEnv:
         resolved = path.resolve() if path.exists() else path
         tool_dir = resolved.parent
         search_dirs = [tool_dir, tool_dir.parent]
+        for sd in search_dirs:
+            version = self._normalize_version(sd.name)
+            if version:
+                return version
         patterns = ["*Manual*.pdf", "*README*", "VERSION", "CHANGELOG", "*.pdf"]
         for sd in list(dict.fromkeys(search_dirs)):
             if not sd.is_dir():
@@ -134,11 +133,13 @@ class ToolEnv:
                 command = [str(path), *args]
                 if path.suffix.lower() == ".jar":
                     command = ["java", "-jar", str(path), *args]
+                elif path.suffix.lower() == ".jl":
+                    command = [str(self._tool_paths.get("julia", "julia")), str(path), *args]
                 result = subprocess.run(
                     command,
                     capture_output=True, text=True, timeout=5
                 )
-                output = result.stdout.strip() or result.stderr.strip()
+                output = "\n".join(part.strip() for part in [result.stdout, result.stderr] if part and part.strip())
                 if version_pattern:
                     m = re.search(version_pattern, output)
                     if m:
@@ -150,7 +151,7 @@ class ToolEnv:
                             return version
         except Exception:
             pass
-        return None
+        return self._version_from_tool_dir(path)
 
     def _detect_tool(self, name: str, version_flag: str = "",
                       version_args: Optional[list[list[str]]] = None,

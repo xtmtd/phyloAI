@@ -122,6 +122,18 @@ def _compute_retained_msa_stats(msa_paths: list[Path]) -> dict:
 _TAPER_CUTOFF_DEFAULT = 3
 _TAPER_MANAGED_FLAGS = {"-m", "-a", "-c", "-l"}
 _TAPER_NT_CMD_EXTRA = ["-m", "N", "-a", "N"]
+
+
+def _detect_taper_version(taper_script: str, julia_exe: str) -> str:
+    env = ToolEnv(tool_paths={"julia": julia_exe})
+    try:
+        return env._get_version(
+            Path(taper_script),
+            [["-h"]],
+            version_pattern=r"Version\s+(\d+(?:\.\d+)+)",
+        ) or "unknown"
+    except Exception:
+        return "unknown"
 _STANDARD_AA = set("ARNDCQEGHILKMFPSTWYV")
 
 
@@ -322,6 +334,8 @@ def run_taper(
             julia_version = m.group(1) if m else raw
     except Exception:
         pass
+
+    taper_version = _detect_taper_version(taper_script, julia_exe)
 
     delimiter = _table_delimiter(table_format)
     suffix = _table_suffix(table_format)
@@ -539,7 +553,7 @@ def run_taper(
     payload = {
         "status": "success" if retained else "error",
         "command": command, "wall_time": round(wall_time, 2),
-        "tool_versions": {"julia": julia_version, "correction_multi.jl": "1.0.0"},
+        "tool_versions": {"julia": julia_version, "correction_multi.jl": taper_version},
         "params": params,
         "key_results": {
             "n_input": len(file_results), "n_retained": len(retained), "n_dropped": len(dropped),

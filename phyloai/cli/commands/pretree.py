@@ -1506,8 +1506,8 @@ def filter_group() -> None:
 
 _TAPER_HELP = (
     "Mask erroneous amino-acid or nucleotide sites within multiple sequence "
-    "alignments using the TAPER error-correction tool (bundled "
-    "correction_multi.jl, executed by Julia).\n"
+    "alignments using the TAPER error-correction tool "
+    "(correction_multi.jl, executed by Julia).\n"
     "\n"
     "Operating modes (one per paragraph):\n"
     "\n"
@@ -1556,8 +1556,7 @@ _TAPER_HELP = (
 @click.option(
     "--taper-path", type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
-    help="Explicit path to correction_multi.jl.  When omitted, the bundled copy "
-    "inside the PhyloAI package is used.",
+    help="Explicit path to correction_multi.jl.  When omitted, PhyloAI resolves it via PATH.",
 )
 @click.option(
     "--julia-path", type=click.Path(exists=True, dir_okay=False, path_type=Path),

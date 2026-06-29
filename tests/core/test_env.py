@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch
 from pathlib import Path
-from phyloai.core.env import ToolEnv, ToolStatus, ToolInfo
+from phyloai.core.env import TOOL_REGISTRY, ToolEnv, ToolStatus, ToolInfo
 
 
 def test_tool_status_values():
@@ -88,11 +88,18 @@ def test_check_all_includes_runtime_and_taper_entries():
         assert key in results
 
 
-def test_taper_bundled_tool_uses_correction_multi_script(tmp_path):
+def test_gpl_tools_are_external_not_bundled():
+    for name in ["correction_multi.jl", "bmge"]:
+        meta = TOOL_REGISTRY[name]
+        assert meta.get("bundled") is not True
+        assert "bundled_dir" not in meta
+        assert "bundled_executable" not in meta
+
+
+def test_taper_script_resolves_from_path_only(tmp_path):
     bundled_root = tmp_path / "bundled" / "TAPER-1.0.0"
     bundled_root.mkdir(parents=True)
-    taper_script = bundled_root / "correction_multi.jl"
-    taper_script.write_text("# taper placeholder")
+    (bundled_root / "correction_multi.jl").write_text("# taper placeholder")
 
     env = ToolEnv()
     env._bundled_dir = tmp_path / "bundled"
@@ -100,10 +107,8 @@ def test_taper_bundled_tool_uses_correction_multi_script(tmp_path):
     with patch("shutil.which", return_value=None):
         info = env.check_all()["correction_multi.jl"]
 
-    assert info.status == ToolStatus.OK
-    assert info.path == taper_script
-    assert info.version == "1.0.0"
-    assert info.note == "bundled"
+    assert info.status == ToolStatus.MISSING
+    assert info.path is None
 
 
 def test_get_version_uses_alternative_args_when_needed(tmp_path):
@@ -138,6 +143,61 @@ def test_get_version_runs_bmge_jar_via_java(tmp_path):
     assert version == "1.12"
     mock_run.assert_called_once_with(
         ["java", "-jar", str(tool), "-?"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+
+def test_get_version_falls_back_to_taper_install_dir(tmp_path):
+    tool_dir = tmp_path / "TAPER-1.0.0"
+    tool_dir.mkdir()
+    tool = tool_dir / "correction_multi.jl"
+    tool.write_text("# taper placeholder")
+
+    env = ToolEnv()
+
+    assert env._get_version(tool, "") == "1.0.0"
+
+
+def test_get_version_runs_julia_script_via_julia(tmp_path):
+    tool = tmp_path / "correction_multi.jl"
+    tool.write_text("# taper placeholder")
+
+    env = ToolEnv()
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = type(
+            "Result", (),
+            {"stdout": "(type: Float64, default: 3.0)\n", "stderr": "Version 1.0.0\n", "returncode": 0}
+        )()
+        version = env._get_version(tool, [["-h"]], version_pattern=r"Version\s+(\d+(?:\.\d+)+)")
+
+    assert version == "1.0.0"
+    mock_run.assert_called_once_with(
+        ["julia", str(tool), "-h"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+
+def test_get_version_uses_custom_julia_for_julia_script(tmp_path):
+    tool = tmp_path / "correction_multi.jl"
+    tool.write_text("# taper placeholder")
+
+    env = ToolEnv(tool_paths={"julia": "/opt/julia/bin/julia"})
+
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = type(
+            "Result", (),
+            {"stdout": "Version 1.0.0\n", "stderr": "", "returncode": 0}
+        )()
+        version = env._get_version(tool, [["-h"]], version_pattern=r"Version\s+(\d+(?:\.\d+)+)")
+
+    assert version == "1.0.0"
+    mock_run.assert_called_once_with(
+        ["/opt/julia/bin/julia", str(tool), "-h"],
         capture_output=True,
         text=True,
         timeout=5,

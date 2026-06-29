@@ -29,3 +29,21 @@ def test_mcmctree_registry_uses_version_args_list():
     assert "version_args" in meta
     assert meta["version_args"] == []
     assert "version_flag" not in meta
+
+
+def test_mcmctree_version_falls_back_to_install_dir(tmp_path):
+    tool_dir = tmp_path / "paml-4.10.10" / "bin"
+    tool_dir.mkdir(parents=True)
+    tool = tool_dir / "mcmctree"
+    tool.write_text("#!/bin/sh\n")
+
+    env = ToolEnv()
+
+    with patch("subprocess.run", return_value=_make_result("")):
+        ver = env._get_version(
+            tool,
+            [],
+            version_pattern=r"paml version (\d+(?:\.\d+)+)",
+        )
+
+    assert ver == "4.10.10"
