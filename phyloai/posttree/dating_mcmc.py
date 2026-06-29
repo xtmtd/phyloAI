@@ -389,12 +389,6 @@ def run_mcmc(
             return _error_result(f"--ctl does not exist: {ctl}", "input")
         if not ctl.is_file():
             return _error_result(f"--ctl is not a regular file: {ctl}", "input")
-        if clock != 2 or burnin != 100000 or sample_freq != 10 or nsamples != 10000:
-            return _error_result(
-                "--ctl is mutually exclusive with --clock, --burnin, --sample-freq, and --nsamples. "
-                "Remove those flags or drop --ctl to use generated settings.",
-                "input",
-            )
 
     if mcmctree_path:
         mcmctree_exe = Path(mcmctree_path)

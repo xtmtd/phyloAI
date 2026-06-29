@@ -825,22 +825,22 @@ def _run_hessian_impl(
                   "is derived by forcing usedata=0 on the "
                   "run's ctl, keeping the same seed; all other parameters "
                   "are preserved verbatim. "
-                  "Mutually exclusive with non-default --clock/--burnin/"
+                  "Mutually exclusive with --clock/--burnin/"
                   "--sample-freq/--nsamples."
               ))
-@click.option("--clock", type=click.Choice(["1", "2", "3"]), default="2", show_default=True,
+@click.option("--clock", type=click.Choice(["1", "2", "3"]), default=None,
               help=(
-                  "Clock model: 1=global clock, 2=independent rates (recommended), "
+                  "Clock model: 1=global clock, 2=independent rates (default), "
                   "3=correlated rates. Ignored when --ctl is provided."
               ))
-@click.option("--burnin", type=int, default=100000, show_default=True,
-              help="MCMC burnin iterations. Ignored when --ctl is provided.")
-@click.option("--sample-freq", "sample_freq", type=int, default=10, show_default=True,
-              help="Record one sample every N iterations. Ignored when --ctl is provided.")
-@click.option("--nsamples", type=int, default=10000, show_default=True,
+@click.option("--burnin", type=int, default=None,
+              help="MCMC burnin iterations (default: 100000). Ignored when --ctl is provided.")
+@click.option("--sample-freq", "sample_freq", type=int, default=None,
+              help="Record one sample every N iterations (default: 10). Ignored when --ctl is provided.")
+@click.option("--nsamples", type=int, default=None,
               help=(
-                  "Number of samples to keep. Total iterations = --burnin + "
-                  "(--sample-freq x --nsamples). Default: 200000 total. "
+                  "Number of samples to keep (default: 10000). "
+                  "Total iterations = --burnin + (--sample-freq x --nsamples). "
                   "Ignored when --ctl is provided."
               ))
 @click.option("--runs", "n_runs", type=int, default=2, show_default=True,
@@ -862,10 +862,10 @@ def _run_hessian_impl(
 def mcmc_command(
     hessian_dir: Path,
     ctl_path: Path | None,
-    clock: str,
-    burnin: int,
-    sample_freq: int,
-    nsamples: int,
+    clock: str | None,
+    burnin: int | None,
+    sample_freq: int | None,
+    nsamples: int | None,
     n_runs: int,
     output_dir: Path,
     mcmctree_path: str | None,
@@ -915,27 +915,17 @@ def mcmc_command(
     """
     from phyloai.posttree.dating_mcmc import run_mcmc
 
-    clock_int = int(clock)
-    defaults = {"clock": 2, "burnin": 100000, "sample_freq": 10, "nsamples": 10000}
+    if ctl_path is not None and (clock is not None or burnin is not None or sample_freq is not None or nsamples is not None):
+        _fail(
+            "--ctl is mutually exclusive with --clock, --burnin, --sample-freq, "
+            "and --nsamples. Remove those flags or drop --ctl.",
+            exit_code=1,
+        )
 
-    if ctl_path is not None:
-        conflicts = []
-        if clock_int != defaults["clock"]:
-            conflicts.append(f"--clock {clock}")
-        if burnin != defaults["burnin"]:
-            conflicts.append(f"--burnin {burnin}")
-        if sample_freq != defaults["sample_freq"]:
-            conflicts.append(f"--sample-freq {sample_freq}")
-        if nsamples != defaults["nsamples"]:
-            conflicts.append(f"--nsamples {nsamples}")
-        if conflicts:
-            _fail(
-                f"--ctl is mutually exclusive with non-default values of "
-                f"--clock/--burnin/--sample-freq/--nsamples. "
-                f"Conflicting flags: {', '.join(conflicts)}. "
-                f"Remove these flags or drop --ctl to use the generated template.",
-                exit_code=1,
-            )
+    clock_int = int(clock) if clock is not None else 2
+    burnin_val = burnin if burnin is not None else 100000
+    sample_freq_val = sample_freq if sample_freq is not None else 10
+    nsamples_val = nsamples if nsamples is not None else 10000
 
     # Output directory lifecycle
     if not dry_run:
@@ -954,9 +944,9 @@ def mcmc_command(
         hessian_dir=hessian_dir,
         ctl=ctl_path,
         clock=clock_int,
-        burnin=burnin,
-        sample_freq=sample_freq,
-        nsamples=nsamples,
+        burnin=burnin_val,
+        sample_freq=sample_freq_val,
+        nsamples=nsamples_val,
         n_runs=n_runs,
         output_dir=output_dir,
         mcmctree_path=mcmctree_path,
@@ -971,8 +961,8 @@ def mcmc_command(
 
     cli_command = _build_mcmc_cli_command(
         hessian_dir=hessian_dir, ctl_path=ctl_path,
-        clock=clock, burnin=burnin, sample_freq=sample_freq,
-        nsamples=nsamples, n_runs=n_runs, output_dir=output_dir,
+        clock=clock_int, burnin=burnin_val, sample_freq=sample_freq_val,
+        nsamples=nsamples_val, n_runs=n_runs, output_dir=output_dir,
         mcmctree_path=mcmctree_path,
         overwrite=overwrite, dry_run=dry_run, quiet=quiet,
     )
