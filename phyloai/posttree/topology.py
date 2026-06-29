@@ -879,17 +879,14 @@ def run_topology(
         if stream_output and not quiet:
             child = subprocess.Popen(
                 effective_cmd,
-                stdout=subprocess.PIPE,
+                stdout=None,
                 stderr=subprocess.PIPE,
                 text=True,
                 cwd=str(output_dir),
             )
-            stdout_text, stderr_text = child.communicate()
+            _, stderr_text = child.communicate()
             proc_returncode = child.returncode
-            tool_stderr_out = (
-                (stdout_text.strip() if stdout_text else "")
-                + ("\n" + stderr_text.strip() if stderr_text else "")
-            ).strip()
+            tool_stderr_out = stderr_text.strip() if stderr_text else ""
         else:
             proc = subprocess.run(
                 effective_cmd,
