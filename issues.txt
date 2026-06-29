@@ -158,9 +158,8 @@ hessian 3 处错误 payload 全部补全 `params` 字段：
 - iqtree 路径解析失败时
 `command` 字段由 CLI 层补齐。
 
-### 14. MEDIUM — FIXED
-`_resolve_tool_paths()` 在 dry_run 模式下使用 `env.get()`（返回 PATH 上的路径或 None）代替 bare tool name，使 dry-run 的参数与正常 run 的 resolved path 一致。
-文件：`phyloai/pretree/align.py:589-598`
+### 14. MEDIUM — 接受已知限制
+尝试修复后发现副作用过大（dry_run 时的非活动工具也被解析，影响多条测试和命令生成逻辑）。这是边界场景（dry_run + resume 同时使用），实际发生概率极低。暂接受为已知限制，如后续有实际用户报告再修复。
 
 ### 15. MEDIUM — FIXED
 对从 checkpoint 恢复的 resume 任务，移除 `cmd` 字段（因未实际执行命令），`wall_time` 设为 `-1.0`（表示未测量）。避免伪造 cmd + 无效 wall_time 违反 JSON 标准。

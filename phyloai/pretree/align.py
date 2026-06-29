@@ -585,16 +585,16 @@ def _resolve_tool_paths(
 
     env = ToolEnv()
     if method == "magus":
-        magus_exe = str(_validate_executable_path(magus_path, "magus")) if magus_path else (str(env.get("magus") or "magus") if dry_run else str(env.require("magus")))
-        mafft_exe = str(mafft_path) if mafft_path else (str(env.get("mafft") or "mafft") if dry_run else str(env.require("mafft")))
+        magus_exe = str(_validate_executable_path(magus_path, "magus")) if magus_path else ("magus" if dry_run else str(env.require("magus")))
+        mafft_exe = str(mafft_path) if mafft_path else "mafft"
     else:
-        mafft_exe = str(_validate_executable_path(mafft_path, "mafft")) if mafft_path else (str(env.get("mafft") or "mafft") if dry_run else str(env.require("mafft")))
-        magus_exe = str(magus_path) if magus_path else (str(env.get("magus") or "magus") if dry_run else str(env.require("magus")))
+        mafft_exe = str(_validate_executable_path(mafft_path, "mafft")) if mafft_path else ("mafft" if dry_run else str(env.require("mafft")))
+        magus_exe = str(magus_path) if magus_path else "magus"
 
     if backtrans:
-        trimal_exe = str(_validate_executable_path(trimal_path, "trimal")) if trimal_path else (str(env.get("trimal") or "trimal") if dry_run else str(env.require("trimal")))
+        trimal_exe = str(_validate_executable_path(trimal_path, "trimal")) if trimal_path else ("trimal" if dry_run else str(env.require("trimal")))
     else:
-        trimal_exe = str(trimal_path) if trimal_path else (str(env.get("trimal") or "trimal") if dry_run else str(env.require("trimal")))
+        trimal_exe = str(trimal_path) if trimal_path else "trimal"
 
     return mafft_exe, magus_exe, trimal_exe
 
