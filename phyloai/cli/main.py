@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import click
 
+from phyloai import __version__
 from phyloai.cli.commands.posttree import posttree
 from phyloai.cli.commands.pretree import pretree
 from phyloai.cli.commands.report import report
@@ -22,6 +23,7 @@ class _RootGroup(click.Group):
 
 
 @click.group(context_settings=CONTEXT_SETTINGS, cls=_RootGroup)
+@click.version_option(__version__, "-v", "--version")
 @click.pass_context
 def cli(ctx: click.Context) -> None:
     """PhyloAI — modular phylogenomics analysis platform.
