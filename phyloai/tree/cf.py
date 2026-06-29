@@ -934,6 +934,7 @@ def run_cf(
             is_error=True, error_msg=error_msg,
             versions=versions,
             tool_stderr=str(proc.stderr),
+        )
 
     # Post-process for qCF: map values from wastral.tre to ref tree
     if cf_mode == "qcf":
@@ -961,7 +962,7 @@ def run_cf(
                     skipped=skipped, warnings_list=warnings_list,
                     is_error=True, error_msg=error_msg,
                     versions=versions,
-        tool_stderr=str(proc.stderr),
+                    tool_stderr=str(proc.stderr),
                 )
         else:
             error_msg = "wASTRAL completed but did not produce wastral.tre"
@@ -983,6 +984,7 @@ def run_cf(
                 is_error=True, error_msg=error_msg,
                 versions=versions,
                 tool_stderr=str(proc.stderr),
+            )
 
     payload = _assemble_cf_result(
         run_start=run_start,
@@ -1003,7 +1005,7 @@ def run_cf(
         versions=versions,
         iqtree_exe=iqtree_exe,
         wastral_exe=wastral_exe,
-        tool_stderr="" if cf_mode == "qcf" else str(proc.stderr),
+        tool_stderr=str(proc.stderr),
     )
 
     return payload
