@@ -150,6 +150,7 @@ def _run_one_fasttree(
     fasttree_executable: str = "FastTree",
     output_dir: Path | None = None,
     dry_run: bool = False,
+    stream_output: bool = False,
 ) -> dict[str, Any]:
     if output_dir is None:
         output_dir = gene_path.parent
@@ -203,23 +204,47 @@ def _run_one_fasttree(
         out_tree.parent.mkdir(parents=True, exist_ok=True)
         out_log.parent.mkdir(parents=True, exist_ok=True)
 
-        proc = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        if stream_output:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            captured_stderr: list[str] = []
+            assert proc.stderr is not None
+            import sys
+            while True:
+                line = proc.stderr.readline()
+                if not line:
+                    break
+                captured_stderr.append(line)
+                sys.stderr.write(line)
+            stdout_text, _ = proc.communicate()
+            stderr_text = "".join(captured_stderr)
+            returncode = proc.returncode
+        else:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            stdout_text = proc.stdout
+            stderr_text = proc.stderr
+            returncode = proc.returncode
+
         wall_time = _time.monotonic() - start
 
-        out_tree.write_text(proc.stdout)
-        out_log.write_text(proc.stderr)
+        out_tree.write_text(stdout_text)
+        out_log.write_text(stderr_text)
         result["log_file"] = str(out_log)
 
-        if proc.returncode != 0:
+        if returncode != 0:
             return {
                 **result,
                 "status": "failed",
-                "reason": f"FastTree exited with code {proc.returncode}: {proc.stderr[:200]}",
+                "reason": f"FastTree exited with code {returncode}: {stderr_text[:200]}",
                 "wall_time": wall_time,
                 "warnings": warnings,
             }
@@ -240,7 +265,7 @@ def _run_one_fasttree(
             **result,
             "status": "success",
             "wall_time": wall_time,
-            "tool_stderr": proc.stderr,
+            "tool_stderr": stderr_text,
             "warnings": warnings,
         }
 
@@ -498,6 +523,7 @@ def run_fasttree(
             fasttree_executable=fasttree_exe,
             output_dir=output_dir,
             dry_run=dry_run,
+            stream_output=not quiet,
         )
         return _assemble_result(
             run_start=run_start, fasttree_exe=fasttree_exe,
