@@ -9,6 +9,7 @@ build/
 .eggs/
 *.so
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 *.log
