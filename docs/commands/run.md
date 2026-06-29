@@ -1,5 +1,8 @@
 # phyloai run
 
+[English](run.md) | [中文](run.zh.md)
+
+
 ## Purpose
 
 One-click phylogenomics pipeline from raw sequence files to a species tree. Orchestrates all preprocessing and inference steps using sensible defaults. For fine-grained control over any individual step, use the constituent subcommands directly.

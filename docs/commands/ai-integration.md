@@ -1,5 +1,8 @@
 # PhyloAI AI Integration
 
+[English](ai-integration.md) | [中文](ai-integration.zh.md)
+
+
 PhyloAI provides an AI interaction layer through **MCP Server** + **Skill**, enabling conversational phylogenomics analysis without memorizing CLI parameters.
 
 ```

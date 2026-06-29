@@ -1,5 +1,8 @@
 # phyloai pretree align
 
+[English](pretree-align.md) | [中文](pretree-align.zh.md)
+
+
 ## Purpose
 
 Align a directory of unaligned sequence files using MAFFT or MAGUS. Produces one aligned FASTA file per input gene. Optionally produces codon-level NT alignments via trimAl backtranslation.

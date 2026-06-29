@@ -1,5 +1,8 @@
 # phyloai tree cf
 
+[English](tree-cf.md) | [中文](tree-cf.zh.md)
+
+
 Concordance factor computation — quantify branch support using gene concordance (gCF), site concordance (sCF, sCFl), and quartet concordance (qCF).
 
 ## Purpose
@@ -16,11 +19,11 @@ phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 
 | `--cf`    | Index  | Tool    | Description | Origin |
 |-----------|--------|---------|-------------|--------|
-| `gcf`     | gCF    | IQ-TREE3 | Gene concordance factor | Minh et al. 2020, *Mol Biol Evol* 37(5):1530–1534 |
-| `scf`     | sCF    | IQ-TREE3 | Site concordance factor (parsimony) | Minh et al. 2020, *Mol Biol Evol* 37(5):1530–1534 |
-| `scfl`    | sCFl   | IQ-TREE3 | Site concordance factor (likelihood) | Mo et al. 2023, *Syst Biol* 72(3):559–574 |
+| `gcf`     | gCF    | IQ-TREE3 | Gene concordance factor | Minh et al. 2020 |
+| `scf`     | sCF    | IQ-TREE3 | Site concordance factor (parsimony) | Minh et al. 2020 |
+| `scfl`    | sCFl   | IQ-TREE3 | Site concordance factor (likelihood) | Mo et al. 2023 |
 | `gcf+scf` | gCF+sCF | IQ-TREE3 | Combined gCF + sCF in one run | Minh et al. 2020 |
-| `qcf`     | qCF    | wASTRAL  | Quartet concordance factor | Mirarab et al. 2014, *Science* 346(6215):1250463 |
+| `qcf`     | qCF    | wASTRAL  | Quartet concordance factor | Mirarab et al. 2014 |
 
 ### CF Index Details
 
@@ -143,5 +146,4 @@ If no existing support exists, the qCF value becomes the sole label: `0.75`.
 - Minh BQ, Hahn MW, Lanfear R (2020) New methods to calculate concordance factors for phylogenomic datasets. *Molecular Biology and Evolution* **37**(5):1530–1534.
 - Mo YK, Lanfear R, Hahn MW, Minh BQ (2023) Updated site concordance factors minimize effects of homoplasy and taxon sampling. *Systematic Biology* **72**(3):559–574.
 - Mirarab S, Reaz R, Bayzid MS, Zimmermann T, Swenson MS, Warnow T (2014) ASTRAL: genome-scale coalescent-based species tree estimation. *Bioinformatics* **30**(17):i541–i548.
-- Mirarab S, Reaz R, Bayzid MS, Zimmermann T, Swenson MS, Warnow T (2014) ASTRAL: genome-scale coalescent-based species tree estimation. *Science* **346**(6215):1250463.
 - Zhang C, Rabiee M, Sayyari E, Mirarab S (2018) ASTRAL-III: polynomial time species tree reconstruction from partially resolved gene trees. *BMC Bioinformatics* **19**(Suppl 6):153.

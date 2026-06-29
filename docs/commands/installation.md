@@ -1,5 +1,7 @@
 # PhyloAI Installation Guide
 
+[English](installation.md) | [中文](installation.zh.md)
+
 ## Purpose
 
 This guide explains how to install PhyloAI, make external tools visible to the active shell environment, and verify the setup with `phyloai doctor`.

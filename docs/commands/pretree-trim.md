@@ -1,5 +1,8 @@
 # phyloai pretree trim
 
+[English](pretree-trim.md) | [中文](pretree-trim.zh.md)
+
+
 ## Purpose
 
 `phyloai pretree trim` is PhyloAI's batch MSA-trimming command for already aligned FASTA files. It trims one gene alignment at a time with the selected backend tool (`trimAl`, `BMGE`, or `ClipKIT`) and supports AA-only, NT-only, CODON, and AA+NT dual-output workflows.

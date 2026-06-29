@@ -1,5 +1,8 @@
 # phyloai tree bi
 
+[English](tree-bi.md) | [中文](tree-bi.zh.md)
+
+
 Bayesian phylogenetic inference with [PhyloBayes-MPI](https://github.com/bayesiancook/pbmpi) (`pb_mpi`).
 
 ## Purpose

@@ -1,5 +1,8 @@
 # phyloai tree ml iqtree
 
+[English](tree-ml-iqtree.md) | [中文](tree-ml-iqtree.zh.md)
+
+
 ## Purpose
 
 Infer maximum-likelihood phylogenetic trees using IQ-TREE3. Supports homogeneous models (with or without ModelFinder and partitions), heterogeneous AA models (mixture and PMSF), NT heterogeneous models (MIX+MF), and branch support computation (UFBoot, SH-aLRT).

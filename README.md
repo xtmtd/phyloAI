@@ -1,5 +1,7 @@
 # PhyloAI
 
+[English](README.md) | [中文](README.zh.md)
+
 An AI-native modular phylogenomics analysis platform.
 
 PhyloAI connects common pre-tree, tree, and post-tree tasks into a documented

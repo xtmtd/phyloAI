@@ -1,5 +1,8 @@
 # phyloai completion
 
+[English](completion.md) | [中文](completion.zh.md)
+
+
 ## Purpose
 
 `phyloai completion <shell>` generates static shell completion scripts for Bash, Zsh, and Fish.

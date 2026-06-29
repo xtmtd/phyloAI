@@ -1,5 +1,8 @@
 # phyloai pretree stats
 
+[English](pretree-stats.md) | [中文](pretree-stats.zh.md)
+
+
 ## Purpose
 
 `phyloai pretree stats` is a read-only QC and inspection command for sequence and alignment files. It summarizes format, sequence type, alignment status, taxon counts, length distributions, gap ratios, ambiguous-character ratios, and site-pattern statistics for aligned files.

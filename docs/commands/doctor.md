@@ -1,5 +1,8 @@
 # phyloai doctor
 
+[English](doctor.md) | [中文](doctor.zh.md)
+
+
 ## Purpose
 
 `phyloai doctor` checks whether external tools expected by the local PhyloAI environment can be found, where they are located, and whether a version string can be detected.

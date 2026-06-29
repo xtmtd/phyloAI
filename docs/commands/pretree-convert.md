@@ -1,5 +1,8 @@
 # phyloai pretree convert
 
+[English](pretree-convert.md) | [中文](pretree-convert.zh.md)
+
+
 ## Purpose
 
 `phyloai pretree convert` normalizes sequence characters and converts supported sequence/alignment formats for the PhyloAI workflow. It is intended for FASTA, Phylip-relaxed, Phylip-PAML, and Nexus files only; it is not a general-purpose format conversion tool.

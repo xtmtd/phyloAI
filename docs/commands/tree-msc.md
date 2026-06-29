@@ -1,5 +1,8 @@
 # phyloai tree msc
 
+[English](tree-msc.md) | [中文](tree-msc.zh.md)
+
+
 Multispecies coalescent species tree inference with [wASTRAL](https://github.com/chaoszhang/ASTER) (ASTER).
 
 ## Purpose

@@ -1,5 +1,8 @@
 # phyloai report
 
+[English](report.md) | [中文](report.zh.md)
+
+
 ## Purpose
 
 Generate a reproducible, auditable analysis report from a PhyloAI run directory. Produces two files:

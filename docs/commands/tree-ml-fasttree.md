@@ -1,5 +1,8 @@
 # phyloai tree ml fasttree
 
+[English](tree-ml-fasttree.md) | [中文](tree-ml-fasttree.zh.md)
+
+
 ## Purpose
 
 Infer maximum-likelihood phylogenetic trees using FastTree.

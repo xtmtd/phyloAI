@@ -1,5 +1,8 @@
 # phyloai pretree metrics
 
+[English](pretree-metrics.md) | [中文](pretree-metrics.zh.md)
+
+
 ## Purpose
 
 `phyloai pretree metrics` computes molecular marker attributes from MSAs and/or gene trees for statistical exploration and downstream filtering. It runs after `pretree trim` and before `pretree filter` in the standard pipeline.

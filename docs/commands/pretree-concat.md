@@ -1,5 +1,8 @@
 # phyloai pretree concat
 
+[English](pretree-concat.md) | [中文](pretree-concat.zh.md)
+
+
 ## Purpose
 
 `phyloai pretree concat` concatenates multiple MSA files into a supermatrix

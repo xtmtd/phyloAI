@@ -1,5 +1,8 @@
 # phyloai pretree filter
 
+[English](pretree-filter.md) | [中文](pretree-filter.zh.md)
+
+
 ## Purpose
 
 `phyloai pretree filter` is the quality-control gate between tree inference and supermatrix concatenation. It provides five complementary filtering workflows:

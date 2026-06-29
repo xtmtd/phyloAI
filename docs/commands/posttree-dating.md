@@ -1,5 +1,8 @@
 # phyloai posttree dating
 
+[English](posttree-dating.md) | [中文](posttree-dating.zh.md)
+
+
 ## Purpose
 
 Two-step Bayesian molecular dating with MCMCtree using approximate likelihood (`usedata=2`):
