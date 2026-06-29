@@ -109,9 +109,9 @@ Scope: docs/superpowers/specs compared with current implementation. docs/superpo
 `doctor.py` 在 JSON 和 text 两种输出模式末尾都增加检查：如果任何 required 工具状态为 MISSING，`ctx.exit(3)`。
 文件：`phyloai/cli/doctor.py:60+,80+`
 
-### 3. HIGH — FIXED
-`env.py` 中移除了 iqtree3 和 trimal 的 `"bundled": True` 标记。之前已清理 `phyloai/bundled/`，现在 TOOL_REGISTRY 和实际目录状态一致。
-文件：`phyloai/core/env.py:29,65`
+### 3. HIGH — FIXED（代码）+ 待同步（spec/docs）
+`env.py` 中移除了 iqtree3 和 trimal 的 `"bundled": True` 标记。`phyloai/bundled/` 已清空。TOOL_REGISTRY 与实际目录状态一致。
+doctor spec 仍需同步更新以反映当前策略（不再捆绑工具，需外部安装）。
 
 ### 4. HIGH — 不用修 (audit 误报)
 `pretree.py` CLI 层在 `run()` 返回后依次调用 `_generate_all_plots()` 和 `_compute_correlation()` + `_generate_correlation_heatmap()`（行 1117-1153）。audit 只检查了 `metrics.py:run()` 函数体，遗漏了 CLI 编排层。三个阶段确实都默认执行。
@@ -125,25 +125,25 @@ Scope: docs/superpowers/specs compared with current implementation. docs/superpo
 `check_status` 重新排序：先检查 `job.json` + PID（检测是否正在运行），再查 `result.json`。避免旧 result.json 造成 stale completion。
 文件：`phyloai/mcp/tools/utils.py:15-36`
 
-### 7. MEDIUM — 已修复 (commit aae42b0)
-之前 commit aae42b0 已将 `job.json` 写入推迟到后台线程，等 CLI 创建 output_dir 后再写。这是有意设计，避免 `job.json` 触发目录冲突检查。极端情况下（30s 内 output_dir 未创建）可能有短暂 not_started，但实际影响极小。
+### 7. MEDIUM — 接受偏离（不修代码，更新 spec）
+产品取舍：job.json 延迟写入是刻意设计，避免在 CLI 创建 output_dir 前触发目录冲突检查。极端情况下可能有短暂 not_started（30s 超时），但实际影响极小。应从 spec 侧标记为"接受偏离"而非要求同步写入。
 
-### 8. MEDIUM — 不用修
-MCP report 的 `--overwrite` 对 AI 场景是合理默认（每次获取最新报告）。`--output-dir` 不支持也不影响实际使用，report 几乎总在 `<run_dir>/report/` 下。MCP 确实需要 report——AI 客户端用它获取分析结果。
+### 8. MEDIUM — 产品决定（更新 spec/skill）
+MCP report 强制 `<run_dir>/report` + `--overwrite` 对 AI 场景是合理默认。偏离了 report spec 和 workflow overwrite 规则，但属于有意的产品取舍。需同步更新 spec 和 skill 文档。
 
 ### 9. MEDIUM — FIXED
 `dating_mcmc.py` 增加互斥校验：当 `--ctl` 提供且 clock/burnin/sample_freq/nsamples 中有非默认值时，返回明确错误。
 文件：`phyloai/posttree/dating_mcmc.py:394+`
 
 ### 10. MEDIUM — FIXED
-4 处修复：
+4 处修复（覆盖所有 3 个 qCF 调用点和单模式路径）：
 - `topology.py`: stdout+stderr 合并捕获
 - `tree/ml.py:794`: 单模式 FastTree 使用 `first.get("tool_stderr")`
 - `tree/ml_iqtree.py:1716`: 单模式 IQ-TREE 使用 `first.get("tool_stderr")`
-- `tree/cf.py:1008`: qcf 模式也捕获 stderr
+- `tree/cf.py:936,986,1008`: 3 处 qCF 分支全部改为 `str(proc.stderr)`
 
-### 11. MEDIUM — 不用修
-`--input-format` 透传给 IQ-TREE 做校验是正确做法。IQ-TREE 自己会拒绝不支持的格式。spec 里 "preflight validation" 只是描述性文字，实现层面不需要 PhyloAI 重复 IQ-TREE 的格式检测。功能本身没问题。
+### 11. MEDIUM — 接受现状（更新 spec）
+`--input-format` 透传给 IQ-TREE 做校验是正确的。spec 中 "PhyloAI-side preflight validation" 描述应从 spec 中移除或改为说明"委托 IQ-TREE 校验"。功能本身没问题。
 
 ### 12. MEDIUM — FIXED
 移除两个位置的 dry-run 目录创建：
@@ -152,16 +152,18 @@ MCP report 的 `--overwrite` 对 AI 场景是合理默认（每次获取最新�
 文件：`phyloai/tree/ml_iqtree.py:1040-1041,1255-1257`
 
 ### 13. MEDIUM — FIXED
-hessian 错误 payload 补全 `params` 字段，包含所有输入参数。`command` 字段由 CLI 层补齐。
-文件：`phyloai/posttree/dating_hessian.py:176-194`
+hessian 3 处错误 payload 全部补全 `params` 字段：
+- 输入验证错误（bin/check 阶段）
+- seq_type auto-detect 失败时
+- iqtree 路径解析失败时
+`command` 字段由 CLI 层补齐。
 
 ### 14. MEDIUM — FIXED
 `_resolve_tool_paths()` 在 dry_run 模式下使用 `env.get()`（返回 PATH 上的路径或 None）代替 bare tool name，使 dry-run 的参数与正常 run 的 resolved path 一致。
 文件：`phyloai/pretree/align.py:589-598`
 
 ### 15. MEDIUM — FIXED
-`wall_time: 0.0` 改为 `-1.0`，表示"未测量/从 checkpoint 恢复"。
-文件：`phyloai/pretree/align.py:288`
+对从 checkpoint 恢复的 resume 任务，移除 `cmd` 字段（因未实际执行命令），`wall_time` 设为 `-1.0`（表示未测量）。避免伪造 cmd + 无效 wall_time 违反 JSON 标准。
 
 ### 16. MEDIUM — FIXED
 将 all-fail 检查提前到 checkpoint 写入之前。如果当前批次和 resume 批次全为空，直接 raise 异常（不会写出 success checkpoint）。

@@ -287,7 +287,6 @@ def reconstruct_align_result(
                 "alignment_length": alignment_length,
                 "wall_time": _wall_map.get(task.input, -1.0),
                 "warnings": [],
-                "cmd": cmd_list,
                 "log_file": f"logs/{input_path.stem}.log",
             }
         )

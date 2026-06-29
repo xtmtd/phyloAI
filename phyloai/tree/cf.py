@@ -933,8 +933,7 @@ def run_cf(
             skipped=skipped, warnings_list=warnings_list,
             is_error=True, error_msg=error_msg,
             versions=versions,
-            tool_stderr="" if cf_mode == "qcf" else str(proc.stderr),
-        )
+            tool_stderr=str(proc.stderr),
 
     # Post-process for qCF: map values from wastral.tre to ref tree
     if cf_mode == "qcf":
@@ -983,8 +982,7 @@ def run_cf(
                 skipped=skipped, warnings_list=warnings_list,
                 is_error=True, error_msg=error_msg,
                 versions=versions,
-                tool_stderr="" if cf_mode == "qcf" else str(proc.stderr),
-            )
+                tool_stderr=str(proc.stderr),
 
     payload = _assemble_cf_result(
         run_start=run_start,
