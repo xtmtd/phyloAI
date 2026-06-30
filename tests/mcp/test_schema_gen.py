@@ -59,3 +59,15 @@ def test_build_mcp_tool_doctor_exposes_runtime_schema() -> None:
     assert tool_def["name"] == "doctor"
     assert tool_def["inputSchema"]["type"] == "object"
     assert "output_format" in tool_def["inputSchema"]["properties"]
+
+
+def test_walk_click_tree_finds_pretree_concat_jackknife() -> None:
+    descriptor = next(d for d in walk_click_tree(cli) if d["tool_name"] == "pretree_concat_jackknife")
+    tool_def = build_mcp_tool(descriptor)
+
+    assert tool_def["name"] == "pretree_concat_jackknife"
+    props = tool_def["inputSchema"]["properties"]
+    assert props["replicates"]["default"] == 100
+    assert props["target_length"]["default"] == 50000
+    assert props["seed"]["default"] == 42
+    assert props["table_format"]["enum"] == ["csv", "tsv"]

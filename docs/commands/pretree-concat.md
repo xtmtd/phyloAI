@@ -35,6 +35,19 @@ phyloai pretree concat \
   --output-dir ./runs/pretree/concat
 ```
 
+Gene-jackknife pseudoreplicates from an existing matrix:
+```bash
+phyloai pretree concat jackknife \
+  --matrix runs/pretree/concat/matrix.fa \
+  --partitions runs/pretree/concat/matrix.partitions \
+  --replicates 100 \
+  --target-length 50000 \
+  --to fasta \
+  --table-format csv \
+  --seed 42 \
+  -o runs/pretree/concat/jackknife
+```
+
 ## Parameters
 
 | Parameter | Default | Notes |
@@ -76,6 +89,26 @@ runs/pretree/concat/
 ├── dropped_alignments.csv      # if any MSA dropped
 ├── result.json
 ```
+
+## Gene-Jackknife Pseudoreplicates
+
+`phyloai pretree concat jackknife` creates pseudoreplicate matrices from an
+existing concatenated matrix and partition file. It does not infer trees.
+
+Outputs are written as one directory per replicate:
+
+```text
+jackknife/
+├── rep001/
+│   ├── rep001.fa
+│   └── rep001.partitions
+├── rep002/
+├── jackknife_summary.csv
+└── result.json
+```
+
+The selected loci for each replicate are recorded in the corresponding
+`repXXX.partitions` file and in `result.json`.
 
 ### Variants
 

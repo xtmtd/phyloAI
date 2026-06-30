@@ -827,17 +827,18 @@ def trim_command(
             click.echo(f"Warning: {warning}", err=True)
 
 
-@pretree.command(
+@pretree.group(
     "concat",
+    invoke_without_command=True,
     help=(
         "Concatenate multiple MSA files into a supermatrix for phylogenetic inference. "
         "Supports occupancy filtering, recoding, codon variants, outgroup reordering, "
-        "and multi-format output."
+        "multi-format output, and gene-jackknife pseudoreplicates."
     ),
 )
 @click.option(
     "--msa-dir", type=click.Path(file_okay=False, path_type=Path),
-    required=True, help="Directory of input MSA files.",
+    default=None, help="Directory of input MSA files.",
 )
 @click.option(
     "--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path),
@@ -896,8 +897,10 @@ def trim_command(
     "--overwrite", is_flag=True, default=False,
     help="Delete and recreate non-empty output directory.",
 )
+@click.pass_context
 def concat_command(
-    msa_dir: Path,
+    ctx: click.Context,
+    msa_dir: Path | None,
     output_dir: Path,
     prefix: str,
     seq_type: str,
@@ -911,6 +914,11 @@ def concat_command(
     quiet: bool,
     overwrite: bool,
 ) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+
+    if msa_dir is None:
+        _fail("--msa-dir is required.", 1)
     if not msa_dir.exists():
         _fail(f"MSA directory '{msa_dir}' does not exist.", 1)
     if not (0.0 <= taxa_occupancy <= 1.0):
@@ -993,6 +1001,65 @@ def concat_command(
         click.echo(f"Results saved to {output_dir / 'result.json'}", err=True)
     elif dry_run and not quiet:
         click.echo("[dry-run] No files written.", err=True)
+
+
+@concat_command.command(
+    "jackknife",
+    help="Generate gene-jackknife pseudoreplicate matrices from a concatenated matrix and partitions.",
+)
+@click.option("--matrix", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True, help="Existing concatenated matrix.")
+@click.option("--partitions", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True, help="RAxML-style partition file matching --matrix.")
+@click.option("--replicates", type=click.IntRange(1, None), default=100, show_default=True, help="Number of pseudoreplicates to generate.")
+@click.option("--target-length", type=click.IntRange(1, None), default=50000, show_default=True, help="Minimum sampled site length per pseudoreplicate.")
+@click.option("--prefix", type=str, default="rep", show_default=True, help="Replicate file and directory prefix.")
+@click.option("--to", "to", type=click.Choice(["fasta", "phylip-relaxed", "phylip-paml", "nexus"]), default="fasta", show_default=True, help="Output matrix format.")
+@click.option("--table-format", type=click.Choice(["csv", "tsv"]), default="csv", show_default=True, help="Table format for jackknife_summary.")
+@click.option("--seed", type=int, default=42, show_default=True, help="Random seed for reproducible sampling.")
+@click.option("--output-dir", "-o", type=click.Path(file_okay=False, path_type=Path), default=None, help="Output directory. Default: <matrix_parent>/jackknife.")
+@click.option("--overwrite", is_flag=True, default=False, help="Delete and recreate non-empty output directory.")
+@click.option("--dry-run", is_flag=True, default=False, help="Validate inputs and report planned outputs without writing files.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress terminal output.")
+def concat_jackknife_command(
+    matrix: Path,
+    partitions: Path,
+    replicates: int,
+    target_length: int,
+    prefix: str,
+    to: str,
+    table_format: str,
+    seed: int,
+    output_dir: Path | None,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    from phyloai.pretree.concat import run_concat_jackknife
+
+    try:
+        payload = run_concat_jackknife(
+            matrix=matrix,
+            partitions=partitions,
+            output_dir=output_dir,
+            replicates=replicates,
+            target_length=target_length,
+            prefix=prefix,
+            to=to,
+            table_format=table_format,
+            seed=seed,
+            overwrite=overwrite,
+            dry_run=dry_run,
+            quiet=quiet,
+        )
+    except ValueError as exc:
+        _fail(str(exc), 1)
+
+    if dry_run:
+        if not quiet:
+            click.echo(f"[dry-run] Would generate {replicates} pseudoreplicates with target length {target_length}.", err=True)
+        return
+    if not quiet:
+        click.echo(f"Pseudoreplicates saved to {payload['params']['output_dir']}", err=True)
+        click.echo(f"Results saved to {Path(payload['params']['output_dir']) / 'result.json'}", err=True)
 
 
 # ---------------------------------------------------------------------------

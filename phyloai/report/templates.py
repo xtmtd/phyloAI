@@ -495,6 +495,42 @@ def generate_methods_pretree_concat(
     return text
 
 
+def generate_methods_pretree_concat_jackknife(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    reps = params.get("replicates", key_results.get("n_replicates", 0))
+    target = params.get("target_length", key_results.get("target_length", 0))
+    seed = params.get("seed", 42)
+    fmt = params.get("to", "fasta")
+    mean_len = key_results.get("mean_length")
+    min_len = key_results.get("min_length")
+    max_len = key_results.get("max_length")
+    min_loci = key_results.get("min_loci")
+    max_loci = key_results.get("max_loci")
+    text = (
+        f"A gene-jackknife set of pseudoreplicate matrices was generated from the concatenated "
+        f"supermatrix using phyloai pretree concat jackknife. "
+        f"A total of {_describe_n(reps, 'pseudoreplicate')} were sampled without replacement "
+        f"from partition-defined loci until each reached at least {_safe_fmt(target, ',')} sites "
+        f"(`--target-length {target}`), using random seed {seed}. "
+        f"Pseudoreplicates were written in {fmt} format."
+    )
+    if mean_len is not None and min_len is not None and max_len is not None:
+        text += (
+            f" Final pseudoreplicate lengths ranged from {_safe_fmt(min_len, ',')} "
+            f"to {_safe_fmt(max_len, ',')} sites "
+            f"(mean {_safe_fmt(mean_len, ',.1f')})"
+        )
+        if min_loci is not None and max_loci is not None:
+            text += (
+                f", comprising {min_loci} to {max_loci} loci per replicate"
+            )
+        text += "."
+    return text
+
+
 def generate_methods_tree_ml_fasttree(
     params: dict[str, Any],
     key_results: dict[str, Any],
@@ -930,6 +966,7 @@ METHODS_GENERATORS: dict[str, Any] = {
     "pretree.filter.metrics": generate_methods_pretree_filter_metrics,
     "pretree.filter.cluster": generate_methods_pretree_filter_cluster,
     "pretree.concat": generate_methods_pretree_concat,
+    "pretree.concat.jackknife": generate_methods_pretree_concat_jackknife,
     "tree.ml.fasttree": generate_methods_tree_ml_fasttree,
     "tree.ml.iqtree": generate_methods_tree_ml_iqtree,
     "tree.msc": generate_methods_tree_msc,

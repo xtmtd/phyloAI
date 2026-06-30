@@ -99,3 +99,17 @@ def test_cli_pretree_concat_invalid_recoding_writes_error_result_json(tmp_path: 
     payload = json.loads(result_path.read_text())
     assert payload["status"] == "error"
     assert "Dayhoff-6" in payload["error"]
+
+
+def test_cli_pretree_concat_still_works_after_group_conversion(tmp_path: Path) -> None:
+    msa_dir = tmp_path / "msas"
+    msa_dir.mkdir()
+    (msa_dir / "gene1.fa").write_text(">A\nACGT\n>B\nACGT\n")
+
+    result = CliRunner().invoke(
+        cli,
+        ["pretree", "concat", "--msa-dir", str(msa_dir), "--output-dir", str(tmp_path / "out"), "--seq-type", "NT", "--quiet"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "out" / "result.json").exists()

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import csv
+import random
+import re
 import shutil
 import time
 import shlex
@@ -286,6 +289,137 @@ def _write_partitions(
 ) -> None:
     lines = [f"{prefix_type}, {name} = {start}-{end}\n" for name, start, end in genes]
     out_path.write_text("".join(lines))
+
+
+_PARTITION_RE = re.compile(r"^\s*([^,]+)\s*,\s*(.+?)\s*=\s*(\d+)\s*-\s*(\d+)\s*$")
+
+
+def _parse_partitions(path: Path) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    with open(path) as fh:
+        for line_no, raw in enumerate(fh, start=1):
+            line = raw.strip()
+            if not line:
+                continue
+            match = _PARTITION_RE.match(line)
+            if match is None:
+                raise ValueError(f"Unparseable partition line {line_no}: {raw.rstrip()}")
+            model, locus, start_s, end_s = match.groups()
+            start = int(start_s)
+            end = int(end_s)
+            if start < 1 or end < start:
+                raise ValueError(f"Invalid partition range on line {line_no}: {start}-{end}")
+            records.append({
+                "model": model.strip(),
+                "locus": locus.strip(),
+                "start": start,
+                "end": end,
+                "length": end - start + 1,
+            })
+    if not records:
+        raise ValueError(f"Partition file is empty: {path}")
+    return records
+
+
+def _sample_partition_replicate(
+    partitions: list[dict[str, Any]],
+    target_length: int,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
+    shuffled = list(partitions)
+    rng.shuffle(shuffled)
+    selected: list[dict[str, Any]] = []
+    total = 0
+    for part in shuffled:
+        selected.append(part)
+        total += int(part["length"])
+        if total >= target_length:
+            break
+    return selected
+
+
+def _table_suffix(table_format: str) -> str:
+    return ".tsv" if table_format == "tsv" else ".csv"
+
+
+def _table_delimiter(table_format: str) -> str:
+    return "\t" if table_format == "tsv" else ","
+
+
+def _matrix_extension(target_format: str) -> str:
+    return {"fasta": ".fa", "phylip-relaxed": ".phy", "phylip-paml": ".phy", "nexus": ".nex"}.get(target_format, ".fa")
+
+
+def _build_concat_jackknife_command(
+    matrix: Path,
+    partitions: Path,
+    output_dir: Path,
+    replicates: int,
+    target_length: int,
+    prefix: str,
+    to: str,
+    table_format: str,
+    seed: int,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> str:
+    parts = [
+        "phyloai", "pretree", "concat", "jackknife",
+        "--matrix", str(matrix),
+        "--partitions", str(partitions),
+        "--replicates", str(replicates),
+        "--target-length", str(target_length),
+        "--prefix", prefix,
+        "--to", to,
+        "--table-format", table_format,
+        "--seed", str(seed),
+        "--output-dir", str(output_dir),
+    ]
+    if overwrite:
+        parts.append("--overwrite")
+    if dry_run:
+        parts.append("--dry-run")
+    if quiet:
+        parts.append("--quiet")
+    return shlex.join(parts)
+
+
+def _validate_partition_bounds(partitions: list[dict[str, Any]], matrix_length: int) -> None:
+    for part in partitions:
+        if int(part["end"]) > matrix_length:
+            raise ValueError(
+                f"Partition {part['locus']!r} range {part['start']}-{part['end']} "
+                f"exceeds matrix length {matrix_length}"
+            )
+
+
+def _slice_matrix_by_partitions(
+    source_matrix: dict[str, str],
+    selected: list[dict[str, Any]],
+) -> dict[str, str]:
+    sliced: dict[str, str] = {}
+    for taxon, seq in source_matrix.items():
+        pieces = [seq[int(part["start"]) - 1:int(part["end"])] for part in selected]
+        sliced[taxon] = "".join(pieces)
+    return sliced
+
+
+def _rewrite_selected_partitions(selected: list[dict[str, Any]]) -> list[tuple[str, int, int, str]]:
+    rewritten: list[tuple[str, int, int, str]] = []
+    pos = 1
+    for part in selected:
+        length = int(part["length"])
+        start = pos
+        end = pos + length - 1
+        rewritten.append((str(part["model"]), start, end, str(part["locus"])))
+        pos = end + 1
+    return rewritten
+
+
+def _write_jackknife_partitions(path: Path, rewritten: list[tuple[str, int, int, str]]) -> None:
+    lines = [f"{model}, {locus} = {start}-{end}\n" for model, start, end, locus in rewritten]
+    path.write_text("".join(lines))
 
 
 def _compute_concat_stats(matrix: dict[str, str], seq_type: str) -> dict[str, Any]:
@@ -867,3 +1001,182 @@ def run_concat(
             json.dump(payload, fh, indent=2)
 
     return payload
+
+
+def run_concat_jackknife(
+    matrix: Path,
+    partitions: Path,
+    output_dir: Path | None = None,
+    replicates: int = 100,
+    target_length: int = 50000,
+    prefix: str = "rep",
+    to: str = "fasta",
+    table_format: str = "csv",
+    seed: int = 42,
+    overwrite: bool = False,
+    dry_run: bool = False,
+    quiet: bool = False,
+) -> dict[str, Any]:
+    start_time = time.time()
+    output_dir = (output_dir or (matrix.parent / "jackknife")).resolve()
+    params = {
+        "matrix": str(matrix),
+        "partitions": str(partitions),
+        "replicates": replicates,
+        "target_length": target_length,
+        "prefix": prefix,
+        "to": to,
+        "table_format": table_format,
+        "seed": seed,
+        "output_dir": str(output_dir),
+        "overwrite": overwrite,
+        "dry_run": dry_run,
+        "quiet": quiet,
+    }
+    command = _build_concat_jackknife_command(
+        matrix, partitions, output_dir, replicates, target_length, prefix, to,
+        table_format, seed, overwrite, dry_run, quiet,
+    )
+
+    def _error_payload(message: str) -> dict[str, Any]:
+        return {
+            "status": "error",
+            "command": command,
+            "wall_time": round(time.time() - start_time, 3),
+            "tool_versions": {},
+            "params": params,
+            "key_results": {},
+            "error": message,
+            "data": {"cmd": [], "tool_stderr": "", "output_files": {}, "replicates": [], "warnings": []},
+        }
+
+    try:
+        if replicates < 1:
+            raise ValueError("--replicates must be at least 1")
+        if target_length < 1:
+            raise ValueError("--target-length must be at least 1")
+        if not prefix:
+            raise ValueError("--prefix must not be empty")
+        if table_format not in {"csv", "tsv"}:
+            raise ValueError("--table-format must be csv or tsv")
+        if not matrix.exists():
+            raise ValueError(f"--matrix does not exist: {matrix}")
+        if not partitions.exists():
+            raise ValueError(f"--partitions does not exist: {partitions}")
+        if output_dir.exists() and any(output_dir.iterdir()) and not overwrite:
+            raise ValueError(f"Output directory '{output_dir}' is non-empty. Use --overwrite to replace.")
+        if output_dir.exists() and any(output_dir.iterdir()) and overwrite and not dry_run:
+            shutil.rmtree(output_dir)
+
+        partition_records = _parse_partitions(partitions)
+        available_length = sum(int(part["length"]) for part in partition_records)
+        if available_length < target_length:
+            raise ValueError(
+                f"Total partition length {available_length} is less than --target-length {target_length}"
+            )
+
+        taxa, seqs, matrix_length = _read_msa(matrix)
+        source_matrix = dict(zip(taxa, seqs))
+        _validate_partition_bounds(partition_records, matrix_length)
+
+        if not dry_run:
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        rng = random.Random(seed)
+        ext = _matrix_extension(to)
+        output_files: dict[str, dict[str, str]] = {}
+        replicate_rows: list[dict[str, Any]] = []
+        lengths: list[int] = []
+        n_loci_values: list[int] = []
+
+        for idx in range(1, replicates + 1):
+            name = f"{prefix}{idx:03d}"
+            selected = _sample_partition_replicate(partition_records, target_length, rng)
+            rep_matrix = _slice_matrix_by_partitions(source_matrix, selected)
+            rewritten = _rewrite_selected_partitions(selected)
+            total_length = sum(int(part["length"]) for part in selected)
+            rep_dir = output_dir / name
+            matrix_path = rep_dir / f"{name}{ext}"
+            part_path = rep_dir / f"{name}.partitions"
+            if not dry_run:
+                rep_dir.mkdir(parents=True, exist_ok=True)
+                _write_matrix(rep_matrix, matrix_path, to, "AA")
+                _write_jackknife_partitions(part_path, rewritten)
+            output_files[f"{name}_matrix"] = {
+                "path": str(matrix_path.resolve()),
+                "description": f"Gene-jackknife pseudoreplicate matrix {name}",
+            }
+            output_files[f"{name}_partitions"] = {
+                "path": str(part_path.resolve()),
+                "description": f"Partition file for gene-jackknife pseudoreplicate {name}",
+            }
+            replicate_rows.append({
+                "name": name,
+                "matrix": str(matrix_path.resolve()),
+                "partitions": str(part_path.resolve()),
+                "n_loci": len(selected),
+                "total_length": total_length,
+                "loci": [str(part["locus"]) for part in selected],
+            })
+            lengths.append(total_length)
+            n_loci_values.append(len(selected))
+
+        summary_path = output_dir / f"jackknife_summary{_table_suffix(table_format)}"
+        output_files["summary"] = {
+            "path": str(summary_path.resolve()),
+            "description": "Summary table for generated gene-jackknife pseudoreplicates",
+        }
+        if not dry_run:
+            with open(summary_path, "w", newline="") as fh:
+                writer = csv.DictWriter(
+                    fh,
+                    fieldnames=["replicate", "matrix", "partitions", "n_loci", "total_length", "target_length", "seed"],
+                    delimiter=_table_delimiter(table_format),
+                )
+                writer.writeheader()
+                for row in replicate_rows:
+                    writer.writerow({
+                        "replicate": row["name"],
+                        "matrix": str(Path(row["matrix"]).relative_to(output_dir)),
+                        "partitions": str(Path(row["partitions"]).relative_to(output_dir)),
+                        "n_loci": row["n_loci"],
+                        "total_length": row["total_length"],
+                        "target_length": target_length,
+                        "seed": seed,
+                    })
+
+        payload = {
+            "status": "success",
+            "command": command,
+            "wall_time": round(time.time() - start_time, 3),
+            "tool_versions": {},
+            "params": params,
+            "key_results": {
+                "n_replicates": replicates,
+                "target_length": target_length,
+                "min_length": min(lengths),
+                "max_length": max(lengths),
+                "mean_length": round(sum(lengths) / len(lengths), 3),
+                "min_loci": min(n_loci_values),
+                "max_loci": max(n_loci_values),
+            },
+            "error": None,
+            "data": {
+                "cmd": [],
+                "tool_stderr": "",
+                "output_files": output_files,
+                "replicates": replicate_rows,
+                "warnings": [],
+            },
+        }
+        if not dry_run:
+            with open(output_dir / "result.json", "w") as fh:
+                json.dump(payload, fh, indent=2)
+        return payload
+    except ValueError as exc:
+        payload = _error_payload(str(exc))
+        if not dry_run:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            with open(output_dir / "result.json", "w") as fh:
+                json.dump(payload, fh, indent=2)
+        raise

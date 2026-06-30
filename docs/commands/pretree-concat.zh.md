@@ -29,6 +29,19 @@ phyloai pretree concat \
   --output-dir ./runs/pretree/concat
 ```
 
+从已有矩阵生成 gene-jackknife 伪重复：
+```bash
+phyloai pretree concat jackknife \
+  --matrix runs/pretree/concat/matrix.fa \
+  --partitions runs/pretree/concat/matrix.partitions \
+  --replicates 100 \
+  --target-length 50000 \
+  --to fasta \
+  --table-format csv \
+  --seed 42 \
+  -o runs/pretree/concat/jackknife
+```
+
 ## 参数
 
 | Parameter | Default | Notes |
@@ -68,6 +81,25 @@ runs/pretree/concat/
 ├── dropped_alignments.csv      # 有 MSA 被丢弃时
 ├── result.json
 ```
+
+## Gene-jackknife 伪重复矩阵
+
+`phyloai pretree concat jackknife` 从已有的 concatenated matrix 和 partition
+文件生成伪重复矩阵，不会自动推断树。
+
+每个 replicate 单独一个目录：
+
+```text
+jackknife/
+├── rep001/
+│   ├── rep001.fa
+│   └── rep001.partitions
+├── rep002/
+├── jackknife_summary.csv
+└── result.json
+```
+
+每个 replicate 抽到的 locus 可从对应的 `repXXX.partitions` 和 `result.json` 读取。
 
 ### 变体
 

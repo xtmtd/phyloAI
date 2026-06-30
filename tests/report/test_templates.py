@@ -146,6 +146,17 @@ class TestConcat:
         assert "Dayhoff6" in text
         assert "recod" in text.lower()
 
+    def test_jackknife(self):
+        text = generate_all_methods(
+            "pretree.concat.jackknife",
+            params={"replicates": 100, "target_length": 50000, "seed": 42, "to": "fasta"},
+            key_results={"n_replicates": 100, "min_length": 50012, "max_length": 53280, "mean_length": 51140.5},
+            tool_versions={},
+        )
+        assert "gene-jackknife" in text
+        assert "100 pseudoreplicates" in text
+        assert "50,000" in text
+
 
 class TestIqtree:
     def test_unpartitioned(self):

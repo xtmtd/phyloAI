@@ -19,6 +19,7 @@ STEP_ORDER: list[str] = [
     "pretree.filter.metrics",
     "pretree.filter.cluster",
     "pretree.concat",
+    "pretree.concat.jackknife",
     "tree.ml.fasttree",
     "tree.ml.iqtree",
     "tree.msc",
@@ -60,6 +61,7 @@ def parse_step_id(command: str) -> str:
     }
     _THIRD_LEVEL: dict[str, set[str]] = {
         "filter": {"taper", "treeshrink", "symtest", "metrics", "cluster"},
+        "concat": {"jackknife"},
         "ml":     {"fasttree", "iqtree"},
         "dating": {"hessian", "mcmc"},
         "syserror": {"brlen", "cca", "sites"},

@@ -34,6 +34,9 @@ class TestParseStepId:
         assert parse_step_id("phyloai --quiet tree ml iqtree --model LG") == "tree.ml.iqtree"
         assert parse_step_id("phyloai --overwrite --quiet pretree filter taper --cutoff 0.1") == "pretree.filter.taper"
 
+    def test_pretree_concat_jackknife(self):
+        assert parse_step_id("phyloai pretree concat jackknife --matrix matrix.fa --partitions matrix.partitions") == "pretree.concat.jackknife"
+
     def test_empty_command(self):
         assert parse_step_id("") == "unknown"
 
@@ -53,6 +56,10 @@ class TestStepOrder:
         assert "posttree.topology" in STEP_ORDER
         assert STEP_ORDER.index("pretree.convert") < STEP_ORDER.index("pretree.align")
         assert STEP_ORDER.index("pretree.align") < STEP_ORDER.index("tree.ml.iqtree")
+
+    def test_concat_jackknife_order(self):
+        assert STEP_ORDER.index("pretree.concat") < STEP_ORDER.index("pretree.concat.jackknife")
+        assert STEP_ORDER.index("pretree.concat.jackknife") < STEP_ORDER.index("tree.ml.fasttree")
 
 
 class TestDiscoverStepsModule:

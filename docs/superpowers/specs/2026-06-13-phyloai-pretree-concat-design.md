@@ -17,6 +17,12 @@ inference. Provides occupancy filtering, recoding, codon-specific variants
 phyloai pretree concat --msa-dir <dir> [OPTIONS]
 ```
 
+`phyloai pretree concat` is implemented as a backward-compatible Click group:
+invoking `phyloai pretree concat [OPTIONS]` runs the original full
+concatenation, while `phyloai pretree concat jackknife [OPTIONS]` generates
+pseudoreplicates from an existing matrix and partition file. The jackknife
+design is specified in `2026-06-30-phyloai-pretree-concat-jackknife-design.md`.
+
 ### 2.1 Parameters
 
 | Parameter | Type | Default | Description |
