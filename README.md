@@ -49,7 +49,7 @@ PhyloAI commands follow the common shape of a phylogenomic study:
 
 1. **Prepare marker sequences:** convert formats, inspect sequence statistics, align unaligned loci, trim MSAs, and remove problematic sites or taxa.
 2. **Evaluate markers:** compute occupancy, entropy, pairwise identity, compositional bias, saturation, tree distance, and correlation summaries.
-3. **Build matrices or gene trees:** concatenate retained loci for supermatrix analyses, or infer per-locus gene trees for coalescent workflows.
+3. **Build matrices or gene trees:** concatenate retained loci for supermatrix analyses, generate gene-jackknife pseudoreplicates when large matrices make downstream inference too costly, or infer per-locus gene trees for coalescent workflows.
 4. **Infer species relationships:** run ML supermatrix trees, Bayesian analyses, or wASTRAL species-tree inference.
 5. **Diagnose conflict and robustness:** compute concordance factors, run topology tests, compare marker clusters, and check posterior/prior behavior in dating analyses.
 6. **Report the run:** collect parameters, tool versions, tables, figures, and draft Methods text into reproducible JSON and HTML reports.
@@ -147,7 +147,7 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai pretree trim`    | Batch-trim aligned MSAs with PhyloAI using trimAl, BMGE, or ClipKIT backends. | [docs/commands/pretree-trim.md](docs/commands/pretree-trim.md)       |
 | `phyloai pretree metrics` | Compute MSA/tree metrics, distribution plots, and compact correlation heatmaps for marker evaluation. | [docs/commands/pretree-metrics.md](docs/commands/pretree-metrics.md) |
 | `phyloai pretree filter`  | Marker-level filtering: TAPER error-site masking, TreeShrink taxon pruning, metric-rule filtering, symmetry test filtering, cluster-based exploration. | [docs/commands/pretree-filter.md](docs/commands/pretree-filter.md) |
-| `phyloai pretree concat`  | Concatenate multiple MSAs into a supermatrix with occupancy filtering, recoding, codon variants, and outgroup reordering. | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.md) |
+| `phyloai pretree concat`  | Concatenate multiple MSAs into a supermatrix with occupancy filtering, recoding, codon variants, outgroup reordering, and gene-jackknife pseudoreplicates for expensive downstream runs such as Bayesian or high-memory heterogeneous ML analyses. | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.md) |
 | `phyloai tree ml fasttree` | Infer ML gene trees or supermatrix trees using FastTree. | [docs/commands/tree-ml-fasttree.md](docs/commands/tree-ml-fasttree.md) |
 | `phyloai tree ml iqtree`   | Infer ML trees with IQ-TREE3: homogeneous, heterogeneous, partitioned, and ModelFinder workflows. | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
 | `phyloai tree bi`    | Bayesian phylogenetic inference with PhyloBayes-MPI: multi-chain MCMC, real-time convergence monitoring, trace plots, and resume. | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
