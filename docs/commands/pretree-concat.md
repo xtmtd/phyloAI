@@ -95,6 +95,11 @@ runs/pretree/concat/
 `phyloai pretree concat jackknife` creates pseudoreplicate matrices from an
 existing concatenated matrix and partition file. It does not infer trees.
 
+The main use case is making very large supermatrices cheaper to analyze by
+sampling many smaller matrices with preserved gene boundaries. This is useful
+not only for Bayesian workflows, but also for other expensive downstream runs
+such as high-memory heterogeneous ML analyses.
+
 Outputs are written as one directory per replicate:
 
 ```text

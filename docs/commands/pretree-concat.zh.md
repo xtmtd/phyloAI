@@ -87,6 +87,10 @@ runs/pretree/concat/
 `phyloai pretree concat jackknife` 从已有的 concatenated matrix 和 partition
 文件生成伪重复矩阵，不会自动推断树。
 
+它的主要用途是在保留基因边界的前提下，从超大超矩阵中抽样出许多更小的矩阵，
+从而降低下游分析成本。这个场景不仅限于 Bayesian 推断，也适用于其他计算代价
+很高的下游分析，例如高内存占用的异质性 ML 模型计算。
+
 每个 replicate 单独一个目录：
 
 ```text
