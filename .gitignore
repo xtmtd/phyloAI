@@ -21,3 +21,4 @@ uv.lock
 **/.DS_Store
 issues.txt
 .symtest.csv
+.codegraph/

@@ -79,3 +79,35 @@ def test_tree_ml_iqtree_schema_exposes_site_freq_file() -> None:
 
     assert props["site_freq_file"]["type"] == "string"
     assert props["site_freq_file"]["format"] == "path"
+
+
+def test_walk_click_tree_finds_signal_subcommands() -> None:
+    tool_names = {d["tool_name"] for d in walk_click_tree(cli)}
+
+    assert "posttree_signal_lnl" in tool_names
+    assert "posttree_signal_consistent" in tool_names
+    assert "posttree_signal_fclm" in tool_names
+    assert "posttree_signal" not in tool_names
+
+
+def test_signal_schemas_expose_required_params() -> None:
+    for name in ("posttree_signal_lnl", "posttree_signal_consistent", "posttree_signal_fclm"):
+        descriptor = next(d for d in walk_click_tree(cli) if d["tool_name"] == name)
+        tool_def = build_mcp_tool(descriptor)
+        props = tool_def["inputSchema"]["properties"]
+        required = tool_def["inputSchema"].get("required", [])
+
+        assert "matrix" in props
+        assert "matrix" in required
+        assert "output_dir" in props
+        assert "overwrite" in props
+        assert "dry_run" in props
+        assert "quiet" in props
+
+    lnl = next(d for d in walk_click_tree(cli) if d["tool_name"] == "posttree_signal_lnl")
+    lnl_tool = build_mcp_tool(lnl)
+    assert "candidate_trees_raw" in lnl_tool["inputSchema"]["required"]
+
+    fclm = next(d for d in walk_click_tree(cli) if d["tool_name"] == "posttree_signal_fclm")
+    fclm_tool = build_mcp_tool(fclm)
+    assert "taxset_csv" in fclm_tool["inputSchema"]["required"]

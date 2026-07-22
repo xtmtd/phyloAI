@@ -15,7 +15,7 @@ _PHASE_PREFIX: dict[str, int] = {
     "posttree": 5,
 }
 
-_FIGURE_EXTENSIONS = {".pdf", ".png"}
+_FIGURE_EXTENSIONS = {".pdf", ".png", ".svg"}
 _TABLE_EXTENSIONS = {".csv", ".tsv"}
 
 

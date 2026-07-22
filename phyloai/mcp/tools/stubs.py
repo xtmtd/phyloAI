@@ -4,7 +4,6 @@ from __future__ import annotations
 
 STUB_TOOL_NAMES: frozenset[str] = frozenset(
     {
-        "posttree_signal",
         "posttree_simulate",
         "posttree_syserror_brlen",
         "posttree_syserror_cca",
@@ -13,7 +12,6 @@ STUB_TOOL_NAMES: frozenset[str] = frozenset(
 )
 
 _DESCRIPTIONS = {
-    "posttree_signal": "Phylogenetic signal distribution analysis (not yet available).",
     "posttree_simulate": "AliSim simulation and gene-jackknife resampling (not yet available).",
     "posttree_syserror_brlen": "Systematic error diagnosis: branch-length screen (not yet available).",
     "posttree_syserror_cca": "Systematic error diagnosis: composition analysis (not yet available).",

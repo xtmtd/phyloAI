@@ -14,6 +14,7 @@ description: >-
 - Use `doctor` before commands that invoke external tools, on first run, or when the environment is unknown.
 - Use this Skill for environment and installation requests too, including `doctor failed`, `missing pb_mpi`, `install iqtree`, `缺少 MAFFT`, `环境检查失败`, and similar external-tool setup questions.
 - Read-only tools (`check_status`, `read_result`, `read_report`, `get_command_schema`) do not require `doctor` first.
+- **Execution tools vs workflow:** The MCP execution tools (e.g. `phyloai_posttree_signal_lnl`, etc.) are thin wrappers that launch CLI subprocesses directly — they DO NOT enforce schema review, `doctor`, or user approval on their own. This Skill is the process layer: before calling an execution tool, always run `get_command_schema`, render a parameter card, run `doctor` if external tools are needed, and wait for explicit user approval. Do NOT call an execution tool just because its MCP schema is available.
 - Before executing a CLI command, call `get_command_schema`, render a parameter card that lists **every** parameter from the schema, and wait for explicit user approval. Do not filter out parameters — annotations in `references/parameter-annotations.md` are decorations, not a display filter. Parameters without annotations must still be shown with their CLI `--help` text. For every parameter, show both the current value and the schema default (e.g. `--threads  4  (默认: 4)  ...`). If the schema marks a parameter as required, it MUST have an explicit value before approval — do not launch with an unset required parameter, including conditionally required ones like `--matrix` for `tree bi pb`.
 - After launching a fire-and-forget command, call `check_status` to verify the job actually started before declaring success. Do not claim "已启动" based solely on the launch response — the subprocess may have exited immediately. Report the `check_status` result to the user; if the status is `error` or `unknown`, show the error details and suggest next steps.
 - Treat `--overwrite` as destructive. When the target `--output-dir` already exists and the user has not explicitly requested overwrite, prefer suggesting a new `--output-dir` or `--resume` when available before offering `--overwrite`. If a parameter card sets `--overwrite true`, ask for separate explicit confirmation naming the affected `--output-dir`; general command approval is not enough.
@@ -38,8 +39,70 @@ description: >-
 
 - Pretree: `convert -> align -> trim -> metrics / filter -> concat` (supermatrix) or `... -> gene trees` (supertree). `stats` inspects results at any step.
 - Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi pb` for Bayesian MCMC, `tree bi bpcomp`/`tree bi tracecomp` for final convergence diagnostics with user-chosen burn-in, `tree bi readpb` for posterior summaries. For custom CAT-PMSF-style ML, pass an AA exchangeability file with `tree ml iqtree --model`, a profile with `--site-freq-file`, and `--state-freq none`; raw `--tool-args -fs` overrides the structured profile. For PMSF simulation input, use `tree bi readpb --mode ss,rr,r`; it writes `partition.PMSF.nex` from posterior site rates, alpha, Gamma category count, and the co-generated `.exchangeabilities` model. Use `cf` on species trees.
-- Posttree: `topology`, `dating hessian`, `dating mcmc`.
+- Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`.
 - Report: run `report` only when the user requests a report/methods draft or recovery needs `report.json`.
+
+### posttree signal
+
+Three subcommands for phylogenetic signal distribution analysis. All are
+single-matrix (no batch mode). Model source: `--model-expr` and `--partitions`
+can be combined — `--model-expr` specifies the model formula and `--partitions`
+provides partition boundaries; each partition independently estimates parameters.
+
+#### signal lnl
+
+Purpose: Site-wise and gene-wise log-likelihood score distribution across
+candidate trees using IQ-TREE3 `-wslr`. Identifies outlier genes with
+disproportionate signal (Shen et al. 2017, *Nature Ecology & Evolution*).
+
+Required inputs: `--matrix`, `--candidate-trees`, plus at least one model source
+(`--model-expr`, `--partitions`, or `-m`/`-p` in `--tool-args`).
+
+Optional: `--locus-ranges` for gene-wise breakdown + outlier detection;
+`--metrics` for outlier-vs-normal comparison. `--guide-tree` for PMSF models.
+
+Mutual exclusions: `--partitions` vs `--locus-ranges`.
+
+Outputs: `site_lnl.csv`, `support_summary_sites.csv`, `gene_lnl.csv` (if boundaries), `support_summary_genes.csv` (if boundaries), `outlier_genes.txt`,
+plots, `result.json`. IQ-TREE files go in `iqtree/` subdirectory.
+
+#### signal consistent
+
+Purpose: Consistent gene identification where both GLS (likelihood-based) and
+GQS (quartet-based) agree on supporting one of two candidate topologies.
+Uses IQ-TREE3 for GLS + wASTRAL for GQS (Shen et al. 2021, *Systematic Biology*).
+
+Required inputs: `--matrix`, `--candidate-trees` (exactly 2 trees), `--tree-dir`.
+At least one of `--partitions` or `--locus-ranges` for GLS.
+
+Optional: `--metrics` for consistent-vs-inconsistent comparison;
+`--partition-mode` (`p` or `Q`) when `--partitions` is provided.
+
+Mutual exclusions: `--partitions` vs
+`--locus-ranges`. Exactly 2 candidate trees only. Partition loci must all
+have matching gene tree files in `--tree-dir` (extra trees ignored).
+
+Outputs: `gls.csv`, `gqs.csv`, `consistent_genes.txt`, `inconsistent_genes.txt`,
+plots, `result.json`. IQ-TREE files go in `iqtree/` subdirectory.
+
+#### signal fclm
+
+Purpose: Four-cluster Likelihood Mapping (FcLM) to assess signal supporting
+alternative hypotheses of relationship among four taxon clusters.
+Uses IQ-TREE3 `-lmap -lmclust`.
+
+Required inputs: `--matrix`, `--taxset-csv` (at least 4 taxsets). Model source:
+`--model-expr` and/or `--partitions`. `--partition-mode` (`p`
+or `Q`, default `p`) controls how `--partitions` is passed to IQ-TREE.
+
+Optional: `--lmap` (quartet count; default `50 * n_taxa`); `--guide-tree` for
+PMSF models.
+
+Validation: all taxa in CSV must match matrix taxa; taxset assignments must be
+mutually exclusive; minimum 4 taxsets.
+
+Outputs: IQ-TREE native `.iqtree` report (contains all lmap statistics),
+`<prefix>.lmap.eps` figure, `result.json`. IQ-TREE files in `iqtree/` subdirectory.
 
 ## Demo Data
 

@@ -1057,15 +1057,164 @@ def generate_methods_posttree_dating_mcmc(
     return text
 
 
-def generate_methods_posttree_signal(
+def generate_methods_posttree_signal_lnl(
     params: dict[str, Any],
     key_results: dict[str, Any],
     tool_versions: dict[str, Any],
 ) -> str:
-    n_hypotheses = key_results.get("n_hypotheses", 2)
+    n_trees = key_results.get("n_trees", 2)
+    n_sites = key_results.get("n_sites", "")
+    model = params.get("model_expr") or "a partition model"
+    iqtree_ver = tool_versions.get("iqtree3", "IQ-TREE3")
+    if isinstance(iqtree_ver, str) and not iqtree_ver.lower().startswith("iqtree"):
+        iqtree_ver = f"IQ-TREE3 v{iqtree_ver}"
+    parts = [
+        f"Site-wise log-likelihood scores were computed using {iqtree_ver} "
+        f"({model}) for {_describe_n(n_trees, 'candidate topology', 'candidate topologies')} "
+        f"across {_describe_n(n_sites, 'alignment site')}, "
+        f"following Shen et al. (2017). "
+        f"Per-site ΔSLS and per-gene ΔGLS values were derived from these scores by PhyloAI, "
+        f"assigning each site (and gene, where boundaries were provided) to the best-supported "
+        f"topology."
+    ]
+    site_counts = key_results.get("site_support_counts", {})
+    if site_counts:
+        tree_parts = []
+        for label, count in sorted(site_counts.items(), key=lambda x: -x[1]):
+            if label == "ambiguous":
+                tree_parts.append(f"{count} ambiguous")
+            else:
+                tree_parts.append(f"{count} supported {label}")
+        if tree_parts:
+            parts.append(f" Among {_describe_n(n_sites, 'site')}, " + ", ".join(tree_parts) + ".")
+
+    gene_counts = key_results.get("gene_support_counts", {})
+    n_loci = key_results.get("n_loci")
+    if gene_counts:
+        gene_tree_parts = []
+        for label, count in sorted(gene_counts.items(), key=lambda x: -x[1]):
+            if label == "ambiguous":
+                gene_tree_parts.append(f"{count} ambiguous")
+            else:
+                gene_tree_parts.append(f"{count} supported {label}")
+        if gene_tree_parts:
+            parts.append(
+                f" At the locus level, across {_describe_n(n_loci, 'locus', 'loci')}, " + ", ".join(gene_tree_parts) + "."
+            )
+        n_outlier = key_results.get("n_outlier_genes", 0)
+        n_sig_metrics = key_results.get("n_sig_metrics_outlier", 0)
+        sig_names = key_results.get("sig_metric_names_outlier", [])
+        if isinstance(n_outlier, (int, float)) and n_outlier > 0:
+            parts.append(
+                f" {_describe_n(n_outlier, 'gene')} with |ΔGLS| exceeding Tukey's 1.5×IQR criterion "
+                f"were identified as outlier loci. "
+                f"Mann–Whitney U tests comparing outlier vs non-outlier metric profiles "
+                f"(outlier_comparison.csv) found {_describe_n(n_sig_metrics, 'metric')}"
+            )
+            if sig_names:
+                parts[-1] += f" significantly different between groups ({', '.join(sig_names)})"
+            parts[-1] += " (p < 0.05)."
+        elif isinstance(n_outlier, (int, float)) and n_outlier == 0:
+            parts.append(" No outlier genes were detected by the |ΔGLS| criterion.")
+        if n_trees == 2:
+            n_sig = key_results.get("n_loci_support_sig")
+            if isinstance(n_sig, (int, float)):
+                parts.append(f" {_describe_n(n_sig, 'locus', 'loci')} had |ΔGLS| ≥ 2 (significant support).")
+    elif n_trees == 2 and not gene_counts:
+        parts.append(" No locus boundaries were provided; site-wise results only.")
+    return " ".join(parts)
+
+
+def generate_methods_posttree_signal_consistent(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    n_loci = key_results.get("n_loci", "")
+    n_consistent = key_results.get("n_consistent", "")
+    n_inconsistent = key_results.get("n_inconsistent", "")
+    n_skipped = key_results.get("n_gqs_skipped", 0)
+    model = params.get("model_expr") or "a partition model"
+    iqtree_ver = tool_versions.get("iqtree3", "IQ-TREE3")
+    if isinstance(iqtree_ver, str) and not iqtree_ver.lower().startswith("iqtree"):
+        iqtree_ver = f"IQ-TREE3 v{iqtree_ver}"
+    wastral_ver = tool_versions.get("wastral", "wASTRAL")
+    if isinstance(wastral_ver, str) and not wastral_ver.lower().startswith("wastral"):
+        wastral_ver = f"wASTRAL v{wastral_ver}"
+    n_sig_metrics = key_results.get("n_sig_metrics_consistent", 0)
+    sig_names = key_results.get("sig_metric_names_consistent", [])
+    parts = [
+        f"Consistent genes were identified across {_describe_n(n_loci, 'locus', 'loci')} "
+        f"following Shen et al. (2021). Gene-wise log-likelihood scores (GLS) were "
+        f"computed using {iqtree_ver} ({model}); gene-wise quartet scores (GQS) were "
+        f"computed using {wastral_ver} under the same two candidate topologies. "
+        f"{_describe_n(n_consistent, 'locus', 'loci')} were consistent (GLS and GQS agree on the supported topology)."
+    ]
+    if n_inconsistent:
+        parts.append(f" {_describe_n(n_inconsistent, 'locus', 'loci')} were inconsistent (disagree or ambiguous).")
+    if n_skipped:
+        parts.append(f" {_describe_n(n_skipped, 'locus', 'loci')} were excluded from GQS due to < 4 taxa after pruning.")
+    gls_counts = key_results.get("gls_support_counts", {})
+    gqs_counts = key_results.get("gqs_support_counts", {})
+    if gls_counts:
+        tree_parts = []
+        for label, count in sorted(gls_counts.items(), key=lambda x: -x[1]):
+            if count > 0:
+                tree_parts.append(f"{count} {label}")
+        if tree_parts:
+            parts.append(" By GLS: " + ", ".join(tree_parts) + ".")
+    if gqs_counts:
+        tree_parts = []
+        for label, count in sorted(gqs_counts.items(), key=lambda x: -x[1]):
+            if count > 0:
+                tree_parts.append(f"{count} {label}")
+        if tree_parts:
+            parts.append(" By GQS: " + ", ".join(tree_parts) + ".")
+    if n_sig_metrics:
+        parts.append(
+            f" Mann–Whitney U tests comparing consistent vs inconsistent metric profiles "
+            f"(consistent_comparison.csv) found {_describe_n(n_sig_metrics, 'metric')}"
+        )
+        if sig_names:
+            parts[-1] += f" significantly different between groups ({', '.join(sig_names)})"
+        parts[-1] += " (p < 0.05)."
+    return " ".join(parts)
+
+
+def generate_methods_posttree_signal_fclm(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    n_taxsets = key_results.get("n_taxsets", 4)
+    n_taxa = key_results.get("n_taxa", "?")
+    n_quartets = key_results.get("n_quartets", "?")
+    model = params.get("model_expr") or params.get("partitions") or "a substitution model"
+    iqtree_ver = tool_versions.get("iqtree3", "IQ-TREE3")
+    if isinstance(iqtree_ver, str) and not iqtree_ver.lower().startswith("iqtree"):
+        iqtree_ver = f"IQ-TREE3 v{iqtree_ver}"
+    lmap = params.get("lmap")
+    if lmap:
+        lmap_desc = f"{lmap} quartets"
+    elif n_quartets and n_quartets != "?":
+        lmap_desc = f"{n_quartets} quartets"
+    else:
+        lmap_desc = f"50 × {n_taxa} = {n_quartets} quartets"
+    try:
+        n_taxa_int = int(n_taxa)
+    except (TypeError, ValueError):
+        n_taxa_int = None
+    taxa_span = f" (spanning {_describe_n(n_taxa_int, 'taxon', 'taxa')} total)" if n_taxa_int else ""
     return (
-        f"Phylogenetic signal was assessed using Four-cluster Likelihood "
-        f"Mapping (FcLM) across {_describe_n(n_hypotheses, 'topological hypothesis', 'topological hypotheses')}."
+        f"Four-cluster Likelihood Mapping (FcLM; Strimmer & von Haeseler 1997) was performed "
+        f"using {iqtree_ver} ({model}) across {_describe_n(n_taxsets, 'taxon cluster', 'taxon clusters')}"
+        f"{taxa_span} with {lmap_desc} sampled. "
+        f"Cluster definitions were provided via a taxset CSV file "
+        f"and converted to NEXUS format for IQ-TREE3 -lmclust. "
+        f"Results are reported in the native IQ-TREE .iqtree output, including the relative "
+        f"frequencies of quartets supporting each of the three possible unrooted topologies "
+        f"(fully resolved, partially resolved, and unresolved regions of the likelihood-mapping triangle). "
+        f"The likelihood-mapping triangle is visualised in the .lmap.eps figure."
     )
 
 
@@ -1140,7 +1289,9 @@ METHODS_GENERATORS: dict[str, Any] = {
     "posttree.topology": generate_methods_posttree_topology,
     "posttree.dating.hessian": generate_methods_posttree_dating_hessian,
     "posttree.dating.mcmc": generate_methods_posttree_dating_mcmc,
-    "posttree.signal": generate_methods_posttree_signal,
+    "posttree.signal.lnl": generate_methods_posttree_signal_lnl,
+    "posttree.signal.consistent": generate_methods_posttree_signal_consistent,
+    "posttree.signal.fclm": generate_methods_posttree_signal_fclm,
     "posttree.syserror.brlen": generate_methods_posttree_syserror_brlen,
     "posttree.syserror.cca": generate_methods_posttree_syserror_cca,
     "posttree.syserror.sites": generate_methods_posttree_syserror_sites,

@@ -57,7 +57,11 @@ def _make_launch_handler(descriptor: dict[str, Any]) -> Handler:
             run_dir = kwargs.get("run_dir") or kwargs.get("run-dir")
             if run_dir is None:
                 return json.dumps({"status": "error", "message": "run_dir is required"})
-            result = _run_sync(["phyloai", "report", "--run-dir", str(run_dir), "--overwrite"], timeout=300)
+            overwrite = kwargs.get("overwrite", False)
+            args = ["phyloai", "report", "--run-dir", str(run_dir)]
+            if overwrite:
+                args.append("--overwrite")
+            result = _run_sync(args, timeout=300)
             report_path = Path(run_dir).resolve() / "report" / "report.json"
             if report_path.exists():
                 with open(report_path) as fh:

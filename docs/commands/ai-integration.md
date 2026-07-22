@@ -184,7 +184,7 @@ The MCP server registers one tool per CLI subcommand plus four utility tools. Al
 | `report` | `phyloai report` | synchronous |
 | `run` | `phyloai run` | fire-and-forget |
 
-Stub tools (return "not yet available"): `posttree_signal`, `posttree_simulate`, `posttree_syserror_brlen`, `posttree_syserror_cca`, `posttree_syserror_sites`.
+Stub tools (return "not yet available"): `posttree_simulate`, `posttree_syserror_brlen`, `posttree_syserror_cca`, `posttree_syserror_sites`.
 
 ### Utility tools (read-only, synchronous)
 
