@@ -17,7 +17,12 @@ console = Console()
 
 class _PosttreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["topology", "dating"]
+        return ["topology", "dating", "signal"]
+
+
+class _SignalGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["lnl", "fclm", "consistent"]
 
 
 @click.group(cls=_PosttreeGroup)
@@ -993,3 +998,359 @@ def mcmc_command(
             click.echo(f"Convergence rho (posterior): {kr['convergence_rho_posterior']:.4f}")
         click.echo(f"Diagnostics: {output_dir / 'diagnostics'}")
         click.echo(f"Result:     {result_path}")
+
+
+# ===================================================================
+# Signal group
+# ===================================================================
+
+
+def _parse_candidate_trees(candidate_trees_raw: str) -> list[Path]:
+    if "," in candidate_trees_raw:
+        return [Path(p.strip()) for p in candidate_trees_raw.split(",")]
+    return [Path(candidate_trees_raw.strip())]
+
+
+@posttree.group("signal", cls=_SignalGroup)
+def signal() -> None:
+    """Phylogenetic signal distribution analysis."""
+
+
+@signal.command("lnl")
+@click.option("--matrix", required=True, type=click.Path(exists=True, path_type=Path),
+              help="Single supermatrix alignment (FASTA/PHYLIP/NEXUS). Maps to IQ-TREE -s.")
+@click.option("--candidate-trees", "candidate_trees_raw", required=True, type=str,
+              help="Tree-list file or comma-separated individual NEWICK files (e.g. h1.nwk,h2.nwk)."
+                   " Maps to IQ-TREE -z after optional merge. Same format as posttree topology.")
+@click.option("--model-expr", type=str, default=None,
+              help="Complete IQ-TREE -m model expression (e.g. LG+F+R4, C20+F+R4)."
+                   " When combined with --partitions, each partition independently"
+                   " estimates parameters using this model.")
+@click.option("--partitions", type=click.Path(path_type=Path), default=None,
+              help="Partition file passed to IQ-TREE as -p or -Q (per --partition-mode)."
+                   " Also extracts locus boundaries for gene-wise calculation."
+                   " Mutually exclusive with --locus-ranges.")
+@click.option("--partition-mode", type=click.Choice(["p", "Q"]), default=None,
+              help="p=-p (edge-linked proportional, shared topology + rate multipliers per partition);"
+                   " Q=-Q (edge-unlinked, independent branch lengths per partition)."
+                   " Default p when --partitions is provided. Only valid with --partitions.")
+@click.option("--locus-ranges", type=click.Path(path_type=Path), default=None,
+              help="Partition file for locus boundary extraction only (not passed to IQ-TREE)."
+                   " Mutually exclusive with --partitions.")
+@click.option("--guide-tree", type=click.Path(path_type=Path), default=None,
+              help="Guide tree for PMSF-style models (e.g. LG+C20+F+R4). Maps to IQ-TREE -ft.")
+@click.option("--metrics", type=click.Path(path_type=Path), default=None,
+              help="Metrics CSV from 'phyloai pretree metrics' for outlier-vs-nonoutlier comparison."
+                   " All outlier loci must be present in this file.")
+@click.option("--threads", "-t", default="auto", show_default=True,
+              help="IQ-TREE -T value (integer or auto).")
+@click.option("--iqtree-path", type=str, default=None,
+              help="Explicit path to iqtree3 executable.")
+@click.option("--tool-args", type=str, default=None,
+              help="Extra IQ-TREE flags. Blocked: -s, -z, -wslr, --prefix, -p, -Q.")
+@click.option("--prefix", type=str, default="lnl", show_default=True,
+              help="IQ-TREE output prefix.")
+@click.option("--resume", is_flag=True, default=False,
+              help="Resume incomplete IQ-TREE run (native checkpoint).")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/signal/lnl"), show_default=True)
+@click.option("--overwrite", is_flag=True, default=False)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.option("--quiet", "-q", is_flag=True, default=False)
+def lnl_command(
+    matrix: Path, candidate_trees_raw: str, model_expr: str | None,
+    partitions: Path | None, partition_mode: str | None,
+    locus_ranges: Path | None, guide_tree: Path | None,
+    metrics: Path | None, threads: str, iqtree_path: str | None,
+    tool_args: str | None, prefix: str, resume: bool,
+    output_dir: Path,
+    overwrite: bool, dry_run: bool, quiet: bool,
+) -> None:
+    """Site-wise and gene-wise log-likelihood score distribution.
+
+    Computes per-site and per-gene log-likelihood scores across candidate
+    trees using IQ-TREE3 -wslr. Identifies outlier genes with disproportionate
+    phylogenetic signal (ΔGLS) following Shen et al. (2017).
+
+    Model source: --model-expr, --partitions, or both. At least
+    one model source required. When --partitions or --locus-ranges is provided,
+    gene-wise breakdown and outlier detection are performed.
+
+    Examples:
+
+      # Homogeneous model, site-wise only
+
+      phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4
+
+      # With gene-wise output via partitions
+
+      phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --partitions partitions.txt
+
+      # With gene-wise output via locus ranges (boundaries only, model from --model-expr)
+
+      phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt
+
+      # With outlier-vs-normal metrics comparison
+
+      phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt --metrics metrics.csv
+    """
+    from phyloai.posttree.signal import run_signal_lnl
+
+    candidate_trees = _parse_candidate_trees(candidate_trees_raw)
+    result = run_signal_lnl(
+        matrix=matrix, candidate_trees=candidate_trees,
+        model_expr=model_expr, partitions=partitions,
+        partition_mode=partition_mode,
+        locus_ranges=locus_ranges, guide_tree=guide_tree,
+        threads=threads, iqtree_path=iqtree_path,
+        tool_args=tool_args, metrics=metrics,
+        prefix=prefix, resume=resume,
+        output_dir=output_dir, overwrite=overwrite,
+        dry_run=dry_run, quiet=quiet,
+    )
+
+    result_path = output_dir.resolve() / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
+        json.dump(result, fh, indent=2)
+
+    if result["status"] == "error":
+        cat = result.get("error_category")
+        _fail(result.get("error") or "Unknown error",
+              exit_code=1 if cat == "input" else 3 if cat == "env" else 2)
+
+    if dry_run:
+        click.echo(f"Would run: {' '.join(result['data']['cmd'])}")
+        return
+
+    if not quiet:
+        kr = result["key_results"]
+        click.echo(f"\nStatus:    {result['status']}")
+        click.echo(f"Wall time: {result['wall_time']:.1f}s")
+        click.echo(f"Trees: {kr.get('n_trees')}  Sites: {kr.get('n_sites')}")
+        if kr.get("n_loci"):
+            click.echo(f"Loci: {kr['n_loci']}  Outliers: {kr.get('n_outlier_genes')}")
+        click.echo(f"Result:    {result_path}")
+
+
+@signal.command("consistent")
+@click.option("--matrix", required=True, type=click.Path(exists=True, path_type=Path),
+              help="Single supermatrix alignment (FASTA/PHYLIP/NEXUS). Maps to IQ-TREE -s.")
+@click.option("--candidate-trees", "candidate_trees_raw", required=True, type=str,
+              help="Exactly 2 candidate trees (tree-list file or comma-separated NEWICK files)."
+                   " >2 trees → hard error. Maps to IQ-TREE -z.")
+@click.option("--tree-dir", required=True, type=click.Path(exists=True, path_type=Path),
+              help="Directory of gene tree files for GQS calculation via wASTRAL."
+                   " Logical locus name resolved per global file matching policy"
+                   " (suffix-agnostic, 1-2 dot segment removal).")
+@click.option("--model-expr", type=str, default=None,
+              help="Complete IQ-TREE -m model expression (e.g. LG+F+R4)."
+                   " When combined with --partitions, each partition independently"
+                   " estimates parameters using this model.")
+@click.option("--partitions", type=click.Path(path_type=Path), default=None,
+              help="Partition file passed to IQ-TREE as -p or -Q (per --partition-mode)."
+                   " Also extracts locus boundaries for GLS."
+                   " Mutually exclusive with --locus-ranges.")
+@click.option("--partition-mode", type=click.Choice(["p", "Q"]), default=None,
+              help="p=-p (edge-linked proportional, shared topology + rate multipliers);"
+                   " Q=-Q (edge-unlinked, independent branch lengths per partition)."
+                   " Default p when --partitions is provided. Only valid with --partitions.")
+@click.option("--locus-ranges", type=click.Path(path_type=Path), default=None,
+              help="Partition file for locus boundary extraction only (not passed to IQ-TREE)."
+                   " Mutually exclusive with --partitions.")
+@click.option("--guide-tree", type=click.Path(path_type=Path), default=None,
+              help="Guide tree for PMSF-style models. Maps to IQ-TREE -ft.")
+@click.option("--metrics", type=click.Path(path_type=Path), default=None,
+              help="Metrics CSV from 'phyloai pretree metrics' for consistent-vs-inconsistent"
+                   " gene comparison.")
+@click.option("--threads", "-t", default="auto", show_default=True,
+              help="IQ-TREE -T value (integer or auto). Also controls wASTRAL parallelism.")
+@click.option("--iqtree-path", type=str, default=None,
+              help="Explicit path to iqtree3 executable.")
+@click.option("--wastral-path", type=str, default=None,
+              help="Explicit path to wastral executable.")
+@click.option("--tool-args", type=str, default=None,
+              help="Extra IQ-TREE flags. Blocked: -s, -z, -wslr.")
+@click.option("--prefix", type=str, default="consistent", show_default=True,
+              help="IQ-TREE output prefix.")
+@click.option("--resume", is_flag=True, default=False,
+              help="Resume incomplete IQ-TREE run (native checkpoint).")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/signal/consistent"), show_default=True)
+@click.option("--overwrite", is_flag=True, default=False)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.option("--quiet", "-q", is_flag=True, default=False)
+def consistent_command(
+    matrix: Path, candidate_trees_raw: str, tree_dir: Path,
+    model_expr: str | None, partitions: Path | None, partition_mode: str | None,
+    locus_ranges: Path | None, guide_tree: Path | None,
+    metrics: Path | None, threads: str,
+    iqtree_path: str | None, wastral_path: str | None,
+    tool_args: str | None, prefix: str, resume: bool,
+    output_dir: Path,
+    overwrite: bool, dry_run: bool, quiet: bool,
+) -> None:
+    """Consistent gene identification via GLS + GQS (Shen et al. 2021).
+
+    Requires exactly 2 candidate trees. Identifies genes where both
+    likelihood-based (GLS) and quartet-based (GQS) signal agree on
+    supporting one of two candidate topologies.
+
+    Uses IQ-TREE3 -wslr for GLS and wASTRAL -C -c for GQS. GLS requires
+    --partitions or --locus-ranges for locus boundaries. GQS runs in
+    parallel across gene trees (controlled by --threads).
+
+    Validation: exactly 2 trees, locus-gene tree name matching, T1/T2
+    must share identical taxon sets.
+
+    Examples:
+
+      phyloai posttree signal consistent --matrix matrix.fa --candidate-trees T1.tre,T2.tre --tree-dir gene_trees/ --model-expr LG+F+R4 --locus-ranges partitions.txt
+    """
+    from phyloai.posttree.signal import run_signal_consistent
+
+    candidate_trees = _parse_candidate_trees(candidate_trees_raw)
+    result = run_signal_consistent(
+        matrix=matrix, candidate_trees=candidate_trees,
+        tree_dir=tree_dir, model_expr=model_expr,
+        partitions=partitions, partition_mode=partition_mode,
+        locus_ranges=locus_ranges, guide_tree=guide_tree,
+        threads=threads, iqtree_path=iqtree_path,
+        wastral_path=wastral_path, tool_args=tool_args,
+        metrics=metrics, prefix=prefix, resume=resume,
+        output_dir=output_dir,
+        overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+    )
+
+    result_path = output_dir.resolve() / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
+        json.dump(result, fh, indent=2)
+
+    if result["status"] == "error":
+        cat = result.get("error_category")
+        _fail(result.get("error") or "Unknown error",
+              exit_code=1 if cat == "input" else 3 if cat == "env" else 2)
+
+    if dry_run:
+        click.echo(f"Would run: {' '.join(result['data']['cmd'])}")
+        return
+
+    if not quiet:
+        kr = result["key_results"]
+        click.echo(f"\nStatus:     {result['status']}")
+        click.echo(f"Wall time:  {result['wall_time']:.1f}s")
+        click.echo(f"Loci: {kr.get('n_loci')}  Consistent: {kr.get('n_consistent')}  Inconsistent: {kr.get('n_inconsistent')}")
+        click.echo(f"Result:     {result_path}")
+
+
+@signal.command("fclm")
+@click.option("--matrix", required=True, type=click.Path(exists=True, path_type=Path),
+              help="Single supermatrix alignment (FASTA/PHYLIP/NEXUS). Maps to IQ-TREE -s.")
+@click.option("--taxset-csv", required=True, type=click.Path(exists=True, path_type=Path),
+              help="Two-column CSV (taxon,taxset) defining cluster membership."
+                   " Minimum 4 taxsets required. PhyloAI converts to NEXUS format"
+                   " for IQ-TREE -lmclust.")
+@click.option("--model-expr", type=str, default=None,
+              help="Complete IQ-TREE -m model expression (e.g. LG+C60+F+R4)."
+                   " When combined with --partitions, each partition independently"
+                   " estimates parameters using this model.")
+@click.option("--partitions", type=click.Path(path_type=Path), default=None,
+              help="Partition file (e.g. .best_model.nex from IQ-TREE)."
+                   " Passed to IQ-TREE as -p or -Q (per --partition-mode).")
+@click.option("--partition-mode", type=click.Choice(["p", "Q"]), default=None,
+              help="p=-p (edge-linked proportional, shared topology + rate multipliers);"
+                   " Q=-Q (edge-unlinked, independent branch lengths per partition)."
+                   " Default p when --partitions is provided. Only valid with --partitions.")
+@click.option("--lmap", type=str, default=None,
+              help="Number of quartets for likelihood mapping."
+                   " ALL = all quartets; integer = fixed count; default = 50 * n_taxa."
+                   " Maps to IQ-TREE -lmap.")
+@click.option("--guide-tree", type=click.Path(path_type=Path), default=None,
+              help="Guide tree for PMSF-style models. Maps to IQ-TREE -ft.")
+@click.option("--threads", "-t", default="auto", show_default=True,
+              help="IQ-TREE -T value (integer or auto).")
+@click.option("--iqtree-path", type=str, default=None,
+              help="Explicit path to iqtree3 executable.")
+@click.option("--tool-args", type=str, default=None,
+              help="Extra IQ-TREE flags. Blocked: -s, -lmap, -lmclust, -n, -p, -Q.")
+@click.option("--prefix", type=str, default="fclm", show_default=True,
+              help="IQ-TREE output prefix.")
+@click.option("--resume", is_flag=True, default=False,
+              help="Resume incomplete IQ-TREE run (native checkpoint).")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/signal/fclm"), show_default=True)
+@click.option("--overwrite", is_flag=True, default=False)
+@click.option("--dry-run", is_flag=True, default=False)
+@click.option("--quiet", "-q", is_flag=True, default=False)
+def fclm_command(
+    matrix: Path, taxset_csv: Path, model_expr: str | None,
+    partitions: Path | None, partition_mode: str | None,
+    lmap: str | None, guide_tree: Path | None, threads: str,
+    iqtree_path: str | None, tool_args: str | None,
+    prefix: str, resume: bool,
+    output_dir: Path,
+    overwrite: bool, dry_run: bool, quiet: bool,
+) -> None:
+    """Four-cluster Likelihood Mapping (FcLM).
+
+    Assesses phylogenetic signal supporting alternative hypotheses among
+    four taxon clusters using IQ-TREE3 -lmap -lmclust. Results are in
+    the IQ-TREE native .iqtree report.
+
+    Requires a taxset CSV (taxon,taxset) with at least 4 mutually exclusive
+    clusters covering all taxa in the matrix. Model source: --model-expr
+    and/or --partitions.
+
+    Validation: all CSV taxa must match matrix taxa exactly; each taxon in
+    exactly one taxset; minimum 4 taxsets.
+
+    Examples:
+
+      # Homogeneous model
+
+      phyloai posttree signal fclm --matrix matrix.fa --taxset-csv taxsets.csv --model-expr LG+C60+F+R4
+
+      # All quartets
+
+      phyloai posttree signal fclm --matrix matrix.fa --taxset-csv taxsets.csv --model-expr LG+F+R4 --lmap ALL
+
+      # Partition model
+
+      phyloai posttree signal fclm --matrix matrix.fa --taxset-csv taxsets.csv --partitions matrix.best_model.nex
+    """
+    from phyloai.posttree.signal import run_signal_fclm
+
+    result = run_signal_fclm(
+        matrix=matrix, taxset_csv=taxset_csv,
+        model_expr=model_expr, partitions=partitions,
+        partition_mode=partition_mode,
+        lmap=lmap, guide_tree=guide_tree,
+        threads=threads, iqtree_path=iqtree_path,
+        tool_args=tool_args, prefix=prefix, resume=resume,
+        output_dir=output_dir,
+        overwrite=overwrite, dry_run=dry_run,
+        quiet=quiet,
+    )
+
+    result_path = output_dir.resolve() / "result.json"
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(result_path, "w") as fh:
+        json.dump(result, fh, indent=2)
+
+    if result["status"] == "error":
+        cat = result.get("error_category")
+        _fail(result.get("error") or "Unknown error",
+              exit_code=1 if cat == "input" else 3 if cat == "env" else 2)
+
+    if dry_run:
+        click.echo(f"Would run: {' '.join(result['data']['cmd'])}")
+        return
+
+    if not quiet:
+        kr = result["key_results"]
+        click.echo(f"\nStatus:    {result['status']}")
+        click.echo(f"Wall time: {result['wall_time']:.1f}s")
+        click.echo(f"Taxsets: {kr.get('n_taxsets')}")
+        click.echo(f"Report:  {output_dir.resolve() / 'iqtree' / f'{prefix}.iqtree'}")
+        click.echo(f"Result:  {result_path}")

@@ -92,14 +92,16 @@ class TestValidateInputs:
         matrix.write_text(">a\nMKT\n")
         ct = tmp_path / "t.nwk"
         ct.write_text("(a,b);\n")
+        part = tmp_path / "m.nex"
+        part.write_text("#NEXUS\nbegin sets;\ncharset p1 = 1-3;\nend;\n")
         errs = _validate_inputs(
             matrix=matrix, candidate_trees=[ct],
             replicates=10000, threads=4,
             overwrite=False, resume=False,
-            model_expr="LG", partitions="m.nex",
+            model_expr="LG", partitions=str(part),
             tool_args=None, guide_tree=None,
         )
-        assert any("mutually exclusive" in e.lower() for e in errs)
+        assert errs == []
 
     def test_all_valid(self, tmp_path: Path) -> None:
         matrix = tmp_path / "m.fa"

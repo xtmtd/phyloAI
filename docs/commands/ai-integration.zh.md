@@ -183,7 +183,7 @@ MCP server 为每个 CLI 子命令注册一个工具，外加四个工具型工�
 | `report` | `phyloai report` | synchronous |
 | `run` | `phyloai run` | fire-and-forget |
 
-占位工具（返回"not yet available"）：`posttree_signal`、`posttree_simulate`、`posttree_syserror_brlen`、`posttree_syserror_cca`、`posttree_syserror_sites`。
+占位工具（返回"not yet available"）：`posttree_simulate`、`posttree_syserror_brlen`、`posttree_syserror_cca`、`posttree_syserror_sites`。
 
 ### 工具型工具（只读、同步）
 

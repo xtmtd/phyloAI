@@ -81,8 +81,6 @@ def _validate_inputs(
             "Neither --model-expr, --partitions, nor -m/-p in --tool-args provided. "
             "Must specify one model source."
         )
-    if model_expr and partitions:
-        errors.append("--model-expr and --partitions are mutually exclusive")
 
     # Cross-source model conflict: if a high-level model-source flag is
     # given, --tool-args must not contain the OTHER model-source flag,
@@ -215,7 +213,7 @@ def _build_topology_cmd(
     # 3. Model source
     if model_expr and not _is_flag_overridden("-m", tool_tokens):
         cmd.extend(["-m", model_expr])
-    elif partitions and not _is_flag_overridden("-p", tool_tokens):
+    if partitions and not _is_flag_overridden("-p", tool_tokens):
         cmd.extend(["-p", partitions])
 
     # 4. Guide tree

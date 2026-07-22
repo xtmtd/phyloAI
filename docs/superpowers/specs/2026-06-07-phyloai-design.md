@@ -127,7 +127,9 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree-dir ./genetrees/
 phyloai posttree topology    --matrix ./matrix.fa --candidate-trees candidate.trees
 phyloai posttree dating hessian --matrix ./matrix.fa --rooted-tree calib.tre
 phyloai posttree dating mcmc  --hessian-dir ./hessian
-phyloai posttree signal      --matrix ./matrix.fa --hypotheses h1.nwk,h2.nwk
+phyloai posttree signal lnl     --matrix ./matrix.fa --candidate-trees h1.nwk,h2.nwk
+phyloai posttree signal consistent --matrix ./matrix.fa --candidate-trees T1.nwk,T2.nwk --tree-dir gene_trees/
+phyloai posttree signal fclm     --matrix ./matrix.fa --taxset-csv taxsets.csv
 phyloai posttree simulate    --tree ./tree.nwk --replicates 100 --tool alisim
 phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk

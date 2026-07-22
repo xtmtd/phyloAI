@@ -31,7 +31,9 @@ STEP_ORDER: list[str] = [
     "posttree.topology",
     "posttree.dating.hessian",
     "posttree.dating.mcmc",
-    "posttree.signal",
+    "posttree.signal.lnl",
+    "posttree.signal.consistent",
+    "posttree.signal.fclm",
     "posttree.syserror.brlen",
     "posttree.syserror.cca",
     "posttree.syserror.sites",
@@ -69,6 +71,7 @@ def parse_step_id(command: str) -> str:
         "dating": {"hessian", "mcmc"},
         "syserror": {"brlen", "cca", "sites"},
         "bi": {"pb", "bpcomp", "tracecomp", "readpb"},
+        "signal": {"lnl", "consistent", "fclm"},
     }
 
     try:
