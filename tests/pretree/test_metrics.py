@@ -1410,3 +1410,23 @@ class TestTableFormatTSV:
         assert "--skip-freq" not in tokens
         assert "--pseudo-tree" not in tokens
         assert "--decimal-places" not in tokens
+
+
+def test_pair_files_warns_on_count_mismatch(tmp_path: Path) -> None:
+    from phyloai.pretree.metrics import _pair_files
+
+    msa_dir = tmp_path / "msa"
+    msa_dir.mkdir()
+    (msa_dir / "a.fa").write_text(">1\nACGT\n>2\nACGT\n")
+    (msa_dir / "b.fa").write_text(">1\nACGT\n>2\nACGT\n")
+    (msa_dir / "c.fa").write_text(">1\nACGT\n>2\nACGT\n")
+
+    tree_dir = tmp_path / "trees"
+    tree_dir.mkdir()
+    (tree_dir / "a.nwk").write_text("(1,2);")
+    (tree_dir / "b.nwk").write_text("(1,2);")
+
+    _, warnings = _pair_files(msa_dir, tree_dir)
+    count_warn = [w for w in warnings if "MSA count" in w]
+    assert len(count_warn) == 1
+    assert "3" in count_warn[0] and "2" in count_warn[0]

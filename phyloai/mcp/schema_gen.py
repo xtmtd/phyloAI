@@ -7,7 +7,7 @@ from typing import Any
 
 import click
 
-_EXCLUDED_TOOL_NAMES = {"mcp-server", "completion_bash", "completion_zsh", "completion_fish"}
+_EXCLUDED_TOOL_NAMES = {"mcp-server", "completion_bash", "completion_zsh", "completion_fish", "update"}
 
 
 def walk_click_tree(root: click.Group) -> list[dict[str, Any]]:

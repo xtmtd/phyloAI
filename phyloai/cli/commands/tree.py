@@ -1034,7 +1034,7 @@ def msc_command(
         "    gcf / qcf       --ref-tree + (--tree or --tree-dir)\n"
         "    scf / scfl      --ref-tree + --matrix\n"
         "    gcf+scf         --ref-tree + (--tree or --tree-dir) + --matrix\n"
-        "    scfl            optionally --model or --partitions for speedup\n"
+        "    scfl            optionally --model-expr or --partitions for speedup\n"
         "\n"
         "CF computation is one-shot (no --resume)."
     ),
@@ -1076,10 +1076,10 @@ def msc_command(
     help="Partition file for scfl model reuse (e.g., *.best_model.nex from IQ-TREE3).",
 )
 @click.option(
-    "--model",
+    "--model-expr",
     type=str,
     default=None,
-    help="Substitution model for scfl speedup (e.g., LG+F+R3). Mutually exclusive with --partitions.",
+    help="Substitution model for scfl speedup (e.g., LG+F+R4). Mutually exclusive with --partitions.",
 )
 @click.option(
     "--scf-quartets",
@@ -1136,7 +1136,7 @@ def cf_command(
     tree_dir: Path | None,
     matrix: Path | None,
     partitions: Path | None,
-    model: str | None,
+    model_expr: str | None,
     scf_quartets: int,
     prefix: str | None,
     output_dir: Path,
@@ -1172,7 +1172,7 @@ def cf_command(
             tree_dir=tree_dir,
             matrix=matrix,
             partitions=partitions,
-            model=model,
+            model_expr=model_expr,
             scf_quartets=scf_quartets,
             prefix=prefix,
             output_dir=output_dir,
@@ -1212,8 +1212,8 @@ def cf_command(
                 _cmd_parts.extend(["--matrix", str(matrix)])
             if partitions is not None:
                 _cmd_parts.extend(["--partitions", str(partitions)])
-            if model is not None:
-                _cmd_parts.extend(["--model", model])
+            if model_expr is not None:
+                _cmd_parts.extend(["--model-expr", model_expr])
             if cf not in ("gcf", "qcf"):
                 _cmd_parts.extend(["--scf-quartets", str(scf_quartets)])
             if lpp:
@@ -1243,7 +1243,7 @@ def cf_command(
                     "tree_dir": str(tree_dir) if tree_dir else None,
                     "matrix": str(matrix) if matrix else None,
                     "partitions": str(partitions) if partitions else None,
-                    "model": model,
+                    "model_expr": model_expr,
                     "scf_quartets": scf_quartets if cf not in ("gcf", "qcf") else None,
                     "lpp": lpp,
                     "prefix": _prefix,

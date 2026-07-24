@@ -179,7 +179,14 @@ def _write_records(records: list[SeqRecord], out: Path, target_format: str, seq_
         SeqIO.write(records, str(out), "fasta")
         return []
     from Bio.Align import MultipleSeqAlignment
-    alignment = MultipleSeqAlignment(records)
+    max_len = max(len(r.seq) for r in records)
+    padded = []
+    for r in records:
+        if len(r.seq) < max_len:
+            padded.append(SeqRecord(Seq(str(r.seq) + "-" * (max_len - len(r.seq))), id=r.id, description=r.description))
+        else:
+            padded.append(r)
+    alignment = MultipleSeqAlignment(padded)
     converter = FormatConverter()
     if target_format == "nexus":
         molecule_type = "DNA" if seq_type == "NT" else "protein"

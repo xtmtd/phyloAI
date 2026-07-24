@@ -201,7 +201,7 @@ def test_build_iqtree_cf_cmd_scfl_with_model(tmp_path: Path) -> None:
         scf_quartets=100,
         prefix="sCFl",
         threads=4,
-        model="LG+F+R3",
+        model_expr="LG+F+R3",
     )
     assert cmd == [
         "iqtree3", "-s", str(matrix), "-te", str(ref_tree),
@@ -359,7 +359,7 @@ def test_run_cf_scfl_model_and_partitions_mutually_exclusive(tmp_path: Path) -> 
     with pytest.raises(ValueError, match="mutually exclusive"):
         run_cf(
             cf_mode="scfl", ref_tree=ref_tree,
-            matrix=matrix, model="LG", partitions=partitions,
+            matrix=matrix, model_expr="LG", partitions=partitions,
             output_dir=tmp_path / "out",
             threads=4, dry_run=True,
         )
@@ -414,7 +414,7 @@ def test_run_cf_gcf_with_model_raises(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="not valid"):
         run_cf(
             cf_mode="gcf", ref_tree=ref_tree,
-            tree=gene_trees, model="LG",
+            tree=gene_trees, model_expr="LG",
             output_dir=tmp_path / "out",
             threads=4, dry_run=True,
         )
@@ -553,7 +553,7 @@ def test_run_cf_dry_run_gcf_produces_payload(tmp_path: Path) -> None:
     validate_result_json(result)
     validate_params_completeness(result, {
         "cf", "ref_tree", "tree", "tree_dir", "matrix", "partitions",
-        "model", "scf_quartets", "lpp", "prefix", "output_dir", "threads",
+        "model_expr", "scf_quartets", "lpp", "prefix", "output_dir", "threads",
         "overwrite", "dry_run", "iqtree_path", "wastral_path", "quiet",
     })
 
@@ -593,7 +593,7 @@ def test_run_cf_dry_run_scfl_with_model(tmp_path: Path) -> None:
 
     result = run_cf(
         cf_mode="scfl", ref_tree=ref_tree,
-        matrix=matrix, model="LG+F+R3",
+        matrix=matrix, model_expr="LG+F+R3",
         output_dir=tmp_path / "out",
         threads=4, dry_run=True,
     )
@@ -802,3 +802,59 @@ def test_map_qcf_canonical_bipartition_matching(tmp_path: Path) -> None:
     assert "100/0.6" in out
     # Verify branch lengths untouched
     assert "0.05" in out
+
+
+def test_scan_input_cf_accepts_dot_treefile(tmp_path: Path) -> None:
+    from phyloai.tree.cf import _scan_input_cf
+
+    td = tmp_path / "tdir"
+    td.mkdir()
+    (td / "gene1.fas.treefile").write_text("(A,B);")
+    (td / "gene2.fas.treefile").write_text("(C,D);")
+    (td / "data.txt").write_text("not a tree")
+
+    valid, skipped = _scan_input_cf(td)
+    assert len(valid) == 2
+    assert {p.name for p in valid} == {"gene1.fas.treefile", "gene2.fas.treefile"}
+    assert any("newick" in s["reason"] for s in skipped)
+
+
+def test_scan_input_cf_accepts_multiline_newick(tmp_path: Path) -> None:
+    from phyloai.tree.cf import _scan_input_cf
+
+    td = tmp_path / "tdir"
+    td.mkdir()
+    (td / "gene.nwk").write_text(
+        "((A:0.1,B:0.2):0.3,\n"
+        " (C:0.1,D:0.2):0.4);\n"
+    )
+
+    valid, skipped = _scan_input_cf(td)
+    assert len(valid) == 1
+
+
+def test_run_cf_model_backward_compat(tmp_path: Path) -> None:
+    from phyloai.tree.cf import run_cf
+    import warnings
+
+    ref_tree = tmp_path / "ref.nwk"
+    ref_tree.write_text("(A,B);")
+    matrix = tmp_path / "msa.fa"
+    matrix.write_text(">A\nACGT\n>B\nACGT\n")
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        result = run_cf(
+            cf_mode="scfl",
+            ref_tree=ref_tree,
+            matrix=matrix,
+            model="LG+F+R3",
+            output_dir=tmp_path / "out",
+            threads=4,
+            dry_run=True,
+        )
+        assert len(w) == 1
+        assert "deprecated" in str(w[0].message).lower()
+        assert "model_expr" in str(w[0].message)
+
+    assert result["status"] == "success"

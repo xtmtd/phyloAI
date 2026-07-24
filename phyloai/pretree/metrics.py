@@ -179,6 +179,15 @@ def _pair_files(
     tree_paths = _collect_tree_paths(tree_dir)
     result = pair_msa_and_tree_maps(msa_map, tree_paths)
 
+    msa_count = len(msa_map)
+    tree_count = len(tree_paths)
+    if tree_dir is not None and msa_count != tree_count:
+        paired_with_trees = sum(1 for (_, t) in result.paired.values() if t is not None)
+        result.warnings.append(
+            f"[WARN] MSA count ({msa_count}) != tree count ({tree_count}); "
+            f"{paired_with_trees} loci have matching tree files."
+        )
+
     for locus, (_, tree_path) in sorted(result.paired.items()):
         if locus in msa_map and tree_path is None:
             result.warnings.append(f"[WARN] MSA file '{locus}' has no matching tree file.")
@@ -944,6 +953,9 @@ def run_metrics(
             "data": _EMPTY_BATCH_DATA,
         }
     per_marker_stderr.extend(pair_warnings)
+    if pair_warnings and not quiet and console is not None:
+        for msg in pair_warnings:
+            console.print(f"[yellow]{msg}[/yellow]")
 
     if not paired:
         return {

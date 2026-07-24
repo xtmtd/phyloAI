@@ -1555,18 +1555,18 @@ Templates for:
 Document the demo dataset structure and per-step entry points:
 ```
 ## End-to-end dataset
-- Path: phyloai/demo_data/end_to_end/raw/faa/
-- Path: phyloai/demo_data/end_to_end/raw/fna/
+- Path: demo_data/end_to_end/raw/faa/
+- Path: demo_data/end_to_end/raw/fna/
 - Content: 20 genes, 6 species, small AA and NT sequence sets
 - Pipeline: raw → align → trim → concat → iqtree/fasttree → report (runs in minutes)
 
 ## Per-step entry points
-- Pre-aligned: phyloai/demo_data/per_step/aligned/
-- Pre-trimmed: phyloai/demo_data/per_step/trimmed/
-- Gene trees: phyloai/demo_data/per_step/gen_trees/
-- Concatenated AA/NT matrices: phyloai/demo_data/per_step/concat/faa/ and phyloai/demo_data/per_step/concat/fna/
-- Topology-test inputs: phyloai/demo_data/per_step/topology_test/
-- Dating inputs: phyloai/demo_data/per_step/dating/
+- Pre-aligned: demo_data/per_step/aligned/
+- Pre-trimmed: demo_data/per_step/trimmed/
+- Gene trees: demo_data/per_step/gen_trees/
+- Concatenated AA/NT matrices: demo_data/per_step/concat/faa/ and demo_data/per_step/concat/fna/
+- Topology-test inputs: demo_data/per_step/topology_test/
+- Dating inputs: demo_data/per_step/dating/
 
 Usage: copy demo data to a user run directory before starting.
 ```
@@ -1594,40 +1594,16 @@ git commit -m "docs(skill): add phyloai-workflow Skill and reference files"
 ### Task 9: Demo Dataset — Create and bundle small phylogenomics dataset
 
 **Files:**
-- Create: `phyloai/demo_data/__init__.py`
-- Create: 20 AA FASTA files under `phyloai/demo_data/end_to_end/raw/faa/` using the dataset's natural gene names
-- Create: 20 NT FASTA files under `phyloai/demo_data/end_to_end/raw/fna/` using matching dataset gene names where available
-- Create: `phyloai/demo_data/per_step/aligned/seqs/` with pre-aligned demo sequences and `result.json`
-- Create: `phyloai/demo_data/per_step/trimmed/seqs/` with pre-trimmed demo sequences and `result.json`
-- Create: `phyloai/demo_data/per_step/concat/faa/` and `phyloai/demo_data/per_step/concat/fna/` with concatenated matrices and `result.json`
-- Create: `phyloai/demo_data/per_step/gen_trees/trees/` with demo gene trees and `result.json`
-- Create: `phyloai/demo_data/per_step/topology_test/` with topology-test matrix and candidate tree files
-- Create: `phyloai/demo_data/per_step/dating/` with dating matrix, rooted calibrated tree, and hessian/mcmc-ready files
+- Create: 20 AA FASTA files under `demo_data/end_to_end/raw/faa/` using the dataset's natural gene names
+- Create: 20 NT FASTA files under `demo_data/end_to_end/raw/fna/` using matching dataset gene names where available
+- Create: `demo_data/per_step/aligned/seqs/` with pre-aligned demo sequences and `result.json`
+- Create: `demo_data/per_step/trimmed/seqs/` with pre-trimmed demo sequences and `result.json`
+- Create: `demo_data/per_step/concat/faa/` and `demo_data/per_step/concat/fna/` with concatenated matrices and `result.json`
+- Create: `demo_data/per_step/gen_trees/trees/` with demo gene trees and `result.json`
+- Create: `demo_data/per_step/topology_test/` with topology-test matrix and candidate tree files
+- Create: `demo_data/per_step/dating/` with dating matrix, rooted calibrated tree, and hessian/mcmc-ready files
 
-- [ ] **Step 1: Create `phyloai/demo_data/__init__.py`**
-
-```python
-"""Demo dataset path resolution."""
-from __future__ import annotations
-
-from pathlib import Path
-
-
-def resolve_demo_path(*parts: str) -> Path:
-    """Return the absolute path to a file or directory within the bundled demo dataset."""
-    base = Path(__file__).resolve().parent
-    return base.joinpath(*parts)
-
-
-def resolve_raw_dir(seq_type: str = "faa") -> Path:
-    return resolve_demo_path("end_to_end", "raw", seq_type)
-
-
-def resolve_per_step_dir(step: str) -> Path:
-    return resolve_demo_path("per_step", step)
-```
-
-- [ ] **Step 2: Generate 20 minimal gene sequence pairs (AA + NT FASTA)**
+- [ ] **Step 1: Generate 20 minimal gene sequence pairs (AA + NT FASTA)**
 
 Each gene has 6 species. Use the dataset's natural file names; do not rename files just to fit a `gene_001` convention. Keep sequences small enough for fast demos, valid FASTA, and 60-character line wrapping. Create small between-gene and between-species variation so downstream steps produce non-trivial results.
 
@@ -1644,22 +1620,22 @@ MALWMRLLPL-VLLALWGPDPAAAFVNQHL-CGSHLVEALYLVCGERGFFYTPKT
 
 Create 20 AA files and 20 NT files with 6 species each.
 
-- [ ] **Step 3: Generate per-step intermediate data**
+- [ ] **Step 2: Generate per-step intermediate data**
 
 Run each step on the demo dataset to produce actual intermediate output:
 
 ```bash
 # Convert AA demo set
-python -m phyloai.cli.main pretree convert --input phyloai/demo_data/end_to_end/raw/faa -o phyloai/demo_data/per_step/converted/faa --overwrite
+python -m phyloai.cli.main pretree convert --input demo_data/end_to_end/raw/faa -o demo_data/per_step/converted/faa --overwrite
 
 # Align (use mafft auto for speed)
-python -m phyloai.cli.main pretree align --seq-dir phyloai/demo_data/per_step/converted/faa/seqs --method auto -o phyloai/demo_data/per_step/aligned --overwrite
+python -m phyloai.cli.main pretree align --seq-dir demo_data/per_step/converted/faa/seqs --method auto -o demo_data/per_step/aligned --overwrite
 
 # Trim
-python -m phyloai.cli.main pretree trim --msa-dir phyloai/demo_data/per_step/aligned/seqs --tool clipkit -o phyloai/demo_data/per_step/trimmed --overwrite
+python -m phyloai.cli.main pretree trim --msa-dir demo_data/per_step/aligned/seqs --tool clipkit -o demo_data/per_step/trimmed --overwrite
 
 # Concat
-python -m phyloai.cli.main pretree concat --msa-dir phyloai/demo_data/per_step/trimmed/seqs -o phyloai/demo_data/per_step/concat/faa --overwrite
+python -m phyloai.cli.main pretree concat --msa-dir demo_data/per_step/trimmed/seqs -o demo_data/per_step/concat/faa --overwrite
 ```
 
 Move only durable demo artifacts into the per_step directories for commit. Keep `result.json` in each directory for completeness. Remove large generated files (e.g. IQ-TREE checkpoints) unless required for the specific demo entry point.
@@ -1667,21 +1643,21 @@ Move only durable demo artifacts into the per_step directories for commit. Keep 
 - `per_step/topology_test/` must include a matrix and candidate tree file(s) sufficient for `phyloai posttree topology`.
 - `per_step/dating/` must include a matrix, rooted calibrated tree, and any hessian/mcmc handoff files needed to demonstrate `dating hessian` and `dating mcmc`.
 
-- [ ] **Step 4: Verify demo data structure**
+- [ ] **Step 3: Verify demo data structure**
 
-Run: `python -c "from phyloai.demo_data import resolve_raw_dir; print(resolve_raw_dir('faa')); print(len(list(resolve_raw_dir('faa').glob('*.faa')))); print(len(list(resolve_raw_dir('fna').glob('*.fna'))))"`
+Run: `python -c "from pathlib import Path; root = Path('demo_data/end_to_end/raw'); print(root / 'faa'); print(len(list((root / 'faa').glob('*.fa')))); print(len(list((root / 'fna').glob('*.fa'))))"`
 
 Expected: Lists the demo AA/NT directories and shows 20 `.faa` files plus 20 `.fna` files.
 
-- [ ] **Step 5: Verify FASTA files are valid by running pretree stats on them**
+- [ ] **Step 4: Verify FASTA files are valid by running pretree stats on them**
 
-Run: `python -m phyloai.cli.main pretree stats --seq-dir phyloai/demo_data/end_to_end/raw/faa -o runs/demo/stats --overwrite`
+Run: `python -m phyloai.cli.main pretree stats --seq-dir demo_data/end_to_end/raw/faa -o runs/demo/stats --overwrite`
 Expected: Success, `result.json` written with valid stats.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add phyloai/demo_data/
+git add demo_data/
 git commit -m "feat: add bundled demo dataset with 20 genes and 6 species"
 ```
 
@@ -1699,7 +1675,7 @@ Expected: All tools report OK or explain missing tools.
 
 - [ ] **Step 2: Verify existing per-step demo data**
 
-Run: `python -m phyloai.cli.main pretree stats --seq-dir phyloai/demo_data/per_step/aligned/seqs -o runs/demo/verify-stats --overwrite`
+Run: `python -m phyloai.cli.main pretree stats --seq-dir demo_data/per_step/aligned/seqs -o runs/demo/verify-stats --overwrite`
 Expected: Success, valid stats for aligned demo sequences.
 
 - [ ] **Step 3: Run full MCP test suite**

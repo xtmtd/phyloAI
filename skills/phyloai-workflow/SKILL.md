@@ -37,7 +37,7 @@ Guide users through PhyloAI CLI analyses through the local MCP server.
 
 - Bundled demo data contains 20 genes and 6 species, with AA (`faa/`) and NT (`fna/`) raw inputs.
 - Per-step demo directories include aligned, trimmed, concatenated, gene-tree, topology-test, and dating entry points when present.
-- Demo runs must write new outputs to a user run directory, not back into `phyloai/demo_data/`.
+- Demo runs must write new outputs to a user run directory, not back into `demo_data/`.
 
 ## Error Handling
 

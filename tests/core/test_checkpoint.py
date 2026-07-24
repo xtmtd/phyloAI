@@ -146,3 +146,38 @@ def test_summarize_resume_tasks_counts_invalid_successes(tmp_path: Path) -> None
     )
 
     assert summary == {"skip": 1, "rerun": 1, "invalid": 1}
+
+
+def test_validate_resume_params_excludes_control_flags() -> None:
+    from phyloai.core.checkpoint import (
+        Checkpoint,
+        canonical_params_hash,
+        validate_resume_params,
+    )
+
+    params_full = {
+        "msa_dir": "/data",
+        "tool": "trimal",
+        "threads": 4,
+        "resume": True,
+        "overwrite": False,
+        "dry_run": False,
+        "quiet": False,
+    }
+    stored_params = dict(params_full)
+    stored_params["resume"] = False
+
+    cp = Checkpoint(
+        schema_version=1,
+        step="pretree.trim",
+        command="",
+        status="running",
+        params_hash=canonical_params_hash(stored_params),
+        params=stored_params,
+        started_at="",
+        updated_at="",
+        completed_at=None,
+        tasks=[],
+    )
+
+    validate_resume_params(cp, params_full, step="pretree.trim")

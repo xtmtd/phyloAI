@@ -35,7 +35,7 @@ phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 
 ## Input Requirements by Mode
 
-| Mode     | `--ref-tree` | `--tree`/`--tree-dir` | `--matrix` | `--model`/`--partitions` |
+| Mode     | `--ref-tree` | `--tree`/`--tree-dir` | `--matrix` | `--model-expr`/`--partitions` |
 |----------|-------------|----------------------|-----------|-------------------------|
 | `gcf`      | Required    | Required             | —         | —                       |
 | `scf`      | Required    | —                    | Required  | —                       |
@@ -52,7 +52,7 @@ phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 | `--tree FILE` | — | Single gene tree file (mutually exclusive with `--tree-dir`) |
 | `--tree-dir DIR` | — | Directory of gene tree files |
 | `--matrix FILE` | — | Multiple sequence alignment (required for scf/scfl/gcf+scf) |
-| `--model TEXT` | — | Substitution model for scfl (e.g., `LG+F+R3`) |
+| `--model-expr TEXT` | — | Substitution model for scfl (e.g., `LG+F+R4`) |
 | `--partitions FILE` | — | Partition file for scfl (e.g., `*.best_model.nex`) |
 | `--scf-quartets N` | 100 | Number of quartets for sCF/sCFl (recommend >= 100) |
 | `--prefix TEXT` | auto | Output prefix (default: gCF/sCF/sCFl/gCFsCF/qCF) |
@@ -78,7 +78,7 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree merged.trees
 phyloai tree cf --cf scf --ref-tree gCF.cf.tree --matrix msa.fa
 
 # sCFl (likelihood) with model for speedup
-phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model LG+F+R3
+phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model-expr LG+F+R4
 
 # sCFl with pre-computed partition model
 phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa \
@@ -136,7 +136,7 @@ If no existing support exists, the qCF value becomes the sole label: `0.75`.
 ## Notes
 
 - For best sCF/sCFl results, use a gCF-annotated tree as `--ref-tree` (e.g., run `--cf gcf` first).
-- `--cf scfl` without `--model` or `--partitions` auto-computes the best-fit model — this is slow. Provide `--model` or `--partitions` for speedup.
+- `--cf scfl` without `--model-expr` or `--partitions` auto-computes the best-fit model — this is slow. Provide `--model-expr` or `--partitions` for speedup.
 - `--scf-quartets` should be >= 100 for reliable results. Higher values improve accuracy at the cost of runtime.
 - gCF+sCF computation runs IQ-TREE3 once with both modes, saving significant time compared to two separate runs.
 - qCF uses wASTRAL's calibrated quartet scoring (`-u 2 -C --mode 4`), which handles gene tree estimation error.

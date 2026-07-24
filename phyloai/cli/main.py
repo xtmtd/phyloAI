@@ -19,7 +19,7 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 class _RootGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["completion", "doctor", "run", "pretree", "tree", "posttree", "report", "mcp-server"]
+        return ["completion", "doctor", "update", "run", "pretree", "tree", "posttree", "report", "mcp-server"]
 
 
 @click.group(context_settings=CONTEXT_SETTINGS, cls=_RootGroup)
@@ -31,6 +31,29 @@ def cli(ctx: click.Context) -> None:
     Run 'phyloai doctor' to check your environment before starting.
     """
     ctx.ensure_object(dict)
+
+
+@cli.command("update")
+@click.option("--check", is_flag=True, default=False, help="Only check for updates; do not install.")
+@click.option("--yes", "-y", is_flag=True, default=False, help="Update without confirmation prompt.")
+def update_command(check: bool, yes: bool) -> None:
+    """Check for and install PhyloAI updates from GitHub releases."""
+    from phyloai.core.update import check_update, run_update
+
+    if check:
+        result = check_update()
+        if result["status"] == "error":
+            click.echo(f"Error: {result['message']}", err=True)
+            raise SystemExit(1)
+        if result["status"] == "up_to_date":
+            click.echo(f"PhyloAI is up to date (v{result['current']}).")
+        else:
+            click.echo(f"Update available: v{result['current']} -> v{result['latest']}")
+            raise SystemExit(1)
+    else:
+        ret = run_update(confirm=yes)
+        if ret != 0:
+            raise SystemExit(ret)
 
 
 cli.add_command(completion)

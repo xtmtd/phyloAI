@@ -15,7 +15,7 @@ def test_tree_cf_help_shows_all_flags() -> None:
     assert result.exit_code == 0
     for flag in [
         "--cf", "--ref-tree", "--tree", "--tree-dir",
-        "--matrix", "--partitions", "--model",
+        "--matrix", "--partitions", "--model-expr",
         "--scf-quartets", "--prefix",
         "--output-dir", "--threads", "--iqtree-path",
         "--wastral-path", "--overwrite", "--dry-run", "--quiet", "--lpp",
@@ -118,7 +118,7 @@ def test_tree_cf_gcf_with_matrix_exits_1(tmp_path: Path) -> None:
 
 
 def test_tree_cf_scfl_model_and_partitions_exits_1(tmp_path: Path) -> None:
-    """--cf scfl with --model and --partitions exits 1."""
+    """--cf scfl with --model-expr and --partitions exits 1."""
     ref_tree = tmp_path / "ref.nwk"
     ref_tree.write_text("(A,B);")
     matrix = tmp_path / "msa.fa"
@@ -131,7 +131,7 @@ def test_tree_cf_scfl_model_and_partitions_exits_1(tmp_path: Path) -> None:
         "tree", "cf", "--cf", "scfl",
         "--ref-tree", str(ref_tree),
         "--matrix", str(matrix),
-        "--model", "LG", "--partitions", str(partitions),
+        "--model-expr", "LG", "--partitions", str(partitions),
         "-o", str(out_dir), "--dry-run",
     ])
     assert result.exit_code == 1

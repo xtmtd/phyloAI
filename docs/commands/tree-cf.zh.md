@@ -34,7 +34,7 @@ phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 
 ## 各模式输入要求
 
-| Mode     | `--ref-tree` | `--tree`/`--tree-dir` | `--matrix` | `--model`/`--partitions` |
+| Mode     | `--ref-tree` | `--tree`/`--tree-dir` | `--matrix` | `--model-expr`/`--partitions` |
 |----------|-------------|----------------------|-----------|-------------------------|
 | `gcf`      | Required    | Required             | —         | —                       |
 | `scf`      | Required    | —                    | Required  | —                       |
@@ -51,7 +51,7 @@ phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 | `--tree FILE` | — | 单个基因树文件（与 `--tree-dir` 互斥） |
 | `--tree-dir DIR` | — | 基因树文件目录 |
 | `--matrix FILE` | — | 多序列比对（scf/scfl/gcf+scf 必需） |
-| `--model TEXT` | — | scfl 的替换模型（如 `LG+F+R3`） |
+| `--model-expr TEXT` | — | scfl 的替换模型（如 `LG+F+R4`） |
 | `--partitions FILE` | — | scfl 的分区文件（如 `*.best_model.nex`） |
 | `--scf-quartets N` | 100 | sCF/sCFl 的四分体数（推荐 ≥ 100） |
 | `--prefix TEXT` | auto | 输出前缀（默认：gCF/sCF/sCFl/gCFsCF/qCF） |
@@ -77,7 +77,7 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree merged.trees
 phyloai tree cf --cf scf --ref-tree gCF.cf.tree --matrix msa.fa
 
 # sCFl（似然）带模型加速
-phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model LG+F+R3
+phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model-expr LG+F+R4
 
 # sCFl 使用预计算分区模型
 phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa \
@@ -133,7 +133,7 @@ qCF 值在 [0,1] 范围内保留为原始小数（不乘 100）。为可读性�
 ## 备注
 
 - 为获得最佳 sCF/sCFl 结果，请使用 gCF 注解的树作为 `--ref-tree`（例如先运行 `--cf gcf`）。
-- `--cf scfl` 不带 `--model` 或 `--partitions` 会自动计算最佳拟合模型 —— 这很慢。提供 `--model` 或 `--partitions` 可以加速。
+- `--cf scfl` 不带 `--model-expr` 或 `--partitions` 会自动计算最佳拟合模型 —— 这很慢。提供 `--model-expr` 或 `--partitions` 可以加速。
 - `--scf-quartets` 应 ≥ 100 以获得可靠结果。更高的值在运行时成本上提高准确性。
 - gCF+sCF 计算在一次 IQ-TREE3 调用中同时运行两种模式，相比两次单独运行节省大量时间。
 - qCF 使用 wASTRAL 的校准四分体评分（`-u 2 -C --mode 4`），可处理基因树估计误差。

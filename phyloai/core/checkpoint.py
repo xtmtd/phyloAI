@@ -147,6 +147,13 @@ def load_checkpoint(path: Path) -> Checkpoint:
     return Checkpoint.from_dict(data)
 
 
+_RESUME_EXCLUDED_KEYS = frozenset({"resume", "overwrite", "dry_run", "quiet"})
+
+
+def _clean_params_for_resume(params: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in params.items() if k not in _RESUME_EXCLUDED_KEYS}
+
+
 def validate_resume_params(
     checkpoint: Checkpoint,
     params: dict[str, Any],
@@ -158,8 +165,9 @@ def validate_resume_params(
             f"Checkpoint step is {checkpoint.step!r}, current command step is {step!r}. "
             "Use --overwrite to start fresh."
         )
-    current_hash = canonical_params_hash(params)
-    if current_hash != checkpoint.params_hash:
+    current_hash = canonical_params_hash(_clean_params_for_resume(params))
+    stored_hash = canonical_params_hash(_clean_params_for_resume(checkpoint.params))
+    if current_hash != stored_hash:
         raise ValueError(
             "Resume parameter mismatch: current invocation does not match the checkpoint. "
             "To change parameters, restart with --overwrite."

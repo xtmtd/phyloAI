@@ -183,3 +183,20 @@ def test_convert_skips_invalid_generated_fasta(tmp_path: Path, monkeypatch: pyte
 
     with pytest.raises(ValueError, match="All input entries failed"):
         convert.convert_input(src, out_dir, target_format="fasta", seq_type="NT", threads=1, overwrite=False)
+
+
+def test_convert_unaligned_fasta_to_phylip(tmp_path: Path) -> None:
+    from phyloai.pretree.convert import convert_input
+
+    src = tmp_path / "unaligned.fa"
+    src.write_text(">A\nACTG\n>B\nACT\n")
+    out_dir = tmp_path / "out"
+
+    payload = convert_input(src, out_dir, target_format="phylip-relaxed", seq_type="NT", threads=1, overwrite=False)
+
+    out = out_dir / "seqs" / "unaligned.phy"
+    assert out.exists()
+    content = out.read_text()
+    assert "A  ACTG" in content or "A  ACTG\n" in content
+    assert "B  ACT-" in content or "B  ACT-\n" in content
+    assert payload["data"]["summary"]["n_converted"] == 1

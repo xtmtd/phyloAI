@@ -48,7 +48,7 @@ phyloai tree cf --cf scf --ref-tree gCF.cf.tree --matrix msa.fa
 
 # sCFl (likelihood): alignment + reference tree
 phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa
-phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model LG+F+R3
+phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model-expr LG+F+R4
 phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --partitions msa.best_model.nex
 
 # gCF + sCF combined: all inputs in one IQ-TREE3 call
@@ -115,7 +115,7 @@ phyloai tree (click.Group)
 | `--tree` | Path | None | Single gene tree file (NEWICK, one tree per line). Mutually exclusive with `--tree-dir`. Required for gcf, gcf+scf, qcf. |
 | `--tree-dir` | Path | None | Directory of gene tree files. Merged into one input file (merged.trees). Mutually exclusive with `--tree`. Required for gcf, gcf+scf, qcf. |
 | `--matrix` | Path | None | Multiple sequence alignment. Required for scf, scfl, gcf+scf. Maps to IQ-TREE3 `-s`. |
-| `--partitions` | Path | None | Partition file for scfl model reuse (e.g., `*.best_model.nex` from IQ-TREE3). NEXUS or RAxML format. Optional, only valid with `--cf scfl`. Mutually exclusive with `--model`. |
+| `--partitions` | Path | None | Partition file for scfl model reuse (e.g., `*.best_model.nex` from IQ-TREE3). NEXUS or RAxML format. Optional, only valid with `--cf scfl`. Mutually exclusive with `--model-expr`. |
 
 #### Options
 
@@ -123,7 +123,7 @@ phyloai tree (click.Group)
 |-----------|------|---------|-------------|
  | `--scf-quartets` | int >= 1 | 100 | Number of quartets for sCF/sCFl. Maps to `--scf N` or `--scfl N`. Recommend >= 100. |
 | `--lpp` | flag | False | Append local posterior probabilities (pp1) to qCF support labels. Only valid with `--cf qcf`. |
-| `--model` | str | None | Substitution model for scfl (e.g., `LG+F+R3`). Maps to IQ-TREE3 `-m`. Optional, only valid with `--cf scfl`. Mutually exclusive with `--partitions`. |
+| `--model-expr` | str | None | Substitution model for scfl (e.g., `LG+F+R4`). Maps to IQ-TREE3 `-m`. Optional, only valid with `--cf scfl`. Mutually exclusive with `--partitions`. |
 | `--prefix` | str | auto | Output file prefix. Maps to IQ-TREE3 `--prefix`. Default auto-derived from `--cf` value (see §3.4). |
 
 ### 3.4 Default Prefix per Mode
@@ -170,7 +170,7 @@ iqtree3 -s <matrix> -te <ref-tree> --scfl <Q> [ -m <model> | -p <partitions> ] -
 - `--scfl <Q>`: number of quartets (default 100)
 - `-m <model>` or `-p <partitions>`: optional, for computational speedup using pre-computed model
 
-When `--model` and `--partitions` are both None, IQ-TREE3 computes the best-fit model internally (slow).
+When `--model-expr` and `--partitions` are both None, IQ-TREE3 computes the best-fit model internally (slow).
 
 IQ-TREE3 generates: `<P>.cf.stat`, `<P>.cf.branch`, `<P>.cf.tree`, `<P>.cf.tree.nex`, `<P>.log` (and model files `.iqtree`, `.ckp.gz`, `.model.gz` when model is auto-computed).
 
@@ -235,8 +235,8 @@ This follows IQ-TREE3's convention of appending new support values after existin
 | `--matrix` required | — | ✓ | ✓ | ✓ | — |
 | `--matrix` must NOT be set | ✓ | — | — | — | ✓ |
 | `--partitions` only valid for scfl | — | — | ✓ | — | — |
-| `--model` only valid for scfl | — | — | ✓ | — | — |
-| `--model` and `--partitions` not both set | — | — | ✓ | — | — |
+| `--model-expr` only valid for scfl | — | — | ✓ | — | — |
+| `--model-expr` and `--partitions` not both set | — | — | ✓ | — | — |
 | `--scf-quartets` only valid for scf/scfl/gcf+scf | — | ✓ | ✓ | ✓ | — |
 | `--scf-quartets` must NOT be set | ✓ | — | — | — | ✓ |
 | `--model` must NOT be set | ✓ | — | — | ✓ | ✓ |
@@ -471,7 +471,7 @@ runs/tree/cf/
 | `--tree-dir` contains non-newick files | WARN per file: "unrecognized file extension", record in `data.skipped` |
 | `--tree-dir` contains empty files | Skip silently, record in `data.skipped` |
 | `--tree-dir` contains 0 valid files | Exit code 1 (not a warning) |
-| `--cf scfl` with auto-model computation | INFO: model computation may be slow; suggest `--model` or `--partitions` for speedup |
+| `--cf scfl` with auto-model computation | INFO: model computation may be slow; suggest `--model-expr` or `--partitions` for speedup |
 
 ---
 
@@ -580,7 +580,7 @@ The `tree` group in `_TreeGroup.list_commands()` should include `"cf"` in its re
 ### 12.1 CLI Validation
 - [ ] `--cf` not provided → help shown with error
 - [ ] `--cf scf` without `--matrix` → exit 1
-- [ ] `--cf scfl --model X --partitions Y` → exit 1 (mutually exclusive)
+- [ ] `--cf scfl --model-expr X --partitions Y` → exit 1 (mutually exclusive)
 - [ ] `--cf gcf --matrix msa.fa` → exit 1 (matrix not valid for gcf)
 - [ ] `--cf qcf --matrix msa.fa` → exit 1 (matrix not valid for qcf)
 - [ ] `--cf scf --tree merged.trees` → exit 1 (tree not valid for scf)
@@ -592,7 +592,7 @@ The `tree` group in `_TreeGroup.list_commands()` should include `"cf"` in its re
 ### 12.2 Command Building
 - [ ] `--cf gcf` → correct `iqtree3 -t ... --gcf ... --prefix gCF -T 4`
 - [ ] `--cf scf` → correct `iqtree3 -s ... -te ... --scf 100 --prefix sCF -T 4`
-- [ ] `--cf scfl --model LG+F+R3` → correct `iqtree3 -s ... -te ... --scfl 100 -m LG+F+R3 --prefix sCFl -T 4`
+- [ ] `--cf scfl --model-expr LG+F+R4` → correct `iqtree3 -s ... -te ... --scfl 100 -m LG+F+R4 --prefix sCFl -T 4`
 - [ ] `--cf scfl --partitions p.nex` → correct `iqtree3 -s ... -te ... --scfl 100 -p p.nex --prefix sCFl -T 4`
 - [ ] `--cf gcf+scf` → correct combined command
 - [ ] `--cf qcf` → correct `wastral -i ... -o wastral.tre -u 2 -c ... -C --mode 4 -t 4`

@@ -20,11 +20,6 @@ from phyloai.core.iqtree import (
 
 _logger = logging.getLogger(__name__)
 
-# Gene tree file extensions (newick variants)
-_CF_TREE_EXTENSIONS = frozenset({
-    ".nwk", ".tre", ".tree", ".nw", ".trees", ".newick",
-})
-
 # Default prefix per CF mode
 _DEFAULT_PREFIX: dict[str, str] = {
     "gcf": "gCF",
@@ -50,7 +45,11 @@ _CF_MODES_IQTREE = frozenset({"gcf", "scf", "scfl", "gcf+scf"})
 def _scan_input_cf(
     tree_dir: Path,
 ) -> tuple[list[Path], list[dict[str, str]]]:
-    """Scan a directory for valid gene tree files.
+    """Scan a directory for gene tree files.
+
+    Suffix-agnostic (per Section 9.7 policy): every non-empty regular file
+    is checked.  A file is accepted when the first line looks like a newick
+    tree string (contains `(` and ends with `;`).
 
     Returns:
         (valid_files, skipped_entries)
@@ -72,11 +71,17 @@ def _scan_input_cf(
             skipped.append({"path": str(entry), "reason": "empty file"})
             continue
 
-        ext = entry.suffix.lower()
-        if ext in _CF_TREE_EXTENSIONS:
-            found.append(entry)
-        else:
-            skipped.append({"path": str(entry), "reason": f"unrecognized extension: {ext}"})
+        try:
+            content = entry.read_text().strip()
+            if not content:
+                skipped.append({"path": str(entry), "reason": "empty file content"})
+                continue
+            if "(" in content and content.rstrip().endswith(";"):
+                found.append(entry)
+            else:
+                skipped.append({"path": str(entry), "reason": "content does not look like newick"})
+        except UnicodeDecodeError:
+            skipped.append({"path": str(entry), "reason": "binary file"})
 
     return found, skipped
 
@@ -86,6 +91,8 @@ def _merge_gene_trees(
     output_path: Path,
 ) -> tuple[int, list[dict[str, str]]]:
     """Scan tree_dir for newick files, merge into one file (one tree per line).
+
+    Handles multi-line newick by splitting on tree terminators (``;``).
 
     Returns:
         (count_of_trees_merged, skipped_entries)
@@ -98,11 +105,12 @@ def _merge_gene_trees(
             content = f.read_text().strip()
             if not content:
                 continue
-            for line in content.splitlines():
-                line = line.strip()
-                if line:
-                    out.write(line + "\n")
-                    count += 1
+            for tree in content.split(";"):
+                tree = tree.strip()
+                if not tree or not tree.strip():
+                    continue
+                out.write(tree.rstrip(";").strip() + ";\n")
+                count += 1
 
     return count, skipped
 
@@ -323,7 +331,7 @@ def _build_iqtree_cf_cmd(
     scf_quartets: int,
     prefix: str,
     threads: int,
-    model: str | None = None,
+    model_expr: str | None = None,
     partitions: str | None = None,
 ) -> list[str]:
     """Build the IQ-TREE3 command for a given CF mode."""
@@ -350,8 +358,8 @@ def _build_iqtree_cf_cmd(
     if cf_mode == "scfl":
         if partitions is not None:
             cmd.extend(["-p", partitions])
-        elif model is not None:
-            cmd.extend(["-m", model])
+        elif model_expr is not None:
+            cmd.extend(["-m", model_expr])
 
     cmd.extend(["--prefix", prefix])
     cmd.extend(["-T", str(threads)])
@@ -452,7 +460,7 @@ def _assemble_cf_result(
     tree_dir: Path | None,
     matrix: Path | None,
     partitions: Path | None,
-    model: str | None,
+    model_expr: str | None,
     scf_quartets: int,
     prefix: str,
     output_dir: Path,
@@ -494,8 +502,8 @@ def _assemble_cf_result(
         cmd_parts.extend(["--matrix", str(matrix)])
     if partitions is not None:
         cmd_parts.extend(["--partitions", str(partitions)])
-    if model is not None:
-        cmd_parts.extend(["--model", model])
+    if model_expr is not None:
+        cmd_parts.extend(["--model-expr", model_expr])
     if cf_mode not in ("gcf", "qcf"):
         cmd_parts.extend(["--scf-quartets", str(scf_quartets)])
     if lpp:
@@ -539,7 +547,7 @@ def _assemble_cf_result(
             "tree_dir": str(tree_dir) if tree_dir else None,
             "matrix": str(matrix) if matrix else None,
             "partitions": str(partitions) if partitions else None,
-            "model": model,
+            "model_expr": model_expr,
             "scf_quartets": scf_quartets if cf_mode not in ("gcf", "qcf") else None,
             "lpp": lpp,
             "prefix": prefix,
@@ -576,7 +584,7 @@ def run_cf(
     tree_dir: Path | None = None,
     matrix: Path | None = None,
     partitions: Path | None = None,
-    model: str | None = None,
+    model_expr: str | None = None,
     scf_quartets: int = 100,
     prefix: str | None = None,
     output_dir: Path = Path("runs/tree/cf"),
@@ -587,6 +595,7 @@ def run_cf(
     dry_run: bool = False,
     quiet: bool = False,
     lpp: bool = False,
+    **kwargs: Any,
 ) -> dict[str, Any]:
     """Run concordance factor computation.
 
@@ -594,6 +603,17 @@ def run_cf(
     Raises ValueError for invalid inputs.
     Raises FileNotFoundError for missing tools.
     """
+    if "model" in kwargs:
+        import warnings
+        warnings.warn(
+            "run_cf(model=...) is deprecated, use model_expr= instead",
+            DeprecationWarning, stacklevel=2,
+        )
+        if model_expr is None:
+            model_expr = kwargs["model"]
+        del kwargs["model"]
+    if kwargs:
+        raise TypeError(f"run_cf() got unexpected keyword arguments: {set(kwargs)}")
     # --- Validate cf_mode ---
     valid_modes = frozenset({"gcf", "scf", "scfl", "gcf+scf", "qcf"})
     if cf_mode not in valid_modes:
@@ -647,15 +667,15 @@ def run_cf(
 
     # --- Validate scfl-only params ---
     if cf_mode != "scfl":
-        if model is not None:
-            raise ValueError(f"--model is not valid for --cf {cf_mode}.")
+        if model_expr is not None:
+            raise ValueError(f"--model-expr is not valid for --cf {cf_mode}.")
         if partitions is not None:
             raise ValueError(f"--partitions is not valid for --cf {cf_mode}.")
 
     if cf_mode == "scfl":
-        if model is not None and partitions is not None:
+        if model_expr is not None and partitions is not None:
             raise ValueError(
-                "--model and --partitions are mutually exclusive for --cf scfl."
+                "--model-expr and --partitions are mutually exclusive for --cf scfl."
             )
         if partitions is not None:
             if not partitions.exists():
@@ -714,7 +734,7 @@ def run_cf(
 
         unrecognized = [
             s for s in skipped
-            if s.get("reason", "").startswith("unrecognized")
+            if "newick" in s.get("reason", "") or s.get("reason", "").startswith("binary")
         ]
         if unrecognized:
             msg = (
@@ -749,11 +769,11 @@ def run_cf(
         if not quiet:
             _logger.warning(msg)
 
-    if cf_mode == "scfl" and model is None and partitions is None:
+    if cf_mode == "scfl" and model_expr is None and partitions is None:
         msg = (
-            "--cf scfl without --model or --partitions: IQ-TREE3 will "
+            "--cf scfl without --model-expr or --partitions: IQ-TREE3 will "
             "auto-compute the best-fit model (slow). Consider providing "
-            "--model or --partitions for speedup."
+            "--model-expr or --partitions for speedup."
         )
         warnings_list.append(msg)
         if not quiet:
@@ -778,7 +798,7 @@ def run_cf(
             scf_quartets=scf_quartets,
             prefix=prefix,
             threads=threads,
-            model=model,
+            model_expr=model_expr,
             partitions=str(partitions) if partitions else None,
         )
     else:
@@ -802,7 +822,7 @@ def run_cf(
             cf_mode=cf_mode, ref_tree=ref_tree,
             tree=tree, tree_dir=tree_dir,
             matrix=matrix, partitions=partitions,
-            model=model, scf_quartets=scf_quartets,
+            model_expr=model_expr, scf_quartets=scf_quartets,
             prefix=prefix, output_dir=output_dir,
             threads=threads,
             iqtree_path=iqtree_path, wastral_path=wastral_path,
@@ -887,7 +907,7 @@ def run_cf(
             cf_mode=cf_mode, ref_tree=ref_tree,
             tree=tree, tree_dir=tree_dir,
             matrix=matrix, partitions=partitions,
-            model=model, scf_quartets=scf_quartets,
+            model_expr=model_expr, scf_quartets=scf_quartets,
             prefix=prefix, output_dir=output_dir,
             threads=threads,
             iqtree_path=iqtree_path, wastral_path=wastral_path,
@@ -921,7 +941,7 @@ def run_cf(
             cf_mode=cf_mode, ref_tree=ref_tree,
             tree=tree, tree_dir=tree_dir,
             matrix=matrix, partitions=partitions,
-            model=model, scf_quartets=scf_quartets,
+            model_expr=model_expr, scf_quartets=scf_quartets,
             prefix=prefix, output_dir=output_dir,
             threads=threads,
             iqtree_path=iqtree_path, wastral_path=wastral_path,
@@ -950,7 +970,7 @@ def run_cf(
                     cf_mode=cf_mode, ref_tree=ref_tree,
                     tree=tree, tree_dir=tree_dir,
                     matrix=matrix, partitions=partitions,
-                    model=model, scf_quartets=scf_quartets,
+                    model_expr=model_expr, scf_quartets=scf_quartets,
                     prefix=prefix, output_dir=output_dir,
                     threads=threads,
                     iqtree_path=iqtree_path, wastral_path=wastral_path,
@@ -971,7 +991,7 @@ def run_cf(
                 cf_mode=cf_mode, ref_tree=ref_tree,
                 tree=tree, tree_dir=tree_dir,
                 matrix=matrix, partitions=partitions,
-                model=model, scf_quartets=scf_quartets,
+                model_expr=model_expr, scf_quartets=scf_quartets,
                 prefix=prefix, output_dir=output_dir,
                 threads=threads,
                 iqtree_path=iqtree_path, wastral_path=wastral_path,
@@ -991,7 +1011,7 @@ def run_cf(
         cf_mode=cf_mode, ref_tree=ref_tree,
         tree=tree, tree_dir=tree_dir,
         matrix=matrix, partitions=partitions,
-        model=model, scf_quartets=scf_quartets,
+        model_expr=model_expr, scf_quartets=scf_quartets,
         prefix=prefix, output_dir=output_dir,
         threads=threads,
         iqtree_path=iqtree_path, wastral_path=wastral_path,

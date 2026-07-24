@@ -282,11 +282,11 @@ def test_build_iqtree_cf_cmd_scfl_with_model(tmp_path: Path) -> None:
         scf_quartets=100,
         prefix="sCFl",
         threads=4,
-        model="LG+F+R3",
+        model_expr="LG+F+R4",
     )
     assert cmd == [
         "iqtree3", "-s", str(matrix), "-te", str(ref_tree),
-        "--scfl", "100", "-m", "LG+F+R3", "--prefix", "sCFl", "-T", "4",
+        "--scfl", "100", "-m", "LG+F+R4", "--prefix", "sCFl", "-T", "4",
     ]
 ```
 
@@ -457,7 +457,7 @@ def test_run_cf_scfl_model_and_partitions_mutually_exclusive(tmp_path: Path) -> 
     with pytest.raises(ValueError, match="mutually exclusive"):
         run_cf(
             cf_mode="scfl", ref_tree=ref_tree,
-            matrix=matrix, model="LG", partitions=partitions,
+            matrix=matrix, model_expr="LG", partitions=partitions,
             output_dir=tmp_path / "out",
             threads=4, dry_run=True,
         )
@@ -513,7 +513,7 @@ def test_run_cf_gcf_with_model_raises(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="not valid"):
         run_cf(
             cf_mode="gcf", ref_tree=ref_tree,
-            tree=gene_trees, model="LG",
+            tree=gene_trees, model_expr="LG",
             output_dir=tmp_path / "out",
             threads=4, dry_run=True,
         )
@@ -706,14 +706,14 @@ def test_run_cf_dry_run_scfl_with_model(tmp_path: Path) -> None:
 
     result = run_cf(
         cf_mode="scfl", ref_tree=ref_tree,
-        matrix=matrix, model="LG+F+R3",
+        matrix=matrix, model_expr="LG+F+R4",
         output_dir=tmp_path / "out",
         threads=4, dry_run=True,
     )
 
     cmd = result["data"]["cmd"]
     assert "--scfl" in cmd
-    assert "-m" in cmd and "LG+F+R3" in cmd
+    assert "-m" in cmd and "LG+F+R4" in cmd
     assert "-te" in cmd
 ```
 
@@ -1452,7 +1452,7 @@ def _assemble_cf_result(
     if partitions is not None:
         cmd_parts.extend(["--partitions", str(partitions)])
     if model is not None:
-        cmd_parts.extend(["--model", model])
+        cmd_parts.extend(["--model-expr", model_expr])
     if cf_mode not in ("gcf", "qcf"):
         cmd_parts.extend(["--scf-quartets", str(scf_quartets)])
     cmd_parts.extend(["--prefix", prefix])
@@ -1590,14 +1590,14 @@ def run_cf(
     # --- Validate scfl-only params ---
     if cf_mode != "scfl":
         if model is not None:
-            raise ValueError(f"--model is not valid for --cf {cf_mode}.")
+            raise ValueError(f"--model-expr is not valid for --cf {cf_mode}.")
         if partitions is not None:
             raise ValueError(f"--partitions is not valid for --cf {cf_mode}.")
 
     if cf_mode == "scfl":
         if model is not None and partitions is not None:
             raise ValueError(
-                "--model and --partitions are mutually exclusive for --cf scfl."
+                "--model-expr and --partitions are mutually exclusive for --cf scfl."
             )
 
     # --- Validate scf_quartets ---
@@ -1682,9 +1682,9 @@ def run_cf(
 
     if cf_mode == "scfl" and model is None and partitions is None and not quiet:
         warnings_list.append(
-            "--cf scfl without --model or --partitions: IQ-TREE3 will "
+            "--cf scfl without --model-expr or --partitions: IQ-TREE3 will "
             "auto-compute the best-fit model (slow). Consider providing "
-            "--model or --partitions for speedup."
+            "--model-expr or --partitions for speedup."
         )
 
     # --- Resolve executables ---
@@ -1922,7 +1922,7 @@ class _TreeGroup(click.Group):
         "  gcf, gcf+scf, qcf: --ref-tree + (--tree or --tree-dir)\n"
         "  scf, scfl        : --ref-tree + --matrix\n"
         "  gcf+scf           : --ref-tree + (--tree or --tree-dir) + --matrix\n"
-        "  scfl              : optionally --model or --partitions for speedup\n\n"
+        "  scfl              : optionally --model-expr or --partitions for speedup\n\n"
         "CF computation is one-shot (no --resume)."
     ),
 )
@@ -1963,10 +1963,10 @@ class _TreeGroup(click.Group):
     help="Partition file for scfl model reuse (e.g., *.best_model.nex from IQ-TREE3).",
 )
 @click.option(
-    "--model",
+    "--model-expr",
     type=str,
     default=None,
-    help="Substitution model for scfl speedup (e.g., LG+F+R3). Mutually exclusive with --partitions.",
+    help="Complete IQ-TREE model expression for scfl speedup (e.g., LG+F+R4). Mutually exclusive with --partitions.",
 )
 @click.option(
     "--scf-quartets",
@@ -2144,7 +2144,7 @@ def test_tree_cf_help_shows_all_flags() -> None:
     assert result.exit_code == 0
     for flag in [
         "--cf", "--ref-tree", "--tree", "--tree-dir",
-        "--matrix", "--partitions", "--model",
+        "--matrix", "--partitions", "--model-expr",
         "--scf-quartets", "--prefix",
         "--output-dir", "--threads", "--iqtree-path",
         "--wastral-path", "--overwrite", "--dry-run", "--quiet",
@@ -2247,7 +2247,7 @@ def test_tree_cf_gcf_with_matrix_exits_1(tmp_path: Path) -> None:
 
 
 def test_tree_cf_scfl_model_and_partitions_exits_1(tmp_path: Path) -> None:
-    """--cf scfl with --model and --partitions exits 1."""
+    """--cf scfl with --model-expr and --partitions exits 1."""
     ref_tree = tmp_path / "ref.nwk"
     ref_tree.write_text("(A,B);")
     matrix = tmp_path / "msa.fa"
@@ -2260,7 +2260,7 @@ def test_tree_cf_scfl_model_and_partitions_exits_1(tmp_path: Path) -> None:
         "tree", "cf", "--cf", "scfl",
         "--ref-tree", str(ref_tree),
         "--matrix", str(matrix),
-        "--model", "LG", "--partitions", str(partitions),
+        "--model-expr", "LG", "--partitions", str(partitions),
         "-o", str(out_dir), "--dry-run",
     ])
     assert result.exit_code == 1
@@ -2355,7 +2355,7 @@ phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 
 ## Input Requirements by Mode
 
-| Mode     | `--ref-tree` | `--tree`/`--tree-dir` | `--matrix` | `--model`/`--partitions` |
+| Mode     | `--ref-tree` | `--tree`/`--tree-dir` | `--matrix` | `--model-expr`/`--partitions` |
 |----------|-------------|----------------------|-----------|-------------------------|
 | `gcf`      | Required    | Required             | —         | —                       |
 | `scf`      | Required    | —                    | Required  | —                       |
@@ -2376,7 +2376,7 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree merged.trees
 phyloai tree cf --cf scf --ref-tree gCF.cf.tree --matrix msa.fa
 
 # sCFl (likelihood) with model for speedup
-phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model LG+F+R3
+phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa --model-expr LG+F+R4
 
 # sCFl with pre-computed partition model
 phyloai tree cf --cf scfl --ref-tree gCF.cf.tree --matrix msa.fa \
@@ -2421,7 +2421,7 @@ phyloai tree cf --cf gcf --ref-tree species.nwk --tree merged.trees \
 ## Notes
 
 - For best sCF/sCFl results, use a gCF-annotated tree as `--ref-tree` (e.g., run `--cf gcf` first).
-- `--cf scfl` without `--model` or `--partitions` auto-computes the best-fit model — this is slow. Provide `--model` or `--partitions` for speedup.
+- `--cf scfl` without `--model-expr` or `--partitions` auto-computes the best-fit model — this is slow. Provide `--model-expr` or `--partitions` for speedup.
 - qCF values are multiplied by 100 and rounded to integers before appending to reference tree support values.
 - `--scf-quartets` should be >= 100 for reliable results.
 ```

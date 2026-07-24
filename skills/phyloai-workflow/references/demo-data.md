@@ -6,14 +6,14 @@ Demo paths are resolved from the installed package, not hardcoded.
 
 | Path | Content |
 |---|---|
-| `phyloai/demo_data/end_to_end/raw/faa/` | 20 protein (AA) FASTA files, 6 taxa each |
-| `phyloai/demo_data/end_to_end/raw/fna/` | 20 nucleotide (NT) FASTA files, 6 taxa each, matched to `faa/` by gene name |
+| `demo_data/end_to_end/raw/faa/` | 20 protein (AA) FASTA files, 6 taxa each |
+| `demo_data/end_to_end/raw/fna/` | 20 nucleotide (NT) FASTA files, 6 taxa each, matched to `faa/` by gene name |
 
 Full pipeline: raw → convert → align → trim → concat → ML tree → report. Runs in 2–5 minutes on a modern laptop.
 
 ## Per-Step Entry Points
 
-Directories under `phyloai/demo_data/per_step/` contain pre-computed outputs so you can jump into any step without running the full pipeline.
+Directories under `demo_data/per_step/` contain pre-computed outputs so you can jump into any step without running the full pipeline.
 
 | Directory | Command | Notes |
 |---|---|---|
