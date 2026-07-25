@@ -54,17 +54,20 @@ provides partition boundaries; each partition independently estimates parameters
 Purpose: Site-wise and gene-wise log-likelihood score distribution across
 candidate trees using IQ-TREE3 `-wslr`. Identifies outlier genes with
 disproportionate signal (Shen et al. 2017, *Nature Ecology & Evolution*).
+When `--metrics` is provided with locus boundaries, also compares metrics
+across gene groups supporting different candidate trees.
 
 Required inputs: `--matrix`, `--candidate-trees`, plus at least one model source
 (`--model-expr`, `--partitions`, or `-m`/`-p` in `--tool-args`).
 
 Optional: `--locus-ranges` for gene-wise breakdown + outlier detection;
-`--metrics` for outlier-vs-normal comparison. `--guide-tree` for PMSF models.
+`--metrics` for outlier-vs-nonoutlier and tree-support-group pairwise comparisons.
+`--guide-tree` for PMSF models.
 
 Mutual exclusions: `--partitions` vs `--locus-ranges`.
 
 Outputs: `site_lnl.csv`, `support_summary_sites.csv`, `gene_lnl.csv` (if boundaries), `support_summary_genes.csv` (if boundaries), `outlier_genes.txt`,
-plots, `result.json`. IQ-TREE files go in `iqtree/` subdirectory.
+plots, `support_comparison.csv/pdf` (if `--metrics` + >=2 support groups), `result.json`. IQ-TREE files go in `iqtree/` subdirectory.
 
 #### signal consistent
 

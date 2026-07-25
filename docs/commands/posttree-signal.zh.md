@@ -13,7 +13,7 @@
 | `consistent` | 一致基因识别（GLS + GQS，Shen et al. 2021） | IQ-TREE3 + wASTRAL |
 | `fclm` | 四簇似然映射 | IQ-TREE3 `-lmap -lmclust` |
 
-这些分析用于检查系统发育信号如何在位点和基因间分布，识别对拓扑有不成比例影响的离群基因，并通过似然映射评估争议分支的系统发育信号。
+这些分析用于检查系统发育信号如何在位点和基因间分布，识别对拓扑有不成比例影响的离群基因，比较支持不同拓扑的基因群之间的指标差异，并通过似然映射评估争议分支的系统发育信号。
 
 ## 用法
 
@@ -54,7 +54,7 @@ phyloai posttree signal fclm --matrix ./matrix.fa --taxset-csv taxsets.csv --par
 | `--partition-mode` | `p` = `-p`（边连锁比例模型）；`Q` = `-Q`（边独立模型）。默认 `p`。仅当提供 `--partitions` 时有效。 |
 | `--locus-ranges` | 仅用于基因座边界提取的分区文件（不传给 IQ-TREE）。与 `--partitions` 互斥。 |
 | `--guide-tree` | PMSF 模型的引导树。对应 IQ-TREE `-ft`。 |
-| `--metrics` | `phyloai pretree metrics` 输出的指标 CSV，用于离群基因对比分析。 |
+| `--metrics` | `phyloai pretree metrics` 输出的指标 CSV。生成离群 vs 非离群基因对比，以及支持不同候选树的基因群之间的两两指标对比。 |
 | `--threads` | IQ-TREE `-T` 值（整数或 `auto`，默认 `auto`）。 |
 | `--tool-args` | 额外的 IQ-TREE 参数。被阻止：`-s`、`-z`、`-wslr`、`--prefix`、`-p`、`-Q`。 |
 | `--prefix`   | IQ-TREE 输出前缀（默认：`lnl`）。 |
@@ -82,6 +82,8 @@ runs/posttree/signal/lnl/
 ├── outlier_genes.txt            # [若有基因座边界]
 ├── outlier_comparison.csv       # [若提供了 --metrics]
 ├── outlier_comparison.pdf       # [若提供了 --metrics]
+├── support_comparison.csv       # [若提供了 --metrics 且有 ≥2 个支持组]
+├── support_comparison.pdf       # [若提供了 --metrics 且有 ≥2 个支持组]
 └── iqtree/
     ├── <prefix>.sitelh          # IQ-TREE 原始位点对数似然
     ├── <prefix>.iqtree          # IQ-TREE 原生报告
@@ -97,7 +99,7 @@ phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-e
 # 带基因座范围 + 基因级输出
 phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt
 
-# 离群基因与正常基因指标对比
+# 离群基因与正常基因，以及不同候选树支持组间的指标对比
 phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt --metrics metrics.csv
 ```
 

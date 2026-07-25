@@ -1961,7 +1961,7 @@ def signal() -> None:
 @click.option("--partition-mode", type=click.Choice(["p", "Q"]), default="p", show_default=True, help="p=-p (edge-linked); Q=-Q (edge-unlinked). Only valid with --partitions.")
 @click.option("--locus-ranges", type=click.Path(path_type=Path), default=None, help="Partition file for locus boundary extraction only (not passed to IQ-TREE). Mutually exclusive with --partitions.")
 @click.option("--guide-tree", type=click.Path(path_type=Path), default=None, help="Guide tree for PMSF models.")
-@click.option("--metrics", type=click.Path(path_type=Path), default=None, help="Metrics CSV from phyloai pretree metrics for outlier comparison.")
+@click.option("--metrics", type=click.Path(path_type=Path), default=None, help="Metrics CSV from phyloai pretree metrics for outlier and tree-support-group comparisons.")
 @click.option("--threads", "-t", default="auto", show_default=True, help="IQ-TREE -T value (integer or auto).")
 @click.option("--iqtree-path", type=str, default=None, help="Explicit path to iqtree3 executable.")
 @click.option("--tool-args", type=str, default=None, help="Extra IQ-TREE flags. Blocked: -s, -z, -wslr, -p, -Q.")
@@ -1990,7 +1990,7 @@ def lnl_command(
 
       phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt
 
-      # With outlier-vs-normal metrics comparison
+      # With outlier and tree-support-group metrics comparisons
 
       phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt --metrics metrics.csv
     """
@@ -2489,7 +2489,7 @@ Find the section that describes `posttree topology` usage and add a parallel sec
 **Required:** `--matrix`, `--candidate-trees`, one of `--model-expr`/`--partitions`/`-m` in `--tool-args`
 **Gene-wise:** requires `--partitions` (also passed to IQ-TREE -p) or `--locus-ranges` (boundary-only, compatible with `--model-expr`)
 **`--partitions` and `--locus-ranges` are mutually exclusive**
-**Output:** `site_lnl.csv`, `site_support.pdf`; if locus ranges: `gene_lnl.csv`, `gene_support.pdf`, `outlier_genes.txt`; if `--metrics`: `outlier_comparison.csv/pdf`
+**Output:** `site_lnl.csv`, `site_support.pdf`; if locus ranges: `gene_lnl.csv`, `gene_support.pdf`, `outlier_genes.txt`; if `--metrics`: `outlier_comparison.csv/pdf` and, with at least two non-ambiguous support groups, `support_comparison.csv/pdf`
 
 ### posttree signal consistent
 **Purpose:** Consistent gene identification (Shen et al. 2021) via GLS + GQS.
@@ -2553,13 +2553,14 @@ phyloai posttree signal lnl \
 | `--partitions` | One of | Partition file → IQ-TREE `-p`/`-Q` (per `--partition-mode`); also extracts locus boundaries; mutually exclusive with `--locus-ranges` |
 | `--partition-mode` | No | `p` = `-p` (edge-linked), `Q` = `-Q` (edge-unlinked); default `p`; only valid with `--partitions` |
 | `--locus-ranges` | No | Partition file for locus boundary extraction only (not passed to IQ-TREE) |
-| `--metrics` | No | Metrics CSV from `pretree metrics` for outlier comparison |
+| `--metrics` | No | Metrics CSV from `pretree metrics` for outlier-vs-nonoutlier and tree-support-group comparisons |
 
 ### Outputs
 - `site_lnl.csv` — site-wise lnL, ΔSLS, support; ΔSLS = lnL_T1−lnL_T2 (2 trees) or mean pairwise |diff| (>2 trees)
 - `site_support.pdf` — bar chart of site support distribution
 - `gene_lnl.csv`, `gene_support.pdf`, `outlier_genes.txt` — if locus ranges provided
 - `outlier_comparison.csv/pdf` — if `--metrics` provided
+- `support_comparison.csv/pdf` — if `--metrics` provided and at least two non-ambiguous support groups exist
 
 ### Notes
 - `support_sig` column (|ΔGLS| ≥ 2) only appears in `gene_lnl.csv` for 2-tree comparisons
@@ -2573,7 +2574,7 @@ phyloai posttree signal lnl --matrix m.fa --candidate-trees trees --model-expr L
 # With gene-wise output
 phyloai posttree signal lnl --matrix m.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt
 
-# With outlier-vs-normal comparison
+# With outlier and tree-support-group comparisons
 phyloai posttree signal lnl --matrix m.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt --metrics metrics.csv
 ```
 

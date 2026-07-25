@@ -1,6 +1,7 @@
 """Tests for phyloai.posttree.signal helpers."""
 from __future__ import annotations
 
+import csv as csv_mod
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -247,6 +248,73 @@ class TestRunSignalLnlReviewFindings:
 
         assert result["status"] == "success"
         assert (output_dir / "outlier_comparison.csv").is_file()
+
+    def test_support_group_pairwise_comparison_written(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        ranges = tmp_path / "ranges.txt"
+        metrics = tmp_path / "metrics.csv"
+        ranges.write_text("LG, a = 1-2\nLG, b = 3-4\n")
+        metrics.write_text("loci,entropy\na,1\nb,2\n")
+        sitelh = "2 4\nT1 -1.0 -1.1 -10.0 -10.1\nT2 -10.0 -10.1 -1.0 -1.1\n"
+
+        result, output_dir = self._run(tmp_path, monkeypatch, locus_ranges=ranges, metrics=metrics, sitelh=sitelh)
+
+        assert result["status"] == "success"
+        assert (output_dir / "outlier_comparison.csv").is_file()
+        assert (output_dir / "support_comparison.csv").is_file()
+        assert (output_dir / "support_comparison.pdf").is_file()
+        assert "support_comparison" in result["data"]["output_files"]
+        assert "support_comparison_plot" in result["data"]["output_files"]
+
+    def test_support_group_three_trees_merged_output_and_ambiguous_excluded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        ranges = tmp_path / "ranges.txt"
+        metrics = tmp_path / "metrics.csv"
+        ranges.write_text("LG, a = 1-1\nLG, b = 2-2\nLG, c = 3-3\nLG, d = 4-4\n")
+        metrics.write_text("loci,entropy\na,1\nb,2\nc,3\nd,0\n")
+        sitelh = "3 4\nT1 -1.0 -10.0 -10.0 -1.0\nT2 -10.0 -1.0 -10.0 -1.0\nT3 -10.0 -10.0 -1.0 -1.0\n"
+
+        result, output_dir = self._run(tmp_path, monkeypatch, locus_ranges=ranges, metrics=metrics, sitelh=sitelh)
+
+        assert result["status"] == "success"
+        assert (output_dir / "support_comparison.csv").is_file()
+        assert (output_dir / "support_comparison.pdf").is_file()
+        assert "support_comparison" in result["data"]["output_files"]
+        assert "support_comparison_plot" in result["data"]["output_files"]
+        with open(output_dir / "gene_lnl.csv") as fh:
+            gene_rows = list(csv_mod.DictReader(fh))
+        d_row = next(r for r in gene_rows if r["locus"] == "d")
+        assert d_row["support"] == "ambiguous"
+        with open(output_dir / "support_comparison.csv") as fh:
+            comp = fh.read()
+            assert "T1_mean" in comp
+            assert "T2_mean" in comp
+            assert "T3_mean" in comp
+            assert "T1_vs_T2_wilcoxon_p" in comp
+            assert "T1_vs_T3_wilcoxon_p" in comp
+            assert "T2_vs_T3_wilcoxon_p" in comp
+
+    def test_multi_group_preserves_insertion_order_not_lexicographic(self, tmp_path: Path) -> None:
+        from phyloai.posttree.signal import _compare_multiple_groups
+
+        metrics = tmp_path / "metrics.csv"
+        metrics.write_text("loci,entropy,GC\na,1.0,0.4\nb,3.0,0.5\nc,2.0,0.3\n")
+
+        groups = {"T2": ["b"], "T10": ["a"], "T3": ["c"]}
+        csv_path, pdf_path, _ = _compare_multiple_groups(groups, metrics, tmp_path, prefix="order_test")
+
+        with open(csv_path) as fh:
+            header = fh.readline()
+        cols = header.strip().split(",")
+        assert cols[0] == "metric"
+        assert cols[1] == "T2_mean"
+        assert cols[2] == "T2_n"
+        assert cols[3] == "T10_mean"
+        assert cols[4] == "T10_n"
+        assert cols[5] == "T3_mean"
+        assert cols[6] == "T3_n"
+        assert "T2_vs_T10_wilcoxon_p" in cols
+        assert "T2_vs_T3_wilcoxon_p" in cols
+        assert "T10_vs_T3_wilcoxon_p" in cols
+        assert cols.index("T2_mean") < cols.index("T10_mean") < cols.index("T3_mean")
 
     def test_range_past_sitelh_site_count_returns_structured_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         ranges = tmp_path / "ranges.txt"

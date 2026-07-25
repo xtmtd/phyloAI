@@ -123,7 +123,7 @@ phyloai posttree
 | `--partitions` | Path | None | Partition file passed to IQ-TREE as `-p` or `-Q` (per `--partition-mode`). Also used to extract locus boundaries for gene-wise calculation. Mutually exclusive with `--locus-ranges`. When combined with `--model-expr`, the same model is applied to each partition. |
 | `--partition-mode` | `p\|Q` | `p` | Controls how `--partitions` is passed to IQ-TREE: `p` = `-p` (edge-linked proportional, shared topology + rate multipliers per partition); `Q` = `-Q` (edge-unlinked, independent branch lengths per partition). Only valid when `--partitions` is provided. |
 | `--locus-ranges` | Path | None | Partition file used only to define locus boundaries for gene-wise calculation. Not passed to IQ-TREE. Mutually exclusive with `--partitions`. |
-| `--metrics` | Path | None | Metrics CSV from `phyloai pretree metrics`. When provided, generates outlier vs non-outlier comparison. All loci in `outlier_genes.txt` must be present in this file. |
+| `--metrics` | Path | None | Metrics CSV from `phyloai pretree metrics`. When provided, generates (i) outlier vs non-outlier comparison, and (ii) pairwise comparisons of gene groups supporting different candidate trees. All loci in `gene_lnl.csv` must be present in this file. |
 
 **Validation rules:**
 - At least one model source required: `--model-expr`, `--partitions`, or `-m`/`-p` in `--tool-args`.
@@ -210,6 +210,11 @@ iqtree3 -s <matrix> -m <model>|-p|-Q <partitions> -z <candidate.trees> -wslr [-f
 - Write `outlier_comparison.csv` (columns: `metric, outlier_mean, outlier_n, nonoutlier_mean, nonoutlier_n, wilcoxon_p`)
 - Write `outlier_comparison.pdf` (grid-layout boxplots with colored fill, alpha 0.6, significance annotations ***/**/* / p=0.xxx)
 
+**`--metrics` support-group comparison (when >=2 trees, locus boundaries available):**
+- Group loci by their `support` value (which tree they favor; ambiguous excluded)
+- Write a single merged `support_comparison.csv` with per-group means, counts, and all pairwise Wilcoxon p-values
+- Write a single merged `support_comparison.pdf` with side-by-side boxplots per metric, pairwise significance brackets between groups
+
 **Support summary:**
 - `support_summary_sites.csv`: tree-level site support counts (columns: `tree, n_sites`), including `ambiguous`
 - `support_summary_genes.csv` [if boundaries]: tree-level gene support counts (columns: `tree, n_genes`), including `ambiguous`
@@ -278,6 +283,8 @@ runs/posttree/signal/lnl/
 ├── outlier_genes.txt            # [if locus boundaries provided]
 ├── outlier_comparison.csv       # [if --metrics provided]
 ├── outlier_comparison.pdf       # [if --metrics provided]
+├── support_comparison.csv       # [if --metrics + >=2 support groups]
+├── support_comparison.pdf       # [if --metrics + >=2 support groups]
 └── iqtree/
     ├── <prefix>.sitelh          # IQ-TREE raw site log-likelihoods
     ├── <prefix>.iqtree          # IQ-TREE native report
@@ -384,9 +391,9 @@ All three subcommands use the **Single Pattern** (JSON standard §5.2).
 }
 ```
 
-Conditional `output_files` keys (gene-wise: present only when locus boundaries provided; `outlier_comparison*`, `consistent_comparison*`: present only when `--metrics` provided) follow the additive pattern (§5.4): the CLI handler updates and rewrites `result.json` after generating optional files.
+Conditional `output_files` keys (gene-wise: present only when locus boundaries provided; `outlier_comparison*`: present when `--metrics` is provided; `support_comparison`/`support_comparison_plot`: present when `--metrics` is provided and at least two non-ambiguous support groups exist) follow the additive pattern (§5.4): the CLI handler updates and rewrites `result.json` after generating optional files.
 
-`n_loci` and `n_outlier_genes` in `key_results` and `summary` are absent when no locus boundaries are provided.
+`n_loci` and `n_outlier_genes` in `key_results` and `summary` are absent when no locus boundaries are provided. `support_comparison_sig_metrics` is present only when at least one support-group pair has a metric with p < 0.05.
 
 ### 7.2 `signal consistent`
 

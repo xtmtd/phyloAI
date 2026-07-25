@@ -1040,8 +1040,8 @@ def signal() -> None:
 @click.option("--guide-tree", type=click.Path(path_type=Path), default=None,
               help="Guide tree for PMSF-style models (e.g. LG+C20+F+R4). Maps to IQ-TREE -ft.")
 @click.option("--metrics", type=click.Path(path_type=Path), default=None,
-              help="Metrics CSV from 'phyloai pretree metrics' for outlier-vs-nonoutlier comparison."
-                   " All outlier loci must be present in this file.")
+              help="Metrics CSV from 'phyloai pretree metrics' for outlier-vs-nonoutlier and"
+                   " tree-support-group pairwise comparison.")
 @click.option("--threads", "-t", default="auto", show_default=True,
               help="IQ-TREE -T value (integer or auto).")
 @click.option("--iqtree-path", type=str, default=None,
@@ -1071,6 +1071,8 @@ def lnl_command(
     Computes per-site and per-gene log-likelihood scores across candidate
     trees using IQ-TREE3 -wslr. Identifies outlier genes with disproportionate
     phylogenetic signal (ΔGLS) following Shen et al. (2017).
+    When --metrics is provided with locus boundaries, also compares metrics
+    across gene groups supporting different candidate trees.
 
     Model source: --model-expr, --partitions, or both. At least
     one model source required. When --partitions or --locus-ranges is provided,
@@ -1090,7 +1092,7 @@ def lnl_command(
 
       phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt
 
-      # With outlier-vs-normal metrics comparison
+      # With outlier and support-group metrics comparison
 
       phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt --metrics metrics.csv
     """
