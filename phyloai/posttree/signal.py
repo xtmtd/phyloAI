@@ -176,53 +176,6 @@ def _compare_groups(
         figure.savefig(pdf_path, dpi=150, bbox_inches="tight")
         plt.close(figure)
         return csv_path, pdf_path, empty_sig
-    import math
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    with open(metrics_csv, newline="") as handle:
-        reader = csv.DictReader(handle)
-        rows = list(reader)
-        fieldnames = reader.fieldnames or []
-    locus_column = "loci" if "loci" in fieldnames else fieldnames[0]
-    requested = set(group_a) | set(group_b)
-    missing = requested - {row[locus_column] for row in rows}
-    if missing:
-        raise ValueError(f"Loci missing from --metrics file: {', '.join(sorted(missing))}")
-
-    numeric_columns = [
-        column for column in fieldnames
-        if column != locus_column and all(_is_numeric(row.get(column)) for row in rows if row[locus_column] in requested)
-    ]
-    rows_a = [row for row in rows if row[locus_column] in set(group_a)]
-    rows_b = [row for row in rows if row[locus_column] in set(group_b)]
-    csv_path = output_dir / f"{label_a}_comparison.csv"
-    pdf_path = output_dir / f"{label_a}_comparison.pdf"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    columns = ["metric", f"{label_a}_mean", f"{label_a}_n", f"{label_b}_mean", f"{label_b}_n", "wilcoxon_p"]
-    if not group_a:
-        comparison_rows = [
-            {
-                "metric": column,
-                f"{label_a}_mean": "NA",
-                f"{label_a}_n": 0,
-                f"{label_b}_mean": round(float(np.mean([float(row[column]) for row in rows_b])), 6) if rows_b else "NA",
-                f"{label_b}_n": len(rows_b),
-                "wilcoxon_p": "NA",
-            }
-            for column in numeric_columns
-        ]
-        with open(csv_path, "w", newline="") as handle:
-            writer = csv.DictWriter(handle, fieldnames=columns)
-            writer.writeheader()
-            writer.writerows(comparison_rows)
-        figure, axis = plt.subplots(figsize=(4, 3))
-        axis.text(0.5, 0.5, f"No {label_a} loci", ha="center", va="center", transform=axis.transAxes)
-        figure.savefig(pdf_path, dpi=150, bbox_inches="tight")
-        plt.close(figure)
-        return csv_path, pdf_path, empty_sig
 
     comparison_rows = []
     wilcoxon_rows = []
@@ -321,6 +274,163 @@ def _compare_groups(
     plt.close(fig)
     sig_metrics = [row["metric"] for row in wilcoxon_rows if isinstance(row.get("p_value"), (int, float)) and row["p_value"] < 0.05]
     return csv_path, pdf_path, {"n_sig_metrics": len(sig_metrics), "sig_metric_names": sig_metrics}
+
+
+def _compare_multiple_groups(
+    groups: dict[str, list[str]],
+    metrics_csv: Path,
+    output_dir: Path,
+    prefix: str = "support_comparison",
+) -> tuple[Path, Path, dict[str, Any]]:
+    """Compare N support groups across metrics — one merged CSV + one merged PDF.
+
+    Returns (csv_path, pdf_path, sig_info) where sig_info maps pair name
+    (e.g. ``T1_vs_T2``) to list of significant metric names.
+    """
+    import math
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    with open(metrics_csv, newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        fieldnames = reader.fieldnames or []
+    locus_column = "loci" if "loci" in fieldnames else fieldnames[0]
+    all_loci = [loc for locs in groups.values() for loc in locs]
+    requested = set(all_loci)
+    missing = requested - {row[locus_column] for row in rows}
+    if missing:
+        raise ValueError(f"Loci missing from --metrics file: {', '.join(sorted(missing))}")
+
+    numeric_columns = [
+        column for column in fieldnames
+        if column != locus_column and all(_is_numeric(row.get(column)) for row in rows if row[locus_column] in requested)
+    ]
+    group_order = list(groups.keys())
+    group_values: dict[str, dict[str, list[float]]] = {label: {} for label in group_order}
+    for label in group_order:
+        set_label = set(groups[label])
+        for column in numeric_columns:
+            group_values[label][column] = [float(r[column]) for r in rows if r[locus_column] in set_label]
+
+    csv_path = output_dir / f"{prefix}.csv"
+    pdf_path = output_dir / f"{prefix}.pdf"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    sig_entries: dict[str, list[str]] = {}
+    csv_rows: list[dict[str, Any]] = []
+    for column in numeric_columns:
+        row: dict[str, Any] = {"metric": column}
+        vals_by_label: dict[str, list[float]] = {}
+        for label in group_order:
+            vals = group_values[label][column]
+            vals_by_label[label] = vals
+            row[f"{label}_mean"] = round(float(np.mean(vals)), 6) if vals else "NA"
+            row[f"{label}_n"] = len(vals)
+        for i in range(len(group_order)):
+            for j in range(i + 1, len(group_order)):
+                la, lb = group_order[i], group_order[j]
+                va, vb = vals_by_label[la], vals_by_label[lb]
+                pair_key = f"{la}_vs_{lb}_wilcoxon_p"
+                if va and vb:
+                    p = float(mannwhitneyu(va, vb, alternative="two-sided").pvalue)
+                    row[pair_key] = round(p, 6)
+                    if p < 0.05:
+                        sig_entries.setdefault(f"{la}_vs_{lb}", []).append(column)
+                else:
+                    row[pair_key] = "NA"
+        csv_rows.append(row)
+
+    fieldnames_out = ["metric"]
+    for label in group_order:
+        fieldnames_out.extend([f"{label}_mean", f"{label}_n"])
+    for i in range(len(group_order)):
+        for j in range(i + 1, len(group_order)):
+            fieldnames_out.append(f"{group_order[i]}_vs_{group_order[j]}_wilcoxon_p")
+    with open(csv_path, "w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames_out)
+        writer.writeheader()
+        writer.writerows(csv_rows)
+
+    n_metrics = len(numeric_columns)
+    if n_metrics == 0:
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.text(0.5, 0.5, "No numeric metrics", ha="center", va="center")
+        fig.savefig(pdf_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return csv_path, pdf_path, sig_entries
+
+    n_groups = len(group_order)
+    palette = ["#a6cee3", "#fb9a99", "#b2df8a", "#fdbf6f", "#cab2d6", "#ffff99",
+               "#1f78b4", "#e31a1c", "#33a02c", "#ff7f00"][:n_groups]
+    ncols = min(4, n_metrics)
+    nrows = int(math.ceil(n_metrics / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * 3.5, nrows * 2.8))
+    if nrows * ncols == 1:
+        axes = np.atleast_2d(axes).reshape(1, 1)
+    elif nrows == 1:
+        axes = np.array([axes])
+    elif ncols == 1:
+        axes = np.array([[ax] for ax in axes])
+    pos = list(range(1, n_groups + 1))
+
+    for idx, column in enumerate(numeric_columns):
+        r, c = divmod(idx, ncols)
+        ax = axes[r, c] if nrows > 1 or ncols > 1 else axes[0, 0]
+        data = [group_values[label][column] for label in group_order]
+        bp = ax.boxplot(data, positions=pos, patch_artist=True, widths=0.5)
+        for patch, color in zip(bp["boxes"], palette):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.6)
+        ax.set_xticks(pos)
+        ax.set_xticklabels(group_order, fontsize=8)
+        ax.set_title(column, fontsize=9)
+        ax.tick_params(axis="x", labelsize=7)
+        all_vals = [v for d in data for v in d]
+        y_max = max(all_vals) if all_vals else 1
+        y_min = min(all_vals) if all_vals else 0
+        y_range = y_max - y_min
+        y_top = y_max + y_range * 0.05
+        bracket_y = y_top
+        step = y_range * 0.08
+        for i in range(n_groups):
+            for j in range(i + 1, n_groups):
+                la, lb = group_order[i], group_order[j]
+                pair_key = f"{la}_vs_{lb}"
+                pair_metrics = sig_entries.get(pair_key, [])
+                if column in pair_metrics:
+                    entry = next((r for r in csv_rows if r["metric"] == column), None)
+                    if entry:
+                        p = entry.get(f"{la}_vs_{lb}_wilcoxon_p", "NA")
+                        if isinstance(p, (int, float)):
+                            if p < 0.001:
+                                sig = "***"
+                            elif p < 0.01:
+                                sig = "**"
+                            elif p < 0.05:
+                                sig = "*"
+                            else:
+                                sig = f"p={p:.3f}"
+                        else:
+                            continue
+                    else:
+                        continue
+                    ax.plot([pos[i], pos[j]], [bracket_y, bracket_y], "k-", lw=0.8)
+                    ax.annotate(sig, xy=((pos[i] + pos[j]) / 2, bracket_y),
+                                ha="center", va="bottom", fontsize=8, fontweight="bold")
+                    bracket_y += step
+        ax.margins(y=0.15)
+
+    for idx in range(n_metrics, nrows * ncols):
+        r, c = divmod(idx, ncols)
+        axes[r, c].set_visible(False)
+
+    fig.tight_layout(pad=2.0)
+    fig.savefig(pdf_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return csv_path, pdf_path, sig_entries
 
 
 def _is_numeric(value: Any) -> bool:
@@ -656,6 +766,26 @@ def run_signal_lnl(
                 output_files["outlier_comparison_plot"] = {"path": str(comparison_plot), "description": "Outlier vs non-outlier metric distribution boxplots"}
                 key_results.update(n_sig_metrics_outlier=sig_info["n_sig_metrics"],
                                    sig_metric_names_outlier=sig_info["sig_metric_names"])
+                support_groups: dict[str, list[str]] = {}
+                for row in gene_rows:
+                    if row["support"] != "ambiguous":
+                        support_groups.setdefault(row["support"], []).append(row["locus"])
+                if len(support_groups) >= 2:
+                    support_labels = [lbl for lbl in tree_labels if lbl in support_groups]
+                    ordered_groups = {lbl: support_groups[lbl] for lbl in support_labels}
+                    comp_csv, comp_plot, pair_sigs = _compare_multiple_groups(
+                        ordered_groups, metrics.resolve(), output_dir, prefix="support_comparison",
+                    )
+                    output_files["support_comparison"] = {
+                        "path": str(comp_csv),
+                        "description": "Per-metric means and pairwise Wilcoxon p-values across tree support groups",
+                    }
+                    output_files["support_comparison_plot"] = {
+                        "path": str(comp_plot),
+                        "description": "Multi-group metric distribution boxplots with pairwise significance",
+                    }
+                    if pair_sigs:
+                        key_results["support_comparison_sig_metrics"] = pair_sigs
     except (OSError, ValueError, IndexError) as exc:
         result = error_result(str(exc), "output")
         result.update({"command": command, "wall_time": time.time() - run_start, "tool_versions": tool_versions})

@@ -15,7 +15,8 @@ subcommands:
 | `fclm` | Four-cluster Likelihood Mapping | IQ-TREE3 `-lmap -lmclust` |
 
 These analyses examine how phylogenetic signal is distributed across sites and
-genes, identify outlier loci with disproportionate influence on topology, and
+genes, identify outlier loci with disproportionate influence on topology,
+compare metrics across gene groups supporting different topologies, and
 assess phylogenetic signal in contentious branches via likelihood mapping.
 
 ## Usage
@@ -59,7 +60,7 @@ phylogenetic signal (ΔGLS) following Shen et al. (2017).
 | `--partition-mode` | `p` = `-p` (edge-linked proportional); `Q` = `-Q` (edge-unlinked). Default `p`. Only valid when `--partitions` is provided. |
 | `--locus-ranges` | Partition file for locus boundary extraction only (not passed to IQ-TREE). Mutually exclusive with `--partitions`. |
 | `--guide-tree` | Guide tree for PMSF-style models. Maps to IQ-TREE `-ft`. |
-| `--metrics` | Metrics CSV from `phyloai pretree metrics` for outlier-vs-nonoutlier gene comparison. |
+| `--metrics` | Metrics CSV from `phyloai pretree metrics`. Generates outlier-vs-nonoutlier comparison and pairwise comparisons of gene groups supporting different candidate trees. |
 | `--threads` | IQ-TREE `-T` value (integer or `auto`, default `auto`). |
 | `--tool-args` | Extra IQ-TREE flags. Blocked: `-s`, `-z`, `-wslr`, `--prefix`, `-p`, `-Q`. |
 | `--prefix` | IQ-TREE output prefix (default: `lnl`). |
@@ -92,6 +93,8 @@ runs/posttree/signal/lnl/
 ├── outlier_genes.txt            # [if locus boundaries provided]
 ├── outlier_comparison.csv       # [if --metrics provided]
 ├── outlier_comparison.pdf       # [if --metrics provided]
+├── support_comparison.csv       # [if --metrics + >=2 support groups]
+├── support_comparison.pdf       # [if --metrics + >=2 support groups]
 └── iqtree/
     ├── <prefix>.sitelh          # IQ-TREE raw site log-likelihoods
     ├── <prefix>.iqtree          # IQ-TREE native report
@@ -107,7 +110,7 @@ phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-e
 # With gene-wise output via locus ranges
 phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt
 
-# With outlier-vs-normal metrics comparison
+# With outlier and tree-support-group metrics comparisons
 phyloai posttree signal lnl --matrix matrix.fa --candidate-trees trees --model-expr LG+F+R4 --locus-ranges partitions.txt --metrics metrics.csv
 ```
 

@@ -1116,6 +1116,17 @@ def generate_methods_posttree_signal_lnl(
             parts[-1] += " (p < 0.05)."
         elif isinstance(n_outlier, (int, float)) and n_outlier == 0:
             parts.append(" No outlier genes were detected by the |ΔGLS| criterion.")
+        support_sig_metrics = key_results.get("support_comparison_sig_metrics", {})
+        if support_sig_metrics:
+            comparisons = [
+                f"{pair} ({', '.join(metrics)})"
+                for pair, metrics in support_sig_metrics.items()
+            ]
+            parts.append(
+                " Mann–Whitney U tests comparing metric profiles among genes supporting "
+                f"different topologies (support_comparison.csv) found significant differences "
+                f"for {', '.join(comparisons)} (p < 0.05)."
+            )
         if n_trees == 2:
             n_sig = key_results.get("n_loci_support_sig")
             if isinstance(n_sig, (int, float)):
