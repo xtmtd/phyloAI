@@ -45,7 +45,10 @@ One MCP tool per CLI subcommand. Example mapping:
 | `pretree_concat`            | `phyloai pretree concat`            |
 | `tree_ml_iqtree`            | `phyloai tree ml iqtree`            |
 | `tree_ml_fasttree`          | `phyloai tree ml fasttree`          |
-| `tree_bi`                   | `phyloai tree bi`                   |
+| `tree_bi_pb`               | `phyloai tree bi pb`                |
+| `tree_bi_bpcomp`            | `phyloai tree bi bpcomp`            |
+| `tree_bi_tracecomp`         | `phyloai tree bi tracecomp`         |
+| `tree_bi_readpb`            | `phyloai tree bi readpb`            |
 | `tree_msc`                  | `phyloai tree msc`                  |
 | `tree_cf`                   | `phyloai tree cf`                   |
 | `posttree_topology`           | `phyloai posttree topology`         |

@@ -175,6 +175,16 @@ def _detect_tool_versions(tools: dict[str, str]) -> dict[str, str | None]:
     }
 
 
+def _build_x_flag(burnin: int, sample_freq: int, until: str) -> list[str]:
+    parts: list[str] = ["-x", str(burnin)]
+    append_sample = sample_freq != 1 or until != "all"
+    if append_sample:
+        parts.append(str(sample_freq))
+    if until != "all":
+        parts.append(str(until))
+    return parts
+
+
 # ---------------------------------------------------------------------------
 # Run state (Task 4)
 # ---------------------------------------------------------------------------
@@ -700,7 +710,7 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
 # ---------------------------------------------------------------------------
 
 
-def run_bi(
+def run_bi_pb(
     matrix: Path | None,
     output_dir: Path = Path("runs/tree/bi"),
     overwrite: bool = False,
@@ -817,7 +827,7 @@ def run_bi(
         "dry_run": dry_run,
         "quiet": quiet,
     }
-    command_parts = ["phyloai", "tree", "bi"]
+    command_parts = ["phyloai", "tree", "bi", "pb"]
     if resume is None and matrix is not None:
         command_parts.extend(["--matrix", str(matrix)])
     command_parts.extend(["--output-dir", str(output_dir)])

@@ -19,7 +19,7 @@ from phyloai.tree.bi import (
     _status_from_metrics,
     _update_run_state_for_new_chains,
     _write_run_state,
-    run_bi,
+    run_bi_pb,
 )
 
 
@@ -293,7 +293,7 @@ def test_status_from_metrics_none():
 
 
 # ---------------------------------------------------------------------------
-# Task 7: run_bi dry-run
+# Task 7: run_bi_pb dry-run
 # ---------------------------------------------------------------------------
 
 
@@ -302,7 +302,7 @@ def test_run_bi_dry_run_result_json_shape(tmp_path: Path):
 
     matrix = tmp_path / "m.phy"
     matrix.write_text("2 3\na AAA\nb AAA\n")
-    payload = run_bi(matrix=matrix, output_dir=tmp_path / "out", dry_run=True)
+    payload = run_bi_pb(matrix=matrix, output_dir=tmp_path / "out", dry_run=True)
     assert payload["status"] == "success"
     assert payload["data"]["chain_cmds"]["chain1"][-1] == "chain1"
     assert isinstance(payload["data"]["tool_stderr"], dict)
@@ -317,23 +317,23 @@ def test_run_bi_dry_run_result_json_shape(tmp_path: Path):
 
 def test_run_bi_requires_matrix_without_resume():
     with pytest.raises(ValueError, match="--matrix is required"):
-        run_bi(matrix=None)
+        run_bi_pb(matrix=None)
 
 
 def test_run_bi_overwrite_and_resume_mutually_exclusive():
     with pytest.raises(ValueError, match="mutually exclusive"):
-        run_bi(matrix=Path("m.phy"), resume=RESUME_ALL, overwrite=True, dry_run=True)
+        run_bi_pb(matrix=Path("m.phy"), resume=RESUME_ALL, overwrite=True, dry_run=True)
 
 
 def test_run_bi_rejects_missing_matrix(tmp_path: Path):
     with pytest.raises(ValueError, match="does not exist"):
-        run_bi(matrix=tmp_path / "nope.phy")
+        run_bi_pb(matrix=tmp_path / "nope.phy")
 
 
 def test_run_bi_dry_run_fasta_produces_chain_cmds(tmp_path: Path):
     matrix = tmp_path / "m.fa"
     matrix.write_text(">a\nAAA\n>b\nAAA\n")
-    payload = run_bi(matrix=matrix, output_dir=tmp_path / "out", dry_run=True)
+    payload = run_bi_pb(matrix=matrix, output_dir=tmp_path / "out", dry_run=True)
     assert payload["status"] == "success"
     assert "chain1" in payload["data"]["chain_cmds"]
 
@@ -357,7 +357,7 @@ def test_resume_bare_preserves_stored_nsamples(tmp_path: Path):
         '"model": "gtr", "mixture": "auto", "gamma_cats": 4, '
         '"start_tree": null, "fix_tree": null}'
     )
-    payload = run_bi(matrix=None, output_dir=out, resume=RESUME_ALL, dry_run=True)
+    payload = run_bi_pb(matrix=None, output_dir=out, resume=RESUME_ALL, dry_run=True)
     assert payload["params"]["nsamples"] == 5000
 
 
@@ -387,7 +387,7 @@ def test_resume_with_nsamples_override_fake_tools(tmp_path: Path):
         '"model": "gtr", "mixture": "auto", "gamma_cats": 4, '
         '"start_tree": null, "fix_tree": null}'
     )
-    payload = run_bi(matrix=None, output_dir=out, resume=RESUME_ALL, nsamples=10000, pb_path=tool_dir, quiet=True)
+    payload = run_bi_pb(matrix=None, output_dir=out, resume=RESUME_ALL, nsamples=10000, pb_path=tool_dir, quiet=True)
     assert payload["params"]["nsamples"] == 10000
     import json
     reloaded = json.loads((out / "run_state.json").read_text())
@@ -408,7 +408,7 @@ def test_resume_with_nsamples_minus_one(tmp_path: Path):
         '"model": "gtr", "mixture": "auto", "gamma_cats": 4, '
         '"start_tree": null, "fix_tree": null}'
     )
-    payload = run_bi(matrix=None, output_dir=out, resume=RESUME_ALL, nsamples=-1, dry_run=True)
+    payload = run_bi_pb(matrix=None, output_dir=out, resume=RESUME_ALL, nsamples=-1, dry_run=True)
     assert payload["params"]["nsamples"] == -1
 
 
@@ -426,7 +426,7 @@ def test_resume_all_chains_already_at_target_no_crash(tmp_path: Path):
         '"model": "gtr", "mixture": "auto", "gamma_cats": 4, '
         '"start_tree": null, "fix_tree": null}'
     )
-    payload = run_bi(matrix=None, output_dir=out, resume=RESUME_ALL, quiet=True)
+    payload = run_bi_pb(matrix=None, output_dir=out, resume=RESUME_ALL, quiet=True)
     assert payload["status"] == "success"
     assert "already at target" in payload["data"]["warnings"][0]
 
@@ -451,7 +451,7 @@ def test_run_bi_fake_tools_executes_chains(tmp_path: Path):
         path.chmod(0o755)
     matrix = tmp_path / "m.phy"
     matrix.write_text("2 3\na AAA\nb AAA\n")
-    payload = run_bi(matrix=matrix, output_dir=tmp_path / "out", chains=2, nsamples=2, monitor_freq=1, burnin_frac=0.5, pb_path=tool_dir, quiet=True)
+    payload = run_bi_pb(matrix=matrix, output_dir=tmp_path / "out", chains=2, nsamples=2, monitor_freq=1, burnin_frac=0.5, pb_path=tool_dir, quiet=True)
     assert payload["status"] == "success"
     assert payload["key_results"]["chain_lengths"] == {"chain1": 2, "chain2": 2}
 

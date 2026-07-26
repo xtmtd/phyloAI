@@ -194,3 +194,17 @@ class TestDiscoverStepsPipeline:
         result = discover_steps(tmp_path)
         assert result["run_mode"] == "pipeline"
         assert len(result["steps"]) == 1
+
+
+class TestParseStepIdBi:
+    def test_tree_bi_bpcomp(self):
+        assert parse_step_id("phyloai tree bi bpcomp --chain-dir chains --burnin 1000") == "tree.bi.bpcomp"
+
+    def test_tree_bi_tracecomp(self):
+        assert parse_step_id("phyloai tree bi tracecomp --burnin 5000") == "tree.bi.tracecomp"
+
+    def test_tree_bi_readpb(self):
+        assert parse_step_id("phyloai tree bi readpb --chain chain1 --mode ss,rr") == "tree.bi.readpb"
+
+    def test_tree_bi_pb(self):
+        assert parse_step_id("phyloai tree bi pb --matrix m.phy --chains 2") == "tree.bi.pb"

@@ -119,7 +119,7 @@ phyloai pretree concat   --msa-dir ./filtered --taxa-occupancy 0.75
 # Tree
 phyloai tree ml iqtree    --matrix ./concat/matrix.fa --model C20 --guide-tree guide.nwk
 phyloai tree ml fasttree  --matrix ./concat/matrix.fa
-phyloai tree bi --matrix ./concat/matrix.phy --chains 3 --threads 8
+phyloai tree bi pb --matrix ./concat/matrix.phy --chains 3 --threads 8
 phyloai tree msc --tree-dir ./genetrees/
 phyloai tree cf --cf gcf --ref-tree species.nwk --tree-dir ./genetrees/
 

@@ -92,17 +92,17 @@ phyloai doctor --output-format json
 
 ### 贝叶斯推断
 
-`phyloai tree bi` 需要 PhyloBayes-MPI 工具组。
+`phyloai tree bi` 是一个包含四个子命令（`pb`、`bpcomp`、`tracecomp`、`readpb`）的组，均需 PhyloBayes-MPI 工具组。
 
 | 工具 | 用途 | 安装入口 | 检测名称 | 验证方式 |
 |------|------|----------|----------|----------|
-| pb_mpi | MCMC 采样器 | https://github.com/bayesiancook/pbmpi | `pb_mpi` | `phyloai doctor` |
-| bpcomp | 拓扑收敛诊断 | https://github.com/bayesiancook/pbmpi | `bpcomp` | `phyloai doctor` |
-| tracecomp | 参数收敛诊断 | https://github.com/bayesiancook/pbmpi | `tracecomp` | `phyloai doctor` |
-| mpirun | MPI 启动器 | https://www.open-mpi.org/ | `mpirun` | `phyloai doctor` |
-| readpb_mpi | 可选的链文件读取器 | https://github.com/bayesiancook/pbmpi | `readpb_mpi` | `phyloai doctor` |
+| pb_mpi | MCMC 采样器（`bi pb`） | https://github.com/bayesiancook/pbmpi | `pb_mpi` | `phyloai doctor` |
+| bpcomp | 拓扑收敛诊断（`bi pb`、`bi bpcomp`） | https://github.com/bayesiancook/pbmpi | `bpcomp` | `phyloai doctor` |
+| tracecomp | 参数收敛诊断（`bi pb`、`bi tracecomp`） | https://github.com/bayesiancook/pbmpi | `tracecomp` | `phyloai doctor` |
+| mpirun | MPI 启动器（`bi pb`、`bi readpb`） | https://www.open-mpi.org/ | `mpirun` | `phyloai doctor` |
+| readpb_mpi | 后验分析（`bi readpb`） | https://github.com/bayesiancook/pbmpi | `readpb_mpi` | `phyloai doctor` |
 
-如果工具安装在 `PATH` 之外，使用 `phyloai tree bi --pb-path /path/to/pbmpi/bin` 指定目录。
+如果工具安装在 `PATH` 之外，在任何 `tree bi` 子命令上使用 `--pb-path /path/to/pbmpi/bin` 指定目录。
 
 ### 过滤与修剪扩展工具
 

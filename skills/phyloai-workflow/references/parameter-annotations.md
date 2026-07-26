@@ -487,7 +487,7 @@ IQ-TREE 输出前缀。默认与输入文件同名。
 
 ---
 
-### tree bi
+### tree bi pb
 
 #### --matrix, --threads
 见 Common Parameters。
@@ -531,6 +531,73 @@ burnin 比例（0-1）。例如 0.2 表示丢弃前 20% 样本（用于排除 MC
 
 #### --pb-path
 显式 PhyloBayes-MPI（pb_mpi）可执行文件路径。
+
+---
+
+### tree bi bpcomp
+
+#### --chain-dir
+包含 `.chain` 文件的目录（默认: `runs/tree/bi/chains`）。
+
+#### --chain-names
+逗号分隔的链名。`all` = 自动发现 `--chain-dir` 中所有 `.chain` 文件。
+
+#### --burnin
+丢弃的 saved-sample 数量（整数 ≥ 0）。`0` = 无 burn-in。
+
+#### --sample-freq
+burn-in 后的子采样频率（每 N 个样本取 1 个）。
+
+#### --until
+停止的样本索引。`all` = 到链末尾；整数 = 到指定 saved-sample 索引。
+
+#### --cutoff
+多数规则一致树阈值（0-1，默认 0.5）。后验概率低于此值的节点被折叠。
+
+#### --pb-path
+PhyloBayes 工具目录（包含 bpcomp）。
+
+---
+
+### tree bi tracecomp
+
+#### --chain-dir
+包含 `.trace` 文件的目录（默认: `runs/tree/bi/chains`）。
+
+#### --chain-names
+逗号分隔的链名。`all` = 自动发现 `--chain-dir` 中所有 `.trace` 文件。
+
+#### --burnin
+丢弃的 saved-sample 数量（整数 ≥ 0）。
+
+#### --pb-path
+PhyloBayes 工具目录（包含 tracecomp）。
+
+---
+
+### tree bi readpb
+
+#### --chain
+无扩展名的链文件路径（必需）。如 `runs/tree/bi/chains/chain1`。
+
+#### --mode
+逗号分隔的分析模式（必需）。可选: `rr`, `ss`, `r`, `sitelogl`, `ppred`, `div`, `sitecomp`, `siteconvprob`, `comp`, `allppred`。
+`allppred` 与 `div`/`sitecomp`/`siteconvprob`/`comp` 互斥。
+
+#### --burnin
+丢弃的 saved-sample 数量（整数 ≥ 0）。
+
+#### --sample-freq
+burn-in 后的子采样频率。
+
+#### --until
+停止的样本索引。`all` = 到链末尾；整数 = 到指定索引。
+
+#### --threads
+MPI 进程数（≥ 2，默认 4）。
+
+#### --pb-path
+PhyloBayes 工具目录（包含 readpb_mpi 和 mpirun）。
 
 ---
 

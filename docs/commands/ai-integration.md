@@ -172,7 +172,10 @@ The MCP server registers one tool per CLI subcommand plus four utility tools. Al
 | `pretree_concat` | `phyloai pretree concat` | fire-and-forget |
 | `tree_ml_fasttree` | `phyloai tree ml fasttree` | fire-and-forget |
 | `tree_ml_iqtree` | `phyloai tree ml iqtree` | fire-and-forget |
-| `tree_bi` | `phyloai tree bi` | fire-and-forget |
+| `tree_bi_pb` | `phyloai tree bi pb` | fire-and-forget |
+| `tree_bi_bpcomp` | `phyloai tree bi bpcomp` | fire-and-forget |
+| `tree_bi_tracecomp` | `phyloai tree bi tracecomp` | fire-and-forget |
+| `tree_bi_readpb` | `phyloai tree bi readpb` | fire-and-forget |
 | `tree_msc` | `phyloai tree msc` | fire-and-forget |
 | `tree_cf` | `phyloai tree cf` | fire-and-forget |
 | `posttree_topology` | `phyloai posttree topology` | fire-and-forget |

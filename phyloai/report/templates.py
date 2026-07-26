@@ -660,7 +660,7 @@ def generate_methods_tree_msc(
     return text
 
 
-def generate_methods_tree_bi(
+def generate_methods_tree_bi_pb(
     params: dict[str, Any],
     key_results: dict[str, Any],
     tool_versions: dict[str, Any],
@@ -736,6 +736,123 @@ def generate_methods_tree_bi(
             text += f" Pairwise: {'; '.join(pw_parts)}."
 
     return text
+
+
+def generate_methods_tree_bi_bpcomp(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    version = tool_versions.get("bpcomp", "unknown")
+    chains = key_results.get("chains_used", [])
+    burnin = params.get("burnin", 0)
+    sample_freq = params.get("sample_freq", 1)
+    cutoff = params.get("cutoff", 0.5)
+    maxdiff = key_results.get("bpcomp_maxdiff")
+    meandiff = key_results.get("bpcomp_meandiff")
+    status = key_results.get("bpcomp_status", "unknown")
+    consensus = key_results.get("consensus_tree", "")
+
+    until = params.get("until", "all")
+    until_clause = "" if until == "all" else f" up to sample {until}"
+
+    text = (
+        f"Topology convergence was assessed using bpcomp "
+        f"(PhyloBayes-MPI v{version}) applied to {_describe_n(len(chains), 'independent MCMC chain')} "
+        f"({', '.join(chains)}). "
+        f"A burn-in of {_safe_fmt(burnin, ',')} saved samples was discarded; "
+        f"trees were sub-sampled every {_safe_fmt(sample_freq, ',')} points{until_clause}. "
+        f"The majority-rule consensus cutoff was set to {_safe_fmt(cutoff, '.2f')}. "
+    )
+    if maxdiff is not None and meandiff is not None:
+        text += (
+            f"The maximum bipartition frequency discrepancy (maxdiff) between chains "
+            f"was {_safe_fmt(maxdiff, '.4f')} and the mean discrepancy (meandiff) was "
+            f"{_safe_fmt(meandiff, '.6f')}, indicating {status} convergence. "
+        )
+    if consensus:
+        text += f"The consensus tree was written to {consensus}."
+    return text
+
+
+def generate_methods_tree_bi_tracecomp(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    version = tool_versions.get("tracecomp", "unknown")
+    chains = key_results.get("chains_used", [])
+    burnin = params.get("burnin", 0)
+    min_effsize = key_results.get("tracecomp_min_effsize")
+    max_reldiff = key_results.get("tracecomp_max_reldiff")
+    status = key_results.get("tracecomp_status", "unknown")
+
+    text = (
+        f"Continuous parameter convergence was assessed using tracecomp "
+        f"(PhyloBayes-MPI v{version}) applied to {_describe_n(len(chains), 'chain')} "
+        f"with a burn-in of {_safe_fmt(burnin, ',')} saved samples. "
+    )
+    if min_effsize is not None and max_reldiff is not None:
+        text += (
+            f"The minimum effective sample size across all parameters was "
+            f"{_safe_fmt(min_effsize, '.0f')} and the maximum relative difference was "
+            f"{_safe_fmt(max_reldiff, '.4f')}, indicating {status} mixing. "
+        )
+    text += "Per-parameter diagnostics are available in tracecomp.contdiff."
+    return text
+
+
+def generate_methods_tree_bi_readpb(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    version = tool_versions.get("readpb_mpi", "unknown")
+    modes = key_results.get("modes_run", [])
+    chain = params.get("chain", "")
+    burnin = params.get("burnin", 0)
+    output_files = key_results.get("output_files", {})
+    pp = key_results.get("post_processing", {})
+
+    parts: list[str] = [f"Posterior analysis was performed using readpb_mpi (PhyloBayes-MPI v{version}). "]
+
+    mode_descriptions: dict[str, str] = {
+        "rr": (
+            f"Posterior mean relative exchangeabilities were estimated from "
+            f"post-burnin samples of chain {chain} using readpb_mpi -rr. "
+            f"The resulting exchangeability matrix was converted to PAML "
+            f"lower-triangle format for use with IQ-TREE."
+        ),
+        "ss": (
+            f"Posterior mean site-specific amino acid frequencies were estimated "
+            f"from post-burnin samples using readpb_mpi -ss. "
+            f"Site frequency profiles were converted to IQ-TREE -fs format."
+        ),
+        "r": f"Posterior mean site rates were estimated using readpb_mpi -r.",
+        "sitelogl": (
+            f"Site-specific marginal log-likelihoods were computed using "
+            f"readpb_mpi -sitelogl. These values can be used to compute wAIC "
+            f"and leave-one-out cross-validation scores."
+        ),
+        "ppred": f"Data replicates were simulated from the posterior predictive distribution using readpb_mpi -ppred.",
+        "div": f"Posterior predictive diversity test (PPA-DIV) was performed using readpb_mpi -div.",
+        "sitecomp": f"Posterior predictive test of compositional heterogeneity across sites (PPA-VAR) was performed using readpb_mpi -sitecomp.",
+        "siteconvprob": f"Posterior predictive convergence probability test (PPA-CONV) was performed using readpb_mpi -siteconvprob.",
+        "comp": f"Posterior predictive test of compositional homogeneity across taxa was performed using readpb_mpi -comp.",
+        "allppred": f"All posterior predictive tests (PPA-DIV, PPA-VAR, PPA-CONV, taxon composition) were performed using readpb_mpi -allppred.",
+    }
+    for m in modes:
+        desc = mode_descriptions.get(m, f"Analysis mode {m} was run using readpb_mpi -{m}.")
+        parts.append(f" {desc}")
+
+    if pp:
+        statuses = []
+        for mode_name, info in pp.items():
+            s = info.get("status", "error")
+            statuses.append(f"{mode_name}: {s}")
+        parts.append(f" Post-processing status: {'; '.join(statuses)}.")
+
+    return "".join(parts)
 
 
 def generate_methods_tree_cf(
@@ -970,7 +1087,10 @@ METHODS_GENERATORS: dict[str, Any] = {
     "tree.ml.fasttree": generate_methods_tree_ml_fasttree,
     "tree.ml.iqtree": generate_methods_tree_ml_iqtree,
     "tree.msc": generate_methods_tree_msc,
-    "tree.bi": generate_methods_tree_bi,
+    "tree.bi.pb": generate_methods_tree_bi_pb,
+    "tree.bi.bpcomp": generate_methods_tree_bi_bpcomp,
+    "tree.bi.tracecomp": generate_methods_tree_bi_tracecomp,
+    "tree.bi.readpb": generate_methods_tree_bi_readpb,
     "tree.cf": generate_methods_tree_cf,
     "posttree.topology": generate_methods_posttree_topology,
     "posttree.dating.hessian": generate_methods_posttree_dating_hessian,

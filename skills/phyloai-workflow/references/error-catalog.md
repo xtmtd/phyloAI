@@ -63,7 +63,11 @@ Template:
 Notes:
 - Missing required tools block the requested command and may make `phyloai doctor` exit 3.
 - Missing optional tools only make the dependent module unavailable; `phyloai doctor` can still exit 0 with warnings.
-- For `phyloai tree bi`, treat `pb_mpi`, `bpcomp`, `tracecomp`, and `mpirun` as the required PhyloBayes-MPI group; `readpb_mpi` is optional.
+- For PhyloBayes-MPI tools, required tools vary by subcommand:
+  - `phyloai tree bi pb`: requires `pb_mpi`, `bpcomp`, `tracecomp`, `mpirun`; `readpb_mpi` is optional.
+  - `phyloai tree bi bpcomp`: requires `bpcomp`.
+  - `phyloai tree bi tracecomp`: requires `tracecomp`.
+  - `phyloai tree bi readpb`: requires `readpb_mpi` and `mpirun`.
 
 ## Exit 3: Runtime Missing
 Pattern: `Java`, `Julia`, `MPI`

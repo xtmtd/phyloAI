@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import click
@@ -42,7 +43,7 @@ def _write_error_result(kwargs: dict, message: str, exit_code: int) -> None:
 
 
 def _build_command_tokens(kwargs: dict) -> list[str]:
-    tokens = ["phyloai", "tree", "bi"]
+    tokens = ["phyloai", "tree", "bi", "pb"]
     flag_map = {
         "matrix": "--matrix",
         "output_dir": "--output-dir",
@@ -83,9 +84,72 @@ def _build_command_tokens(kwargs: dict) -> list[str]:
     return tokens
 
 
+_BPCOMP_FLAG_MAP: dict[str, str] = {
+    "chain_dir": "--chain-dir", "chain_names": "--chain-names",
+    "output_dir": "--output-dir", "burnin": "--burnin",
+    "sample_freq": "--sample-freq", "until": "--until",
+    "cutoff": "--cutoff", "pb_path": "--pb-path",
+}
+_TRACECOMP_FLAG_MAP: dict[str, str] = {
+    "chain_dir": "--chain-dir", "chain_names": "--chain-names",
+    "output_dir": "--output-dir", "burnin": "--burnin",
+    "pb_path": "--pb-path",
+}
+_READPB_FLAG_MAP: dict[str, str] = {
+    "chain": "--chain", "mode": "--mode",
+    "output_dir": "--output-dir", "burnin": "--burnin",
+    "sample_freq": "--sample-freq", "until": "--until",
+    "threads": "--threads", "pb_path": "--pb-path",
+}
+
+
+def _build_bi_subcommand_tokens(subcommand: str, kwargs: dict, flag_map: dict[str, str]) -> list[str]:
+    tokens = ["phyloai", "tree", "bi", subcommand]
+    for key, flag in flag_map.items():
+        val = kwargs.get(key)
+        if val is None:
+            continue
+        if isinstance(val, bool) and val:
+            tokens.append(flag)
+        elif isinstance(val, bool):
+            continue
+        else:
+            tokens.append(flag)
+            tokens.append(str(val))
+    if kwargs.get("overwrite"):
+        tokens.append("--overwrite")
+    if kwargs.get("dry_run"):
+        tokens.append("--dry-run")
+    if kwargs.get("quiet"):
+        tokens.append("--quiet")
+    return tokens
+
+
+def _write_bi_error_result(kwargs: dict, message: str, exit_code: int, subcommand: str, flag_map: dict[str, str]) -> None:
+    output_dir = Path(kwargs.get("output_dir", f"runs/tree/bi/{subcommand}"))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tokens = _build_bi_subcommand_tokens(subcommand, kwargs, flag_map)
+    result = {
+        "status": "error",
+        "command": " ".join(tokens),
+        "wall_time": 0.0,
+        "tool_versions": {},
+        "params": {k: (str(v) if isinstance(v, Path) else v) for k, v in kwargs.items()},
+        "key_results": {},
+        "error": message,
+        "data": {"cmd": [], "tool_stderr": ""},
+    }
+    (output_dir / "result.json").write_text(json.dumps(result, indent=2))
+
+
 class _MLGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
         return ["fasttree", "iqtree"]
+
+
+class _BiGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["pb", "bpcomp", "tracecomp", "readpb"]
 
 
 class _TreeGroup(click.Group):
@@ -1295,11 +1359,27 @@ def cf_command(
             click.echo(f"qCF tree saved to {output_dir}/{prefix_val}.cf.tree")
 
 
-@tree.command(
+@tree.group(
     "bi",
+    cls=_BiGroup,
+    help=(
+        "Bayesian phylogenetic inference with PhyloBayes-MPI.\n\n"
+        "Subcommands:\n"
+        "  pb         Run MCMC chains (pb_mpi).\n"
+        "  bpcomp     Topology convergence analysis (bpcomp).\n"
+        "  tracecomp  Parameter convergence analysis (tracecomp).\n"
+        "  readpb     Posterior analysis and predictive checks (readpb_mpi).\n"
+    ),
+)
+def bi_group() -> None:
+    """Bayesian phylogenetic inference with PhyloBayes-MPI."""
+
+
+@bi_group.command(
+    "pb",
     cls=_CFCommand,
     help=(
-        "Bayesian phylogenetic inference with PhyloBayes-MPI (pb_mpi).\n\n"
+        "Run MCMC chains with PhyloBayes-MPI (pb_mpi).\n\n"
         "\n\n"
         "  Run N independent MCMC chains in parallel (mpirun + pb_mpi),\n"
         "  monitor convergence in real time (bpcomp + tracecomp), and\n"
@@ -1311,19 +1391,19 @@ def cf_command(
         "\n\n"
         "  Examples:\n\n"
         "    Default: 3 chains, CAT-GTR, run forever\n"
-        "      phyloai tree bi --matrix concat/matrix.phy\n\n"
+        "      phyloai tree bi pb --matrix concat/matrix.phy\n\n"
         "    Homogeneous LG+G4 model, auto-stop after 11000 cycles\n"
-        "      phyloai tree bi --matrix concat/matrix.phy --model lg --mixture 1 --nsamples 11000\n\n"
+        "      phyloai tree bi pb --matrix concat/matrix.phy --model lg --mixture 1 --nsamples 11000\n\n"
         "    Add extra chains to an existing run\n"
-        "      phyloai tree bi --matrix concat/matrix.phy --chain-names chain4,chain5 -o runs/tree/bi\n\n"
+        "      phyloai tree bi pb --matrix concat/matrix.phy --chain-names chain4,chain5 -o runs/tree/bi\n\n"
         "    Resume all chains in a directory\n"
-        "      phyloai tree bi -o runs/tree/bi --resume\n\n"
+        "      phyloai tree bi pb -o runs/tree/bi --resume\n\n"
         "    Resume selected chains only\n"
-        "      phyloai tree bi -o runs/tree/bi --resume chain1,chain3\n\n"
+        "      phyloai tree bi pb -o runs/tree/bi --resume chain1,chain3\n\n"
         "    Resume and extend to a higher nsamples target\n"
-        "      phyloai tree bi -o runs/tree/bi --resume --nsamples 10000\n\n"
+        "      phyloai tree bi pb -o runs/tree/bi --resume --nsamples 10000\n\n"
         "    Resume and run forever (override previous nsamples)\n"
-        "      phyloai tree bi -o runs/tree/bi --resume --nsamples -1\n\n"
+        "      phyloai tree bi pb -o runs/tree/bi --resume --nsamples -1\n\n"
         "\n\n"
         "  After the run, determine burn-in and summarise results:\n"
         "    bpcomp -x 5000 chains/chain1 chains/chain2 chains/chain3\n"
@@ -1474,11 +1554,11 @@ def cf_command(
     default=False,
     help="Suppress all terminal output except errors.",
 )
-def bi_command(**kwargs) -> None:
-    from phyloai.tree.bi import run_bi
+def bi_pb_command(**kwargs) -> None:
+    from phyloai.tree.bi import run_bi_pb
 
     try:
-        payload = run_bi(**kwargs)
+        payload = run_bi_pb(**kwargs)
     except FileNotFoundError as exc:
         _write_error_result(kwargs, str(exc), 3)
         _fail(str(exc), 3)
@@ -1504,11 +1584,293 @@ def bi_command(**kwargs) -> None:
         from datetime import datetime
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = result_path.with_name(f"result_{ts}.json")
-        import shutil
         shutil.copy2(str(result_path), str(backup_path))
     with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
     if payload["status"] == "error":
         _fail(payload.get("error", "pb_mpi execution failed"), 2)
+    if not kwargs.get("quiet"):
+        click.echo(f"Results saved to {result_path}", err=True)
+
+
+# ---------------------------------------------------------------------------
+# tree bi bpcomp
+# ---------------------------------------------------------------------------
+
+
+@bi_group.command(
+    "bpcomp",
+    cls=_GroupedHelpCommand,
+    help=(
+        "Run bpcomp for final topology convergence analysis.\n\n"
+        "Runs bpcomp once with a user-specified integer burn-in on a "
+        "completed or running chains directory. Produces a final "
+        "consensus tree and bipartition statistics.\n\n"
+        "  phyloai tree bi bpcomp --chain-dir chains/ --burnin 5000\n\n"
+    ),
+)
+@click.option(
+    "--chain-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/bi/chains"),
+    show_default=True,
+    help="Directory containing chain files (<chain>.chain, <chain>.treelist, etc.).",
+)
+@click.option(
+    "--chain-names",
+    type=str,
+    default="all",
+    show_default=True,
+    help="Comma-separated chain names to include. 'all' = all chains in --chain-dir.",
+)
+@click.option(
+    "--output-dir", "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/bi/bpcomp"),
+    show_default=True,
+    help="Output directory for result files and result.json.",
+)
+@click.option(
+    "--burnin",
+    type=click.IntRange(0),
+    default=0,
+    show_default=True,
+    help="Number of saved samples to discard as burn-in. 0 = no burn-in.",
+)
+@click.option(
+    "--sample-freq",
+    type=click.IntRange(1),
+    default=1,
+    show_default=True,
+    help="Sub-sampling frequency: take one tree every N saved samples after burn-in.",
+)
+@click.option(
+    "--until",
+    type=str,
+    default="all",
+    show_default=True,
+    help="Stop at this sample index. 'all' = use the entire chain. Integer = stop at that sample index.",
+)
+@click.option(
+    "--cutoff",
+    type=click.FloatRange(0.0, 1.0),
+    default=0.5,
+    show_default=True,
+    help="Majority-rule consensus cutoff: nodes below this are collapsed.",
+)
+@click.option(
+    "--pb-path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Directory containing PhyloBayes tools. Overrides PATH lookup.",
+)
+@click.option("--overwrite", is_flag=True, default=False, help="Delete and recreate the output directory.")
+@click.option("--dry-run", is_flag=True, default=False, help="Print the bpcomp command without executing.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress non-error terminal output.")
+def bi_bpcomp_command(**kwargs) -> None:
+    from phyloai.tree.bi_bpcomp import run_bi_bpcomp
+
+    try:
+        payload = run_bi_bpcomp(**kwargs)
+    except FileNotFoundError as exc:
+        _write_bi_error_result(kwargs, str(exc), 3, "bpcomp", _BPCOMP_FLAG_MAP)
+        _fail(str(exc), 3)
+    except ValueError as exc:
+        _write_bi_error_result(kwargs, str(exc), 1, "bpcomp", _BPCOMP_FLAG_MAP)
+        _fail(str(exc), 1)
+    if kwargs.get("dry_run"):
+        if not kwargs.get("quiet"):
+            click.echo(" ".join(payload["data"]["cmd"]))
+        return
+    result_path = kwargs["output_dir"] / "result.json"
+    if result_path.exists():
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy2(str(result_path), str(result_path.with_name(f"result_{ts}.json")))
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "bpcomp failed"), 2)
+    if not kwargs.get("quiet"):
+        click.echo(f"Results saved to {result_path}", err=True)
+
+
+# ---------------------------------------------------------------------------
+# tree bi tracecomp
+# ---------------------------------------------------------------------------
+
+
+@bi_group.command(
+    "tracecomp",
+    cls=_GroupedHelpCommand,
+    help=(
+        "Run tracecomp for final parameter convergence analysis.\n\n"
+        "Runs tracecomp once with a user-specified integer burn-in to "
+        "assess parameter convergence across chains.\n\n"
+        "  phyloai tree bi tracecomp --chain-dir chains/ --burnin 5000\n\n"
+    ),
+)
+@click.option(
+    "--chain-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/bi/chains"),
+    show_default=True,
+    help="Directory containing chain .trace files.",
+)
+@click.option(
+    "--chain-names",
+    type=str,
+    default="all",
+    show_default=True,
+    help="Comma-separated chain names. 'all' = all chains with .trace files in --chain-dir.",
+)
+@click.option(
+    "--output-dir", "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/bi/tracecomp"),
+    show_default=True,
+    help="Output directory for tracecomp.contdiff and result.json.",
+)
+@click.option(
+    "--burnin",
+    type=click.IntRange(0),
+    default=0,
+    show_default=True,
+    help="Number of saved samples to discard as burn-in. 0 = no burn-in.",
+)
+@click.option(
+    "--pb-path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Directory containing PhyloBayes tools. Overrides PATH lookup.",
+)
+@click.option("--overwrite", is_flag=True, default=False, help="Delete and recreate the output directory.")
+@click.option("--dry-run", is_flag=True, default=False, help="Print the tracecomp command without executing.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress non-error terminal output.")
+def bi_tracecomp_command(**kwargs) -> None:
+    from phyloai.tree.bi_tracecomp import run_bi_tracecomp
+
+    try:
+        payload = run_bi_tracecomp(**kwargs)
+    except FileNotFoundError as exc:
+        _write_bi_error_result(kwargs, str(exc), 3, "tracecomp", _TRACECOMP_FLAG_MAP)
+        _fail(str(exc), 3)
+    except ValueError as exc:
+        _write_bi_error_result(kwargs, str(exc), 1, "tracecomp", _TRACECOMP_FLAG_MAP)
+        _fail(str(exc), 1)
+    if kwargs.get("dry_run"):
+        if not kwargs.get("quiet"):
+            click.echo(" ".join(payload["data"]["cmd"]))
+        return
+    result_path = kwargs["output_dir"] / "result.json"
+    if result_path.exists():
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy2(str(result_path), str(result_path.with_name(f"result_{ts}.json")))
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "tracecomp failed"), 2)
+    if not kwargs.get("quiet"):
+        click.echo(f"Results saved to {result_path}", err=True)
+
+
+# ---------------------------------------------------------------------------
+# tree bi readpb
+# ---------------------------------------------------------------------------
+
+
+@bi_group.command(
+    "readpb",
+    cls=_GroupedHelpCommand,
+    help=(
+        "Run readpb_mpi for posterior analysis on a single chain.\n\n"
+        "Supports multiple analysis modes (-rr, -ss, -r, -sitelogl, etc.). "
+        "Automatically converts rr output to IQ-TREE exchangeabilities format "
+        "and ss output to IQ-TREE site frequencies format.\n\n"
+        "  phyloai tree bi readpb --chain chains/chain1 --mode ss,rr\n\n"
+    ),
+)
+@click.option(
+    "--chain",
+    type=click.Path(dir_okay=False, path_type=Path),
+    required=True,
+    help="Path to chain file without extension (e.g. runs/tree/bi/chains/chain1).",
+)
+@click.option(
+    "--mode",
+    type=str,
+    required=True,
+    help="Comma-separated list of analysis modes. See help for available modes.",
+)
+@click.option(
+    "--output-dir", "-o",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("runs/tree/bi/readpb"),
+    show_default=True,
+    help="Output directory for result.json only.",
+)
+@click.option(
+    "--burnin",
+    type=click.IntRange(0),
+    default=0,
+    show_default=True,
+    help="Number of saved samples to discard as burn-in.",
+)
+@click.option(
+    "--sample-freq",
+    type=click.IntRange(1),
+    default=1,
+    show_default=True,
+    help="Sub-sampling frequency after burn-in.",
+)
+@click.option(
+    "--until",
+    type=str,
+    default="all",
+    show_default=True,
+    help="'all' = to end of chain. Integer = stop at that saved sample index.",
+)
+@click.option(
+    "--threads", "-t",
+    type=click.IntRange(2),
+    default=4,
+    show_default=True,
+    help="MPI processes for readpb_mpi.",
+)
+@click.option(
+    "--pb-path",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=None,
+    help="Directory containing PhyloBayes tools. Overrides PATH lookup.",
+)
+@click.option("--overwrite", is_flag=True, default=False, help="Delete and recreate --output-dir.")
+@click.option("--dry-run", is_flag=True, default=False, help="Print commands without executing.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress non-error terminal output.")
+def bi_readpb_command(**kwargs) -> None:
+    from phyloai.tree.bi_readpb import run_bi_readpb
+
+    try:
+        payload = run_bi_readpb(**kwargs)
+    except FileNotFoundError as exc:
+        _write_bi_error_result(kwargs, str(exc), 3, "readpb", _READPB_FLAG_MAP)
+        _fail(str(exc), 3)
+    except ValueError as exc:
+        _write_bi_error_result(kwargs, str(exc), 1, "readpb", _READPB_FLAG_MAP)
+        _fail(str(exc), 1)
+    if kwargs.get("dry_run"):
+        if not kwargs.get("quiet"):
+            for mode_name, cmd in payload["data"]["cmds"].items():
+                click.echo(" ".join(cmd))
+        return
+    result_path = kwargs["output_dir"] / "result.json"
+    if result_path.exists():
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy2(str(result_path), str(result_path.with_name(f"result_{ts}.json")))
+    with open(result_path, "w") as fh:
+        json.dump(payload, fh, indent=2)
+    if payload["status"] == "error":
+        _fail(payload.get("error", "readpb failed"), 2)
     if not kwargs.get("quiet"):
         click.echo(f"Results saved to {result_path}", err=True)

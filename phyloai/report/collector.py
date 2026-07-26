@@ -23,7 +23,10 @@ STEP_ORDER: list[str] = [
     "tree.ml.fasttree",
     "tree.ml.iqtree",
     "tree.msc",
-    "tree.bi",
+    "tree.bi.pb",
+    "tree.bi.bpcomp",
+    "tree.bi.tracecomp",
+    "tree.bi.readpb",
     "tree.cf",
     "posttree.topology",
     "posttree.dating.hessian",
@@ -65,6 +68,7 @@ def parse_step_id(command: str) -> str:
         "ml":     {"fasttree", "iqtree"},
         "dating": {"hessian", "mcmc"},
         "syserror": {"brlen", "cca", "sites"},
+        "bi": {"pb", "bpcomp", "tracecomp", "readpb"},
     }
 
     try:

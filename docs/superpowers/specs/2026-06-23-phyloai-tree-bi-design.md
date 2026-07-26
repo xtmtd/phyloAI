@@ -5,18 +5,25 @@
 **Parent spec:** `2026-06-07-phyloai-design.md`, `2026-06-17-phyloai-tree-design.md`
 **JSON standard:** `2026-06-21-phyloai-json-output-standard.md`
 
+> **Note (2026-07-26):** The command structure of this spec has been superseded by
+> `2026-07-26-phyloai-tree-bi-subcommands-design.md`. `tree bi` is now a Click Group
+> with four subcommands: `pb` (was `tree bi`), `bpcomp`, `tracecomp`, `readpb`.
+> The command is now `phyloai tree bi pb [OPTIONS]`. All other sections of this
+> spec (model parameters, chain management, convergence monitoring, resume semantics,
+> output structure) remain valid for `tree bi pb`.
+
 ---
 
 ## 1. Overview
 
-`phyloai tree bi` performs Bayesian phylogenetic inference using PhyloBayes-MPI (`pb_mpi`). It runs N independent MCMC chains in parallel, monitors convergence in real time via `bpcomp` and `tracecomp`, and generates a consensus tree when chains are stopped.
+`phyloai tree bi pb` performs Bayesian phylogenetic inference using PhyloBayes-MPI (`pb_mpi`). It runs N independent MCMC chains in parallel, monitors convergence in real time via `bpcomp` and `tracecomp`, and generates a consensus tree when chains are stopped.
 
-Unlike `ml` and `msc`, `bi` is a long-running interactive command — chains may run for hours or days. The command stays alive throughout, providing a live progress display and periodic convergence statistics. The user terminates chains via Ctrl+C (soft-stop) or by pre-specifying a sample target.
+Unlike `ml` and `msc`, `bi pb` is a long-running interactive command — chains may run for hours or days. The command stays alive throughout, providing a live progress display and periodic convergence statistics. The user terminates chains via Ctrl+C (soft-stop) or by pre-specifying a sample target.
 
-`bi` has no subcommand layer. The command is:
+`bi pb` is registered as a subcommand of the `tree bi` group. The command is:
 
 ```
-phyloai tree bi [OPTIONS]
+phyloai tree bi pb [OPTIONS]
 ```
 
 Default output directory: `runs/tree/bi/`.

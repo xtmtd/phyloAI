@@ -7,12 +7,12 @@ Guide users through PhyloAI CLI analyses through the local MCP server.
 - Use `doctor` before commands that invoke external tools, on first run, or when the environment is unknown.
 - Use this Skill for environment and installation requests too, including `doctor failed`, `missing pb_mpi`, `install iqtree`, `缺少 MAFFT`, `环境检查失败`, and similar external-tool setup questions.
 - Read-only tools (`check_status`, `read_result`, `read_report`, `get_command_schema`) do not require `doctor` first.
-- Before executing a CLI command, call `get_command_schema`, render a parameter card that lists **every** parameter from the schema, and wait for explicit user approval. Do not filter out parameters — annotations in `references/parameter-annotations.md` are decorations, not a display filter. Parameters without annotations must still be shown with their CLI `--help` text. For every parameter, show both the current value and the schema default (e.g. `--threads  4  (默认: 4)  ...`). If the schema marks a parameter as required, it MUST have an explicit value before approval — do not launch with an unset required parameter, including conditionally required ones like `--matrix` for `tree bi`.
+- Before executing a CLI command, call `get_command_schema`, render a parameter card that lists **every** parameter from the schema, and wait for explicit user approval. Do not filter out parameters — annotations in `references/parameter-annotations.md` are decorations, not a display filter. Parameters without annotations must still be shown with their CLI `--help` text. For every parameter, show both the current value and the schema default (e.g. `--threads  4  (默认: 4)  ...`). If the schema marks a parameter as required, it MUST have an explicit value before approval — do not launch with an unset required parameter, including conditionally required ones like `--matrix` for `tree bi pb`.
 - After launching a fire-and-forget command, call `check_status` to verify the job actually started before declaring success. Do not claim "已启动" based solely on the launch response — the subprocess may have exited immediately. Report the `check_status` result to the user; if the status is `error` or `unknown`, show the error details and suggest next steps.
 - Treat `--overwrite` as destructive. When the target `--output-dir` already exists and the user has not explicitly requested overwrite, prefer suggesting a new `--output-dir` or `--resume` when available before offering `--overwrite`. If a parameter card sets `--overwrite true`, ask for separate explicit confirmation naming the affected `--output-dir`; general command approval is not enough.
 - Never invent parameter names, aliases, defaults, or enum values. Unknown parameters block execution.
 - After a command completes, summarize `key_results`, warnings, and next steps. Do not auto-run the next step.
-- When a user asks about progress for a running job, call `check_status` and summarize using the checkpoint or result state. For `tree bi`, `convergence/convergence_render.txt` contains human-readable convergence diagnostics (pairwise chain status, after-burnin sample counts); this is the primary progress indicator once the first convergence check completes.
+- When a user asks about progress for a running job, call `check_status` and summarize using the checkpoint or result state. For `tree bi pb`, `convergence/convergence_render.txt` contains human-readable convergence diagnostics (pairwise chain status, after-burnin sample counts); this is the primary progress indicator once the first convergence check completes.
 
 ## Entry Modes
 
@@ -29,7 +29,7 @@ Guide users through PhyloAI CLI analyses through the local MCP server.
 ## Workflow
 
 - Pretree: `convert -> align -> trim -> metrics / filter -> concat` (supermatrix) or `... -> gene trees` (supertree). `stats` inspects results at any step.
-- Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi` optional, `cf` on species trees.
+- Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi pb` for Bayesian MCMC, `tree bi bpcomp`/`tree bi tracecomp` for final convergence diagnostics with user-chosen burn-in, `tree bi readpb` for posterior summaries, `cf` on species trees.
 - Posttree: `topology`, `dating hessian`, `dating mcmc`.
 - Report: run `report` only when the user requests a report/methods draft or recovery needs `report.json`.
 

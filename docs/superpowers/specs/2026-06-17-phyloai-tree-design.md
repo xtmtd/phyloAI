@@ -39,7 +39,7 @@ phyloai tree ml fasttree --matrix ./concat/matrix.fa --seq-type NT --model gtr \
 phyloai tree ml iqtree --matrix ./concat/matrix.fa --model LG --rate-heterogeneity +G4
 
 # Bayesian
-phyloai tree bi --matrix ./concat/matrix.phy --chains 3
+phyloai tree bi pb --matrix ./concat/matrix.phy --chains 3
 
 # MSC (single backend: wASTRAL)
 phyloai tree msc --tree-dir ./genetrees/

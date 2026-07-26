@@ -16,7 +16,7 @@ Check file counts, skipped records, gap ratios, taxon occupancy, and output path
 
 - **iqtree + msc** as primary tree inference: `tree ml iqtree` for ML trees (gene trees or supermatrix), `tree msc` for coalescent species tree from gene trees.
 - **fasttree** for quick exploration: `tree ml fasttree` for fast gene trees or preliminary supermatrix trees.
-- **bi** as optional: `tree bi` for Bayesian inference when MCMC convergence diagnostics are needed.
+- **bi** as optional: `tree bi pb` for Bayesian MCMC chain inference. Use `tree bi bpcomp` and `tree bi tracecomp` for final convergence diagnostics with user-chosen burn-in; use `tree bi readpb` for posterior summaries and predictive checks.
 - `cf` for concordance factors on any species tree.
 
 ## Phase 3: Posttree

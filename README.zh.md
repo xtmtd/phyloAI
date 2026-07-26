@@ -119,7 +119,10 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai pretree concat`  | 将多个 MSA 拼接为带占用率过滤、重编码、密码子变体与外类群重排的超矩阵。 | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.md) |
 | `phyloai tree ml fasttree` | 使用 FastTree 推断 ML 基因树或超矩阵树。 | [docs/commands/tree-ml-fasttree.md](docs/commands/tree-ml-fasttree.md) |
 | `phyloai tree ml iqtree`   | 使用 IQ-TREE3 推断 ML 树：同质、异质、分区与 ModelFinder 工作流。 | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
-| `phyloai tree bi`    | 使用 PhyloBayes-MPI 的贝叶斯系统发育推断：多链 MCMC、实时收敛监控、轨迹图与 resume。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
+| `phyloai tree bi pb`    | 使用 PhyloBayes-MPI 进行 MCMC 链推断：多链并行、实时收敛监控、轨迹图与 resume。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
+| `phyloai tree bi bpcomp` | 使用 bpcomp 进行最终拓扑收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
+| `phyloai tree bi tracecomp` | 使用 tracecomp 进行最终参数收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
+| `phyloai tree bi readpb` | 使用 readpb_mpi 进行后验分析与预测检验；自动转换为 IQ-TREE exchangeability/sitefreq 格式。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
 | `phyloai tree msc`   | 使用 wASTRAL 进行多物种溯祖物种树推断。 | [docs/commands/tree-msc.md](docs/commands/tree-msc.md) |
 | `phyloai tree cf`    | 一致性因子计算：gCF、sCF、sCFl（IQ-TREE3）和 qCF（wASTRAL）。 | [docs/commands/tree-cf.md](docs/commands/tree-cf.md) |
 | `phyloai posttree topology` | 树拓扑检验（AU / KH / SH / WKH / WSH / c-ELW），将候选树与超矩阵进行比较。 | [docs/commands/posttree-topology.md](docs/commands/posttree-topology.md) |
