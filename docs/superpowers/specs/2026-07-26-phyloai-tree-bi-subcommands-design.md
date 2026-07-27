@@ -106,7 +106,7 @@ phyloai tree bi bpcomp [OPTIONS]
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `--chain-dir` | Path | `runs/tree/bi/chains` | Directory containing chain files (`<chain>.chain`, `<chain>.treelist`, etc.). |
+| `--chain-dir` | Path | **required** | Directory containing chain files (`<chain>.chain`, `<chain>.treelist`, etc.). |
 | `--chain-names` | str | `all` | Comma-separated chain names to include (e.g. `chain1,chain2`). `all` = all chains found in `--chain-dir` (sorted lexicographically by filename stem). |
 | `--output-dir` | Path | `runs/tree/bi/bpcomp` | Output directory for result files and `result.json`. |
 | `--overwrite` | flag | False | Delete and recreate the output directory. |
@@ -243,7 +243,7 @@ phyloai tree bi tracecomp [OPTIONS]
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `--chain-dir` | Path | `runs/tree/bi/chains` | Directory containing chain `.trace` files. |
+| `--chain-dir` | Path | **required** | Directory containing chain `.trace` files. |
 | `--chain-names` | str | `all` | Comma-separated chain names. `all` = all chains with `.trace` files in `--chain-dir` (sorted lexicographically). |
 | `--output-dir` | Path | `runs/tree/bi/tracecomp` | Output directory for `tracecomp.contdiff` and `result.json`. |
 | `--overwrite` | flag | False | Delete and recreate the output directory. |
@@ -363,8 +363,8 @@ phyloai tree bi readpb --chain <chain_path> --mode <mode> [OPTIONS]
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `--chain` | Path | **required** | Path to chain file without extension (e.g. `runs/tree/bi/chains/chain1`). readpb_mpi uses this as the chain name; output files are written to the same directory as the chain. |
-| `--output-dir` | Path | `runs/tree/bi/readpb` | Output directory for `result.json` only. readpb_mpi output files are always written to the chain's directory. |
+| `--chain` | Path | **required** | Path to chain file without extension (e.g. `runs/tree/bi/chains/chain1`). readpb_mpi initially writes beside the chain; PhyloAI relocates the outputs to `--output-dir`. |
+| `--output-dir` | Path | `runs/tree/bi/readpb` | Output directory for `result.json` and all readpb outputs. PhyloAI moves each mode's files here immediately after that mode completes. |
 | `--overwrite` | flag | False | Delete and recreate `--output-dir`. |
 
 #### Analysis
@@ -388,7 +388,7 @@ phyloai tree bi readpb --chain <chain_path> --mode <mode> [OPTIONS]
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `--pb-path` | Path | None | Directory containing PhyloBayes tools. Overrides PATH lookup. |
+| `--pb-path` | Path | None | Directory containing `readpb_mpi` and `mpirun`. Overrides PATH lookup. |
 | `--dry-run` | flag | False | Print commands without executing. |
 | `--quiet` | flag | False | Suppress non-error terminal output. |
 
@@ -398,14 +398,14 @@ phyloai tree bi readpb --chain <chain_path> --mode <mode> [OPTIONS]
 |---|---|---|---|
 | `rr` | `-rr` | `<chain>.meanrr` → auto-converted to `<chain>.exchangeabilities` | Posterior mean relative exchangeabilities. Only valid if the model has free exchangeabilities (e.g. GTR). Outputs PAML lower-triangle format for use with IQ-TREE `-m <file>`. |
 | `ss` | `-ss` | `<chain>.siteprofiles` → auto-converted to `<chain>.sitefreq` | Posterior mean site-specific state frequencies. Only valid under infinite mixture models (CAT). Outputs IQ-TREE site frequency format for use with `-fs <file>`. |
-| `r` | `-r` | `<chain>.meanrate` | Posterior mean rates across sites. |
-| `sitelogl` | `-sitelogl` | `<chain>.sitelogl` | Site-specific marginal log-likelihoods, plus wAIC/LOO cross-validation quantities. |
-| `ppred` | `-ppred` | `<chain>.ppred.*` | Simulate data replicates from the posterior predictive distribution. One replicate per saved sample. |
+| `r` | `-r` | `<chain>.meansiterates` | Posterior mean rates across sites. |
+| `sitelogl` | `-sitelogl` | `<chain>.sitelogl`, optional `<chain>.cpo` | Site-specific marginal log-likelihoods, plus wAIC/LOO cross-validation quantities. |
+| `ppred` | `-ppred` | `<chain>_ppred*.ali` | Simulate data replicates from the posterior predictive distribution. One replicate per saved sample. |
 | `div` | `-div` | `<chain>.div.*` | Posterior predictive diversity test (PPA-DIV): mean diversity per site. |
 | `sitecomp` | `-sitecomp` | `<chain>.sitecomp.*` | Posterior predictive test of compositional heterogeneity across sites (PPA-VAR). |
 | `siteconvprob` | `-siteconvprob` | `<chain>.siteconvprob.*` | Posterior predictive convergence probability test (PPA-CONV): mean squared empirical frequency. |
 | `comp` | `-comp` | `<chain>.comp.*` | Posterior predictive test of compositional homogeneity across taxa. |
-| `allppred` | `-allppred` | All of div/sitecomp/siteconvprob/comp outputs in a single call | All four posterior predictive tests at once. Mutually exclusive with `div`, `sitecomp`, `siteconvprob`, `comp`. |
+| `allppred` | `-allppred` | `<chain>.ppred` | Combined posterior predictive checks. Mutually exclusive with `div`, `sitecomp`, `siteconvprob`, `comp`. |
 
 ### 5.5 Mutual Exclusion and Validation
 
@@ -421,7 +421,7 @@ Modes are executed in the order specified by the user. Each mode is a separate `
 mpirun -np <threads> readpb_mpi -x <burnin> [<every> [<until>]] <mode_flag(s)> <chain_stem>
 ```
 
-Working directory: parent directory of `--chain` (so readpb_mpi writes files adjacent to the chain).
+Working directory: parent directory of `--chain` (required because readpb_mpi derives output names from the chain stem). Immediately after each successful mode, PhyloAI moves that mode's files to `--output-dir` before starting the next mode. This keeps the chain directory free of readpb analysis outputs.
 
 Example for `--mode ss,rr --burnin 1000 --threads 8`:
 1. `mpirun -np 8 readpb_mpi -x 1000 -ss chain1` (cwd = `chains/`)
@@ -455,7 +455,7 @@ A   D   0.486164
 
 Note: the reference script `convert-exchangeabilities.py` produces correct output but uses pandas with deprecated chained-assignment (hence the `ChainedAssignmentError` warnings). The numpy reimplementation avoids pandas entirely and produces identical output without warnings.
 
-Output file: `<chain>.exchangeabilities` (same directory as chain).
+The raw `<chain>.meanrr` file is moved to `--output-dir` immediately after `rr` completes. Conversion then writes `<chain>.exchangeabilities` beside it in `--output-dir`.
 
 #### `ss` → `sitefreq`
 
@@ -479,24 +479,27 @@ IQ-TREE AA order: `A R N D C Q E G H I L K M F P S T W Y V`
 4. Replace zeros/near-zeros with `1e-8` (floor), then re-normalize to sum to 1.
 5. Write to `<chain>.sitefreq`: `<site_index> <20 space-separated floats %.8f>`.
 
-Output file: `<chain>.sitefreq` (same directory as chain).
+The raw `<chain>.siteprofiles` file is moved to `--output-dir` immediately after `ss` completes. Conversion then writes `<chain>.sitefreq` beside it in `--output-dir`.
 
 ### 5.8 Output Structure
 
-readpb_mpi output files are written to the chain's directory by readpb_mpi itself. PhyloAI writes `result.json` to `--output-dir`.
+`readpb_mpi` initially writes beside the chain, but PhyloAI moves files immediately after each mode completes. All final analysis outputs therefore reside directly under `--output-dir`. The chain directory retains only the input chain and MCMC files.
 
 ```
 runs/tree/bi/
 ├── chains/
 │   ├── chain1.chain
-│   ├── chain1.meanrr          ← produced by readpb_mpi -rr
-│   ├── chain1.exchangeabilities  ← produced by PhyloAI post-processing
-│   ├── chain1.siteprofiles    ← produced by readpb_mpi -ss
-│   ├── chain1.sitefreq        ← produced by PhyloAI post-processing
-│   ├── chain1.meanrate        ← produced by readpb_mpi -r
-│   └── chain1.sitelogl        ← produced by readpb_mpi -sitelogl
+│   └── chain1.trace
 │
 └── readpb/
+    ├── chain1.meanrr
+    ├── chain1.exchangeabilities
+    ├── chain1.siteprofiles
+    ├── chain1.sitefreq
+    ├── chain1.meansiterates
+    ├── chain1.sitelogl
+    ├── chain1.sitecomp
+    ├── chain1.ppred
     └── result.json
 ```
 
@@ -728,7 +731,7 @@ Each subcommand must have a report template registered in the `phyloai report` s
 
 - `rr`: Posterior mean relative exchangeabilities were estimated from {n_samples} post-burnin samples of chain `{chain}` using `readpb_mpi -rr`. The resulting exchangeability matrix was converted to PAML lower-triangle format (`{chain}.exchangeabilities`) for use with IQ-TREE.
 - `ss`: Posterior mean site-specific amino acid frequencies were estimated from {n_samples} post-burnin samples using `readpb_mpi -ss`. Site frequency profiles were converted to IQ-TREE `-fs` format (`{chain}.sitefreq`).
-- `r`: Posterior mean site rates were estimated using `readpb_mpi -r` and written to `{chain}.meanrate`.
+- `r`: Posterior mean site rates were estimated using `readpb_mpi -r` and written to `{chain}.meansiterates`.
 - `sitelogl`: Site-specific marginal log-likelihoods were computed using `readpb_mpi -sitelogl` and written to `{chain}.sitelogl`. These values can be used to compute wAIC and leave-one-out cross-validation scores.
 - `div`/`sitecomp`/`siteconvprob`/`comp`/`allppred`: Posterior predictive checks were performed using `readpb_mpi -{mode}`. Observed test statistics were compared to the posterior predictive null distribution.
 

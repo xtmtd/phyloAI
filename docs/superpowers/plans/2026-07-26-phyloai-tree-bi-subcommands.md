@@ -271,10 +271,10 @@ Key behaviors:
 1. Validate `--chain` exists as `<chain>.chain` file (e.g., `Path(str(chain) + ".chain").exists()`).
 2. Mode validation per design spec §5.5: unrecognized mode → `ValueError`; duplicate modes → `ValueError`; `allppred` + any of `div`/`sitecomp`/`siteconvprob`/`comp` → `ValueError`.
 3. Tool resolution: dry-run → placeholders. Else `env.require("readpb_mpi")` + `env.require("mpirun")`.
-4. Per-mode execution: each mode = separate `readpb_mpi` invocation. Working directory = `chain.parent`. Mode flag mapping per design spec §5.4 table. Command: `mpirun -np <threads> readpb_mpi -x <burnin> [<every> [<until>]] <mode_flag> <chain_stem>`.
+4. Per-mode execution: each mode = separate `readpb_mpi` invocation. Working directory = `chain.parent`. Mode flag mapping per design spec §5.4 table. Command: `mpirun -np <threads> readpb_mpi -x <burnin> [<every> [<until>]] <mode_flag> <chain_stem>`. Immediately after each successful invocation, detect that mode's generated files and move them to `output_dir` before starting the next mode. Move `ppred` mode files to `output_dir/ppred/`; move `allppred`'s `<chain>.ppred` and every other mode's files directly to `output_dir`.
 5. `-x` flag: reuse `_build_bpcomp_x_flag()` logic from `bi_bpcomp.py` or make a shared helper.
 6. Output capture per design spec §5.6: `stdout=PIPE, stderr=None` (stderr/progress → terminal directly). Save stdout per mode to `<output-dir>/<mode>.stdout`. Replay stdout to terminal unchanged unless `--quiet`. After all modes complete, build a single `data.tool_stderr` string by concatenating all modes' stdout, separated by `\n--- <mode> ---\n` headers. The `params` dict records the full mode string; `data.tool_stderr` is a single flat string (not per-mode keys).
-7. Post-processing triggers: after `-rr` flag completes → call `_convert_meanrr_to_exchangeabilities()`. After `-ss` flag completes → call `_convert_siteprofiles_to_sitefreq()`.
+7. Post-processing triggers: after moving the raw `rr` output to `output_dir`, call `_convert_meanrr_to_exchangeabilities()` there. After moving the raw `ss` output to `output_dir`, call `_convert_siteprofiles_to_sitefreq()` there. Both derived files therefore appear before the next mode begins.
 8. Return payload per design spec §5.9.
 
 - [ ] **Step 2: Implement `_convert_meanrr_to_exchangeabilities(meanrr_path: Path) -> Path`**
@@ -305,7 +305,8 @@ Algorithm (from design spec §5.7):
 - `test_convert_meanrr_to_exchangeabilities`: create sample `.meanrr`, verify output shape (21 rows, row 0 blank), PAML order correct, values symmetric, trailing spaces present.
 - `test_convert_siteprofiles_to_sitefreq`: create sample `.siteprofiles`, verify reindex order, `1e-8` floor, row sum ≈ 1.0, format `%.8f`.
 - `test_run_bi_readpb_dry_run`: verify result shape, modes_run, `data.cmds` dict per mode, no tools needed.
-- `test_run_bi_readpb_ss_rr_roundtrip`: fake `readpb_mpi` + `mpirun` → end-to-end with actual `.meanrr` + `.siteprofiles` output files → verify post-processing output files exist and are valid.
+- `test_run_bi_readpb_ss_rr_roundtrip`: fake `readpb_mpi` + `mpirun` → end-to-end with actual `.meanrr` + `.siteprofiles` output files → verify raw and post-processing output files exist under `output_dir`, are absent from the chain directory, and are valid.
+- `test_run_bi_readpb_moves_each_mode_before_next_starts`: fake `readpb_mpi` writes rr output, then its ss invocation asserts the rr raw and converted files already exist under `output_dir`; verify `ppred` files are in `output_dir/ppred/` and all other mode outputs are directly in `output_dir`.
 
 - [ ] **Step 5: Run tests**
 
@@ -489,7 +490,7 @@ def test_parse_step_id_tree_bi_bpcomp():
     assert parse_step_id("phyloai tree bi bpcomp --chain-dir chains --burnin 1000") == "tree.bi.bpcomp"
 
 def test_parse_step_id_tree_bi_tracecomp():
-    assert parse_step_id("phyloai tree bi tracecomp --burnin 5000") == "tree.bi.tracecomp"
+    assert parse_step_id("phyloai tree bi tracecomp --chain-dir chains --burnin 5000") == "tree.bi.tracecomp"
 
 def test_parse_step_id_tree_bi_readpb():
     assert parse_step_id("phyloai tree bi readpb --chain chain1 --mode ss,rr") == "tree.bi.readpb"

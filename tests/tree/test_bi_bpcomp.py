@@ -67,27 +67,27 @@ def test_run_bi_bpcomp_dry_run(tmp_path: Path):
 
 def test_run_bi_bpcomp_validation_negative_burnin():
     with pytest.raises(ValueError, match="burnin"):
-        run_bi_bpcomp(burnin=-1)
+        run_bi_bpcomp(chain_dir=Path("."), burnin=-1)
 
 
 def test_run_bi_bpcomp_validation_zero_sample_freq():
     with pytest.raises(ValueError, match="sample-freq"):
-        run_bi_bpcomp(sample_freq=0)
+        run_bi_bpcomp(chain_dir=Path("."), sample_freq=0)
 
 
 def test_run_bi_bpcomp_validation_invalid_cutoff():
     with pytest.raises(ValueError, match="cutoff"):
-        run_bi_bpcomp(cutoff=1.0)
+        run_bi_bpcomp(chain_dir=Path("."), cutoff=1.0)
 
 
 def test_run_bi_bpcomp_validation_invalid_until():
     with pytest.raises(ValueError, match="until"):
-        run_bi_bpcomp(until="abc")
+        run_bi_bpcomp(chain_dir=Path("."), until="abc")
 
 
 def test_run_bi_bpcomp_validation_until_zero():
     with pytest.raises(ValueError, match="until"):
-        run_bi_bpcomp(until="0")
+        run_bi_bpcomp(chain_dir=Path("."), until="0")
 
 
 def test_run_bi_bpcomp_validation_until_int_ok(tmp_path: Path):

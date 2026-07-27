@@ -185,17 +185,17 @@ IQ-TREE3 and trimAl are planned for future bundling or auto-download in PhyloAI.
 
 ### Bayesian Inference
 
-`phyloai tree bi` needs the PhyloBayes-MPI tool group.
+`phyloai tree bi` has subcommand-specific PhyloBayes-MPI requirements.
 
 | Tool | Purpose | Install entry point | Detection name | Verify |
 |------|---------|---------------------|----------------|--------|
-| pb_mpi | MCMC sampler | https://github.com/bayesiancook/pbmpi | `pb_mpi` | `phyloai doctor` |
-| bpcomp | Topology convergence | https://github.com/bayesiancook/pbmpi | `bpcomp` | `phyloai doctor` |
-| tracecomp | Parameter convergence | https://github.com/bayesiancook/pbmpi | `tracecomp` | `phyloai doctor` |
-| mpirun | MPI launcher | https://www.open-mpi.org/ | `mpirun` | `phyloai doctor` |
-| readpb_mpi | Optional chain reader | https://github.com/bayesiancook/pbmpi | `readpb_mpi` | `phyloai doctor` |
+| pb_mpi | MCMC sampler (`tree bi pb`) | https://github.com/bayesiancook/pbmpi | `pb_mpi` | `phyloai doctor` |
+| bpcomp | Topology convergence (`tree bi pb`, `tree bi bpcomp`) | https://github.com/bayesiancook/pbmpi | `bpcomp` | `phyloai doctor` |
+| tracecomp | Parameter convergence (`tree bi pb`, `tree bi tracecomp`) | https://github.com/bayesiancook/pbmpi | `tracecomp` | `phyloai doctor` |
+| mpirun | MPI launcher (`tree bi pb`, `tree bi readpb`) | https://www.open-mpi.org/ | `mpirun` | `phyloai doctor` |
+| readpb_mpi | Posterior analysis (`tree bi readpb`) | https://github.com/bayesiancook/pbmpi | `readpb_mpi` | `phyloai doctor` |
 
-If the tools are installed outside `PATH`, use `phyloai tree bi --pb-path /path/to/pbmpi/bin`.
+If required tools are outside `PATH`, use the relevant subcommand, for example `phyloai tree bi pb --pb-path /path/to/pbmpi/bin`.
 
 ### Filtering And Trimming Extras
 

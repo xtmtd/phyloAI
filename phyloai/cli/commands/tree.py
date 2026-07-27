@@ -151,6 +151,16 @@ class _BiGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
         return ["pb", "bpcomp", "tracecomp", "readpb"]
 
+    def format_help_text(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        text = self.help or ""
+        if not text:
+            return
+        paragraphs = text.split("\n\n")
+        for i, paragraph in enumerate(paragraphs):
+            if i:
+                formatter.write_paragraph()
+            formatter.write(paragraph)
+
 
 class _TreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
@@ -1600,20 +1610,21 @@ def bi_pb_command(**kwargs) -> None:
 
 @bi_group.command(
     "bpcomp",
-    cls=_GroupedHelpCommand,
+    cls=_CFCommand,
     help=(
         "Run bpcomp for final topology convergence analysis.\n\n"
         "Runs bpcomp once with a user-specified integer burn-in on a "
         "completed or running chains directory. Produces a final "
         "consensus tree and bipartition statistics.\n\n"
-        "  phyloai tree bi bpcomp --chain-dir chains/ --burnin 5000\n\n"
+        "Examples:\n\n"
+        "  phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --burnin 5000\n\n"
+        "  phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --chain-names chain1,chain3 --burnin 2000 --sample-freq 5 --until 3000 --cutoff 0.75\n\n"
     ),
 )
 @click.option(
     "--chain-dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=Path("runs/tree/bi/chains"),
-    show_default=True,
+    required=True,
     help="Directory containing chain files (<chain>.chain, <chain>.treelist, etc.).",
 )
 @click.option(
@@ -1621,7 +1632,7 @@ def bi_pb_command(**kwargs) -> None:
     type=str,
     default="all",
     show_default=True,
-    help="Comma-separated chain names to include. 'all' = all chains in --chain-dir.",
+    help="Comma-separated chain names to include (e.g. 'chain1,chain2'). 'all' = all chains in --chain-dir.",
 )
 @click.option(
     "--output-dir", "-o",
@@ -1676,7 +1687,8 @@ def bi_bpcomp_command(**kwargs) -> None:
         _write_bi_error_result(kwargs, str(exc), 3, "bpcomp", _BPCOMP_FLAG_MAP)
         _fail(str(exc), 3)
     except ValueError as exc:
-        _write_bi_error_result(kwargs, str(exc), 1, "bpcomp", _BPCOMP_FLAG_MAP)
+        if "already exists and is non-empty" not in str(exc):
+            _write_bi_error_result(kwargs, str(exc), 1, "bpcomp", _BPCOMP_FLAG_MAP)
         _fail(str(exc), 1)
     if kwargs.get("dry_run"):
         if not kwargs.get("quiet"):
@@ -1702,19 +1714,20 @@ def bi_bpcomp_command(**kwargs) -> None:
 
 @bi_group.command(
     "tracecomp",
-    cls=_GroupedHelpCommand,
+    cls=_CFCommand,
     help=(
         "Run tracecomp for final parameter convergence analysis.\n\n"
         "Runs tracecomp once with a user-specified integer burn-in to "
         "assess parameter convergence across chains.\n\n"
-        "  phyloai tree bi tracecomp --chain-dir chains/ --burnin 5000\n\n"
+        "Examples:\n\n"
+        "  phyloai tree bi tracecomp --chain-dir runs/tree/bi/chains --burnin 5000\n\n"
+        "  phyloai tree bi tracecomp --chain-dir runs/tree/bi/chains --chain-names chain1,chain2 --burnin 2000\n\n"
     ),
 )
 @click.option(
     "--chain-dir",
     type=click.Path(file_okay=False, path_type=Path),
-    default=Path("runs/tree/bi/chains"),
-    show_default=True,
+    required=True,
     help="Directory containing chain .trace files.",
 )
 @click.option(
@@ -1722,7 +1735,7 @@ def bi_bpcomp_command(**kwargs) -> None:
     type=str,
     default="all",
     show_default=True,
-    help="Comma-separated chain names. 'all' = all chains with .trace files in --chain-dir.",
+    help="Comma-separated chain names (e.g. 'chain1,chain2'). 'all' = all chains with .trace files in --chain-dir.",
 )
 @click.option(
     "--output-dir", "-o",
@@ -1756,7 +1769,8 @@ def bi_tracecomp_command(**kwargs) -> None:
         _write_bi_error_result(kwargs, str(exc), 3, "tracecomp", _TRACECOMP_FLAG_MAP)
         _fail(str(exc), 3)
     except ValueError as exc:
-        _write_bi_error_result(kwargs, str(exc), 1, "tracecomp", _TRACECOMP_FLAG_MAP)
+        if "already exists and is non-empty" not in str(exc):
+            _write_bi_error_result(kwargs, str(exc), 1, "tracecomp", _TRACECOMP_FLAG_MAP)
         _fail(str(exc), 1)
     if kwargs.get("dry_run"):
         if not kwargs.get("quiet"):
@@ -1782,13 +1796,28 @@ def bi_tracecomp_command(**kwargs) -> None:
 
 @bi_group.command(
     "readpb",
-    cls=_GroupedHelpCommand,
+    cls=_CFCommand,
     help=(
         "Run readpb_mpi for posterior analysis on a single chain.\n\n"
         "Supports multiple analysis modes (-rr, -ss, -r, -sitelogl, etc.). "
         "Automatically converts rr output to IQ-TREE exchangeabilities format "
         "and ss output to IQ-TREE site frequencies format.\n\n"
-        "  phyloai tree bi readpb --chain chains/chain1 --mode ss,rr\n\n"
+        "Modes:\n\n"
+        "  rr             Posterior mean relative exchangeabilities (-> exchangeabilities).\n"
+        "  ss             Posterior mean site-specific state frequencies (-> sitefreq).\n"
+        "  r              Posterior mean rates across sites.\n"
+        "  sitelogl       Site-specific marginal log-likelihoods (wAIC / LOO).\n"
+        "  ppred          Simulate data replicates from the posterior predictive distribution.\n"
+        "  div            Posterior predictive diversity test (PPA-DIV).\n"
+        "  sitecomp       Posterior predictive compositional heterogeneity test (PPA-VAR).\n"
+        "  siteconvprob   Posterior predictive convergence probability test (PPA-CONV).\n"
+        "  comp           Posterior predictive compositional homogeneity test.\n"
+        "  allppred       All four predictive tests at once\n"
+        "                 (mutually exclusive with div/sitecomp/siteconvprob/comp).\n\n"
+        "  rr/ss convert to IQ-TREE-compatible exchangeabilities/sitefreq files.\n\n"
+        "Examples:\n\n"
+        "  phyloai tree bi readpb --chain runs/tree/bi/chains/chain1 --mode rr,ss --burnin 2000 --sample-freq 5\n\n"
+        "  phyloai tree bi readpb --chain runs/tree/bi/chains/chain1 --mode allppred --burnin 5000\n\n"
     ),
 )
 @click.option(
@@ -1801,14 +1830,14 @@ def bi_tracecomp_command(**kwargs) -> None:
     "--mode",
     type=str,
     required=True,
-    help="Comma-separated list of analysis modes. See help for available modes.",
+    help="Comma-separated list of analysis modes: rr, ss, r, sitelogl, ppred, div, sitecomp, siteconvprob, comp, allppred.",
 )
 @click.option(
     "--output-dir", "-o",
     type=click.Path(file_okay=False, path_type=Path),
     default=Path("runs/tree/bi/readpb"),
     show_default=True,
-    help="Output directory for result.json only.",
+    help="Output directory for readpb outputs and result.json.",
 )
 @click.option(
     "--burnin",
@@ -1856,7 +1885,8 @@ def bi_readpb_command(**kwargs) -> None:
         _write_bi_error_result(kwargs, str(exc), 3, "readpb", _READPB_FLAG_MAP)
         _fail(str(exc), 3)
     except ValueError as exc:
-        _write_bi_error_result(kwargs, str(exc), 1, "readpb", _READPB_FLAG_MAP)
+        if "already exists and is non-empty" not in str(exc):
+            _write_bi_error_result(kwargs, str(exc), 1, "readpb", _READPB_FLAG_MAP)
         _fail(str(exc), 1)
     if kwargs.get("dry_run"):
         if not kwargs.get("quiet"):

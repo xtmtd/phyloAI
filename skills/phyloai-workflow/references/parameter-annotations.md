@@ -493,11 +493,10 @@ IQ-TREE 输出前缀。默认与输入文件同名。
 见 Common Parameters。
 
 #### --model
-替换模型（如 `LG`、`GTR`）。需与 `--mixture` 同时使用以启用混合模型。
+替换率矩阵（如 `LG`、`GTR`）。
 
 #### --mixture
-启用无限位点混合模型（PhyloBayes 特有）。例如 `C20`、`CAT-Poisson`。
-无需频率类别参数，模型从数据中学习。
+位点混合模型：`auto` = CAT Dirichlet 过程，`1` = 单矩阵同质模型，整数 N = 固定 N 组分混合。
 
 #### --gamma-cats
 位点速率类别数（4 为推荐默认值）。
@@ -509,7 +508,7 @@ IQ-TREE 输出前缀。默认与输入文件同名。
 固定拓扑不更新，仅估计分枝长度（最快，适合分歧时间估计的前置分析）。
 
 #### --chains
-独立 MCMC 链数量。默认 2，建议 ≥2 以便交叉验证收敛性。
+独立 MCMC 链数量。默认 3，建议至少 2 条以交叉验证收敛性。
 
 #### --chain-prefix, --chain-names
 链输出前缀和自定义名称。默认以 `chain` 为前缀。
@@ -518,7 +517,7 @@ IQ-TREE 输出前缀。默认与输入文件同名。
 MCMC 采样频率（每隔 N 次迭代记录一个样本）。
 
 #### --nsamples
-MCMC 保留样本数。总迭代 = 采样频率 × 样本数。
+每条链的 MCMC 总循环数。`-1` 表示无限运行；使用 `--sample-freq N` 时，保存点数为总循环数 / N。
 
 #### --monitor-freq
 监控器输出频率（控制屏幕/日志中的进度更新频率）。
@@ -530,14 +529,14 @@ burnin 比例（0-1）。例如 0.2 表示丢弃前 20% 样本（用于排除 MC
 轮询间隔（秒）。PhyloAI 每隔 N 秒检查一次 PhyloBayes 运行状态。
 
 #### --pb-path
-显式 PhyloBayes-MPI（pb_mpi）可执行文件路径。
+PhyloBayes-MPI 工具目录。对 `tree bi pb`，目录应包含 `pb_mpi`、`bpcomp`、`tracecomp` 和 `mpirun`。
 
 ---
 
 ### tree bi bpcomp
 
 #### --chain-dir
-包含 `.chain` 文件的目录（默认: `runs/tree/bi/chains`）。
+包含 `.chain` 文件的目录（必需）。
 
 #### --chain-names
 逗号分隔的链名。`all` = 自动发现 `--chain-dir` 中所有 `.chain` 文件。
@@ -562,7 +561,7 @@ PhyloBayes 工具目录（包含 bpcomp）。
 ### tree bi tracecomp
 
 #### --chain-dir
-包含 `.trace` 文件的目录（默认: `runs/tree/bi/chains`）。
+包含 `.trace` 文件的目录（必需）。
 
 #### --chain-names
 逗号分隔的链名。`all` = 自动发现 `--chain-dir` 中所有 `.trace` 文件。
@@ -598,6 +597,9 @@ MPI 进程数（≥ 2，默认 4）。
 
 #### --pb-path
 PhyloBayes 工具目录（包含 readpb_mpi 和 mpirun）。
+
+#### --output-dir
+readpb 输出目录。每个模式完成后，PhyloAI 将其生成的文件移入此目录；`allppred` 的 `<chain>.ppred` 直接位于输出目录根部。仅 `ppred` 模式的 `<chain>_ppred*.ali` 位于 `ppred/` 子目录。
 
 ---
 

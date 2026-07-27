@@ -216,6 +216,20 @@
     </details>
     {% endif %}
 
+    {% if s.tracecomp_diagnostics %}
+    <details open>
+      <summary>Tracecomp parameter diagnostics</summary>
+      <div class="param-table">
+        <table>
+          <tr>{% for header in s.tracecomp_diagnostics[0].keys() %}<th>{{ header }}</th>{% endfor %}</tr>
+          {% for row in s.tracecomp_diagnostics %}
+          <tr>{% for value in row.values() %}<td>{{ value }}</td>{% endfor %}</tr>
+          {% endfor %}
+        </table>
+      </div>
+    </details>
+    {% endif %}
+
     {% if s.csv_tables %}
     {% for ct in s.csv_tables %}
     <details>

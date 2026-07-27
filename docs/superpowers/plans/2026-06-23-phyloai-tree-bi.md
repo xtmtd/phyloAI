@@ -1137,7 +1137,7 @@ class _TreeGroup(click.Group):
 @click.option("--sample-freq", type=click.IntRange(1, None), default=1, show_default=True, help="pb_mpi -x every value.")
 @click.option("--nsamples", type=int, default=-1, show_default=True, help="Stop after N saved points; -1 runs forever.")
 @click.option("--monitor-freq", type=click.IntRange(1, None), default=100, show_default=True, help="Convergence check interval in samples.")
-@click.option("--burnin-frac", type=click.FloatRange(0.0, 0.95), default=0.5, show_default=True, help="Dynamic burn-in fraction.")
+@click.option("--burnin-frac", type=click.FloatRange(0.0, None), default=0.5, show_default=True, help="Dynamic burn-in fraction (0.0 ≤ x < 1.0).")
 @click.option("--poll-interval", type=click.IntRange(1, None), default=60, show_default=True, help="Seconds between trace file polls.")
 @click.option("--no-plot", is_flag=True, default=False, help="Disable trace_plots.pdf generation.")
 @click.option("--resume", default=None, is_flag=False, flag_value="__ALL__", help="Resume all chains, or comma-separated selected chains.")
@@ -1239,16 +1239,16 @@ Bayesian phylogenetic inference with PhyloBayes-MPI.
 ## Usage
 
 ```bash
-phyloai tree bi --matrix concat/matrix.phy
+phyloai tree bi pb --matrix concat/matrix.phy
 ```
 
 ## Common Examples
 
 ```bash
-phyloai tree bi --matrix concat/matrix.phy
-phyloai tree bi --matrix concat/matrix.phy --model lg --mixture 1 --nsamples 10000
-phyloai tree bi --output-dir runs/tree/bi --resume
-phyloai tree bi --output-dir runs/tree/bi --resume chain1,chain3
+phyloai tree bi pb --matrix concat/matrix.phy
+phyloai tree bi pb --matrix concat/matrix.phy --model lg --mixture 1 --nsamples 10000
+phyloai tree bi pb --output-dir runs/tree/bi --resume
+phyloai tree bi pb --output-dir runs/tree/bi --resume chain1,chain3
 ```
 
 ## Monitoring
@@ -1274,7 +1274,7 @@ Use Ctrl+C. PhyloAI writes `0` to each `chains/<chain>.run` file and waits for p
 
 - [ ] **Step 2: Update stale design references**
 
-Replace `phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3 --threads 8` with `phyloai tree bi --matrix ./concat/matrix.phy --chains 3 --threads 8`.
+Replace `phyloai tree bi phylobayes --matrix ./concat/matrix.phy --chains 3 --threads 8` with `phyloai tree bi pb --matrix ./concat/matrix.phy --chains 3 --threads 8`.
 
 Replace `runs/tree/bi/phylobayes/` with `runs/tree/bi/`.
 

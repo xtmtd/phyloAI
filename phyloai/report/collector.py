@@ -124,6 +124,33 @@ def _load_result_json(path: Path) -> dict[str, Any]:
         return {"status": "error", "error": str(exc), "command": f"<unreadable: {path}>"}
 
 
+def _parse_tracecomp_contdiff(path: Path) -> list[dict[str, str | int | float]]:
+    """Return typed per-parameter diagnostics from tracecomp output."""
+    try:
+        lines = [line.split() for line in path.read_text().splitlines() if line.strip()]
+    except OSError:
+        return []
+    if len(lines) < 2:
+        return []
+
+    headers = lines[0]
+    rows = []
+    for values in lines[1:]:
+        if len(values) != len(headers):
+            continue
+        row: dict[str, str | int | float] = {}
+        for header, value in zip(headers, values):
+            try:
+                row[header] = int(value)
+            except ValueError:
+                try:
+                    row[header] = float(value)
+                except ValueError:
+                    row[header] = value
+        rows.append(row)
+    return rows
+
+
 def _find_result_json_files(base: Path, max_depth: int = 3) -> list[Path]:
     """Find result.json files up to max_depth levels below base.
 
@@ -226,6 +253,12 @@ def discover_steps(run_dir: str | Path) -> dict[str, Any]:
     for rp in result_paths:
         result = _load_result_json(rp)
         step_id = parse_step_id(result.get("command", ""))
+        data = result.get("data", {})
+        diagnostics = []
+        if step_id == "tree.bi.tracecomp":
+            contdiff = data.get("output_files", {}).get("contdiff", {})
+            contdiff_path = Path(contdiff.get("path", rp.parent / "tracecomp.contdiff"))
+            diagnostics = _parse_tracecomp_contdiff(contdiff_path)
         steps.append({
             "step_id": step_id,
             "path": str(rp.absolute()),
@@ -236,7 +269,8 @@ def discover_steps(run_dir: str | Path) -> dict[str, Any]:
             "params": result.get("params", {}),
             "key_results": result.get("key_results", {}),
             "error": result.get("error"),
-            "data": result.get("data", {}),
+            "data": data,
+            "tracecomp_diagnostics": diagnostics,
         })
 
     steps = _order_steps(steps)

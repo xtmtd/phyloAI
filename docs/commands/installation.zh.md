@@ -92,7 +92,7 @@ phyloai doctor --output-format json
 
 ### 贝叶斯推断
 
-`phyloai tree bi` 是一个包含四个子命令（`pb`、`bpcomp`、`tracecomp`、`readpb`）的组，均需 PhyloBayes-MPI 工具组。
+`phyloai tree bi` 是一个包含四个子命令（`pb`、`bpcomp`、`tracecomp`、`readpb`）的组。请安装所使用子命令需要的工具。
 
 | 工具 | 用途 | 安装入口 | 检测名称 | 验证方式 |
 |------|------|----------|----------|----------|
@@ -102,7 +102,7 @@ phyloai doctor --output-format json
 | mpirun | MPI 启动器（`bi pb`、`bi readpb`） | https://www.open-mpi.org/ | `mpirun` | `phyloai doctor` |
 | readpb_mpi | 后验分析（`bi readpb`） | https://github.com/bayesiancook/pbmpi | `readpb_mpi` | `phyloai doctor` |
 
-如果工具安装在 `PATH` 之外，在任何 `tree bi` 子命令上使用 `--pb-path /path/to/pbmpi/bin` 指定目录。
+如果必需工具安装在 `PATH` 之外，在对应 `tree bi` 子命令上使用 `--pb-path /path/to/pbmpi/bin` 指定目录；该目录必须包含该子命令所需的可执行文件。
 
 ### 过滤与修剪扩展工具
 

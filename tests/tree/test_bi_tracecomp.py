@@ -70,7 +70,7 @@ def test_run_bi_tracecomp_dry_run(tmp_path: Path):
 
 def test_run_bi_tracecomp_validation_negative_burnin():
     with pytest.raises(ValueError, match="burnin"):
-        run_bi_tracecomp(burnin=-1)
+        run_bi_tracecomp(chain_dir=Path("."), burnin=-1)
 
 
 def test_run_bi_tracecomp_with_fake_tool(tmp_path: Path):
@@ -96,5 +96,30 @@ printf 'name effsize rel_diff\\nloglik 1529 0.0524634\\nlength 948 0.0360727\\n'
     assert payload["key_results"]["tracecomp_min_effsize"] == 948.0
     assert payload["key_results"]["tracecomp_max_reldiff"] == 0.0524634
     assert payload["key_results"]["tracecomp_status"] == "good"
-    assert "loglik" in payload["data"]["tool_stderr"]
     assert (out / "tracecomp.contdiff").exists()
+    assert "loglik" in (out / "tracecomp.contdiff").read_text()
+    assert "loglik" in payload["data"]["tool_stderr"]
+
+
+def test_run_bi_tracecomp_failure_captures_stdout(tmp_path: Path):
+    chain_dir = tmp_path / "chains"
+    chain_dir.mkdir()
+    (chain_dir / "chain1.trace").write_text("iter time loglik\n1 0 -10\n")
+
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    tracecomp = tool_dir / "tracecomp"
+    tracecomp.write_text("""#!/bin/sh
+printf 'error: convergence failed\\n' >&2
+printf 'name effsize rel_diff\\nloglik 10 0.9\\n'
+exit 1
+""")
+    tracecomp.chmod(0o755)
+
+    out = tmp_path / "tracecomp"
+    payload = run_bi_tracecomp(
+        chain_dir=chain_dir, output_dir=out, burnin=0,
+        pb_path=tool_dir, quiet=True,
+    )
+    assert payload["status"] == "error"
+    assert "loglik" in payload["data"]["tool_stderr"]

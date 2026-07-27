@@ -163,16 +163,77 @@ fi
     )
     assert payload["status"] == "success"
     assert payload["key_results"]["modes_run"] == ["ss", "rr"]
-    assert "siteprofiles" in payload["key_results"]["output_files"]
-    assert "meanrr" in payload["key_results"]["output_files"]
-    assert (chain_dir / "chain1.siteprofiles").exists()
-    assert (chain_dir / "chain1.sitefreq").exists()
-    assert (chain_dir / "chain1.meanrr").exists()
-    assert (chain_dir / "chain1.exchangeabilities").exists()
+    assert "chain1_siteprofiles" in payload["key_results"]["output_files"]
+    assert "chain1_meanrr" in payload["key_results"]["output_files"]
+    assert "sitefreq" in payload["key_results"]["output_files"]
+    assert "exchangeabilities" in payload["key_results"]["output_files"]
+    assert (out / "chain1.siteprofiles").exists()
+    assert (out / "chain1.sitefreq").exists()
+    assert (out / "chain1.meanrr").exists()
+    assert (out / "chain1.exchangeabilities").exists()
     # Check post-processing status
     pp = payload["data"]["post_processing"]
     assert pp["ss"]["status"] == "success"
     assert pp["rr"]["status"] == "success"
+
+
+def test_run_bi_readpb_moves_each_mode_before_next_starts(tmp_path: Path):
+    chain_dir = tmp_path / "chains"
+    chain_dir.mkdir()
+    chain = chain_dir / "chain1"
+    (chain_dir / "chain1.chain").write_text("fake state")
+    out = tmp_path / "readpb"
+
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    mpirun = tool_dir / "mpirun"
+    mpirun.write_text("#!/bin/sh\nshift 2\nexec \"$@\"\n")
+    readpb = tool_dir / "readpb_mpi"
+    readpb.write_text(f"""#!/bin/sh
+set -e
+mode=""
+chain_name=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -rr) mode="rr";;
+        -ss) mode="ss";;
+        -ppred) mode="ppred";;
+        -*) ;;
+        *) chain_name="$1";;
+    esac
+    shift
+done
+if [ "$mode" = "rr" ]; then
+    printf 'A C D E F G H I K L M N P Q R S T V W Y\\n' > "${{chain_name}}.meanrr"
+elif [ "$mode" = "ss" ]; then
+    test -s "{out}/chain1.meanrr"
+    test -s "{out}/chain1.exchangeabilities"
+    printf '# header\\n# header\\n1 ' > "${{chain_name}}.siteprofiles"
+    printf '0.050000 %.0s' {{1..20}} >> "${{chain_name}}.siteprofiles"
+    printf '\\n' >> "${{chain_name}}.siteprofiles"
+elif [ "$mode" = "ppred" ]; then
+    test -s "{out}/chain1.siteprofiles"
+    test -s "{out}/chain1.sitefreq"
+    printf 'replicate\\n' > "${{chain_name}}.ppred.1.ali"
+fi
+""")
+    mpirun.chmod(0o755)
+    readpb.chmod(0o755)
+
+    payload = run_bi_readpb(
+        chain=chain, mode="rr,ss,ppred", output_dir=out,
+        pb_path=tool_dir, quiet=True,
+    )
+
+    assert payload["status"] == "success"
+    assert (out / "chain1.meanrr").exists()
+    assert (out / "chain1.exchangeabilities").exists()
+    assert (out / "chain1.siteprofiles").exists()
+    assert (out / "chain1.sitefreq").exists()
+    assert (out / "ppred" / "chain1.ppred.1.ali").exists()
+    assert not (chain_dir / "chain1.meanrr").exists()
+    assert not (chain_dir / "chain1.siteprofiles").exists()
+    assert not (chain_dir / "chain1.ppred.1.ali").exists()
 
 
 def test_run_bi_readpb_reports_new_rate_output(tmp_path: Path):
@@ -186,7 +247,7 @@ def test_run_bi_readpb_reports_new_rate_output(tmp_path: Path):
     mpirun = tool_dir / "mpirun"
     mpirun.write_text("#!/bin/sh\nshift 2\nexec \"$@\"\n")
     readpb = tool_dir / "readpb_mpi"
-    readpb.write_text("#!/bin/sh\nprintf 'rate\\n' > chain1.meanrate\n")
+    readpb.write_text("#!/bin/sh\nprintf 'rate\\n' > chain1.meansiterates\n")
     mpirun.chmod(0o755)
     readpb.chmod(0o755)
 
@@ -196,7 +257,65 @@ def test_run_bi_readpb_reports_new_rate_output(tmp_path: Path):
     )
 
     assert payload["status"] == "success"
-    assert "chain1_meanrate" in payload["data"]["output_files"]
+    assert "chain1_meansiterates" in payload["data"]["output_files"]
+
+
+def test_run_bi_readpb_moves_sitelogl_auxiliary_cpo(tmp_path: Path):
+    chain_dir = tmp_path / "chains"
+    chain_dir.mkdir()
+    chain = chain_dir / "chain1"
+    (chain_dir / "chain1.chain").write_text("fake state")
+
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    mpirun = tool_dir / "mpirun"
+    mpirun.write_text("#!/bin/sh\nshift 2\nexec \"$@\"\n")
+    readpb = tool_dir / "readpb_mpi"
+    readpb.write_text(
+        "#!/bin/sh\nprintf 'logl\\n' > chain1.sitelogl\nprintf 'cpo\\n' > chain1.cpo\n"
+    )
+    mpirun.chmod(0o755)
+    readpb.chmod(0o755)
+
+    out = tmp_path / "readpb"
+    payload = run_bi_readpb(
+        chain=chain, mode="sitelogl", output_dir=out,
+        pb_path=tool_dir, quiet=True,
+    )
+
+    assert payload["status"] == "success"
+    assert (out / "chain1.sitelogl").exists()
+    assert (out / "chain1.cpo").exists()
+    assert not (chain_dir / "chain1.cpo").exists()
+
+
+def test_run_bi_readpb_moves_allppred_outputs(tmp_path: Path):
+    chain_dir = tmp_path / "chains"
+    chain_dir.mkdir()
+    chain = chain_dir / "chain1"
+    (chain_dir / "chain1.chain").write_text("fake state")
+
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    mpirun = tool_dir / "mpirun"
+    mpirun.write_text("#!/bin/sh\nshift 2\nexec \"$@\"\n")
+    readpb = tool_dir / "readpb_mpi"
+    readpb.write_text(
+        "#!/bin/sh\nprintf 'ppred\\n' > chain1.ppred\n"
+    )
+    mpirun.chmod(0o755)
+    readpb.chmod(0o755)
+
+    out = tmp_path / "readpb"
+    payload = run_bi_readpb(
+        chain=chain, mode="allppred", output_dir=out,
+        pb_path=tool_dir, quiet=True,
+    )
+
+    assert payload["status"] == "success"
+    assert (out / "chain1.ppred").exists()
+    assert payload["data"]["tool_stderr"] == ""
+    assert not (chain_dir / "chain1.ppred").exists()
 
 
 def test_run_bi_readpb_rejects_stale_output_directory(tmp_path: Path):
@@ -204,7 +323,7 @@ def test_run_bi_readpb_rejects_stale_output_directory(tmp_path: Path):
     chain_dir.mkdir()
     chain = chain_dir / "chain1"
     (chain_dir / "chain1.chain").write_text("fake state")
-    (chain_dir / "chain1.div.0").mkdir()
+    (chain_dir / "chain1.div").mkdir()
 
     tool_dir = tmp_path / "tools"
     tool_dir.mkdir()
@@ -235,14 +354,14 @@ def test_run_bi_readpb_reports_stat_failures_as_warnings(tmp_path: Path, monkeyp
     mpirun = tool_dir / "mpirun"
     mpirun.write_text("#!/bin/sh\nshift 2\nexec \"$@\"\n")
     readpb = tool_dir / "readpb_mpi"
-    readpb.write_text("#!/bin/sh\nprintf 'result\\n' > chain1.div.0\n")
+    readpb.write_text("#!/bin/sh\nprintf 'result\\n' > chain1.div\n")
     mpirun.chmod(0o755)
     readpb.chmod(0o755)
 
     original_stat = Path.stat
 
     def failing_stat(path: Path, *args, **kwargs):
-        if path.name == "chain1.div.0":
+        if path.name == "chain1.div":
             raise OSError("simulated concurrent removal")
         return original_stat(path, *args, **kwargs)
 
@@ -253,4 +372,4 @@ def test_run_bi_readpb_reports_stat_failures_as_warnings(tmp_path: Path, monkeyp
     )
 
     assert payload["status"] == "error"
-    assert payload["data"]["warnings"]
+    assert "div" in payload["error"]

@@ -79,7 +79,7 @@ def _annotate_tracecomp_output(stdout: str) -> tuple[str, float | None, float | 
 
 
 def run_bi_tracecomp(
-    chain_dir: Path = Path("runs/tree/bi/chains"),
+    chain_dir: Path,
     chain_names: str = "all",
     output_dir: Path = Path("runs/tree/bi/tracecomp"),
     overwrite: bool = False,
@@ -101,9 +101,31 @@ def run_bi_tracecomp(
             raise ValueError("--chain-names must contain at least one non-empty name")
         _validate_trace_names(chain_dir, resolved)
 
-    if overwrite and output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        if not overwrite and output_dir.exists() and any(output_dir.iterdir()):
+            raise ValueError(
+                f"Output directory {output_dir} already exists and is non-empty. "
+                "Use --overwrite to replace."
+            )
+        if overwrite and output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- build full command string ---
+    _cmd_tokens = ["phyloai", "tree", "bi", "tracecomp",
+                   "--chain-dir", str(chain_dir),
+                   "--chain-names", chain_names,
+                   "--output-dir", str(output_dir),
+                   "--burnin", str(burnin)]
+    if pb_path is not None:
+        _cmd_tokens.extend(["--pb-path", str(pb_path)])
+    if overwrite:
+        _cmd_tokens.append("--overwrite")
+    if dry_run:
+        _cmd_tokens.append("--dry-run")
+    if quiet:
+        _cmd_tokens.append("--quiet")
+    command_str = " ".join(_cmd_tokens)
 
     if dry_run:
         cmd = ["tracecomp", "-x", str(burnin)]
@@ -111,7 +133,7 @@ def run_bi_tracecomp(
             cmd.append(os.path.relpath(chain_dir / f"{name}.trace", output_dir))
         return {
             "status": "success",
-            "command": "phyloai tree bi tracecomp",
+            "command": command_str,
             "wall_time": time.monotonic() - start,
             "tool_versions": {},
             "params": {
@@ -164,9 +186,9 @@ def run_bi_tracecomp(
     if proc.returncode != 0:
         return {
             "status": "error",
-            "command": "phyloai tree bi tracecomp",
+            "command": command_str,
             "wall_time": time.monotonic() - start,
-            "tool_versions": {},
+            "tool_versions": {"tracecomp": tracecomp_ver},
             "params": {
                 "chain_dir": str(chain_dir),
                 "chain_names": chain_names,
@@ -203,7 +225,7 @@ def run_bi_tracecomp(
 
     return {
         "status": "success",
-        "command": "phyloai tree bi tracecomp",
+        "command": command_str,
         "wall_time": time.monotonic() - start,
         "tool_versions": {"tracecomp": tracecomp_ver},
         "params": {

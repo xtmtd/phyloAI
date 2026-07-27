@@ -20,7 +20,7 @@ The default output root is `runs/tree/bi/`.
 
 ## Requirements
 
-PhyloBayes-MPI tools must be installed and discoverable on `PATH` (or via `--pb-path`):
+Each subcommand resolves only its required PhyloBayes-MPI tools from `PATH` (or from the directory passed with `--pb-path`):
 
 | Tool | Required by | Purpose |
 |------|-------------|---------|
@@ -50,7 +50,7 @@ phyloai tree bi pb --matrix <alignment> [OPTIONS]
 # Default: 3 chains, CAT-GTR model, run forever
 phyloai tree bi pb --matrix concat/matrix.phy
 
-# Homogeneous LG+G4, stop after 10000 saved points
+# Homogeneous LG+G4, stop after 10000 total MCMC cycles
 phyloai tree bi pb --matrix concat/matrix.phy --model lg --mixture 1 --nsamples 10000
 
 # Add two extra chains to an existing run
@@ -87,7 +87,7 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 | Flag | Choice | Default | pb_mpi flag | Description |
 |------|--------|---------|-------------|-------------|
 | `--model` | `gtr`, `poisson`, `lg`, `wag`, `jtt`, `mtrev`, `mtzoa`, `mtart` | `gtr` | `-gtr`, `-poisson`, … | Rate matrix. |
-| `--mixture` | str | `auto` | `-cat` / `-ncat N` | `auto` = CAT Dirichlet; `1` = homogeneous; integer N = fixed mixture. |
+| `--mixture` | `auto`, `1`, or integer N | `auto` | `-cat` / no mixture flag / `-ncat N` | `auto` = CAT Dirichlet process; `1` = homogeneous single matrix; integer N = fixed N-component mixture. |
 | `--gamma-cats` | int ≥ 1 | 4 | `-dgam N` | Discrete Gamma rate categories. |
 | `--start-tree` | Path | None | `-t <file>` | Starting tree. Mutually exclusive with `--fix-tree`. |
 | `--fix-tree` | Path | None | `-T <file>` | Fixed topology. Mutually exclusive with `--start-tree`. |
@@ -106,7 +106,7 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--sample-freq` | int ≥ 1 | 1 | Save one point every N cycles. |
-| `--nsamples` | int | `-1` | Stop after N cycles. `-1` = run forever. |
+| `--nsamples` | int | `-1` | Total MCMC cycles per chain before stopping. `-1` = run forever. With `--sample-freq N`, saved points = cycles / N. |
 
 ### Convergence Monitoring
 
@@ -126,7 +126,7 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pb-path` | Path | None | Directory containing PhyloBayes tools. |
+| `--pb-path` | Path | None | Directory containing `pb_mpi`, `bpcomp`, `tracecomp`, and `mpirun`. |
 | `--dry-run` | flag | False | Print commands without executing. |
 | `-q, --quiet` | flag | False | Suppress terminal output. |
 
@@ -198,7 +198,7 @@ Run `bpcomp` once with a user-specified integer burn-in for final topology conve
 ## Usage
 
 ```bash
-phyloai tree bi bpcomp --chain-dir <chains_dir> --burnin <N> [OPTIONS]
+phyloai tree bi bpcomp --chain-dir <chains_dir> [OPTIONS]
 ```
 
 ## Examples
@@ -208,10 +208,10 @@ phyloai tree bi bpcomp --chain-dir <chains_dir> --burnin <N> [OPTIONS]
 phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --burnin 1000
 
 # Sub-sampling every 10 trees
-phyloai tree bi bpcomp --burnin 5000 --sample-freq 10
+phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --burnin 5000 --sample-freq 10
 
 # Specific chains only
-phyloai tree bi bpcomp --chain-names chain1,chain2 --burnin 5000
+phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --chain-names chain1,chain2 --burnin 5000
 ```
 
 ## Parameters
@@ -220,7 +220,7 @@ phyloai tree bi bpcomp --chain-names chain1,chain2 --burnin 5000
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--chain-dir` | Path | `runs/tree/bi/chains` | Directory with `.chain` files. |
+| `--chain-dir` | Path | **required** | Directory with `.chain` files. |
 | `--chain-names` | str | `all` | Comma-separated names. `all` = auto-discover from `--chain-dir`. |
 | `--output-dir / -o` | Path | `runs/tree/bi/bpcomp` | Output directory. |
 | `--overwrite` | flag | False | Delete and recreate output directory. |
@@ -238,7 +238,7 @@ phyloai tree bi bpcomp --chain-names chain1,chain2 --burnin 5000
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pb-path` | Path | None | PhyloBayes tools directory. |
+| `--pb-path` | Path | None | Directory containing `bpcomp`. |
 | `--dry-run` | flag | False | Print command without executing. |
 | `-q, --quiet` | flag | False | Suppress terminal output. |
 
@@ -278,7 +278,7 @@ Run `tracecomp` once with a user-specified integer burn-in for final parameter c
 ## Usage
 
 ```bash
-phyloai tree bi tracecomp --chain-dir <chains_dir> --burnin <N> [OPTIONS]
+phyloai tree bi tracecomp --chain-dir <chains_dir> [OPTIONS]
 ```
 
 ## Examples
@@ -294,7 +294,7 @@ phyloai tree bi tracecomp --chain-dir runs/tree/bi/chains --burnin 5000
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--chain-dir` | Path | `runs/tree/bi/chains` | Directory with `.trace` files. |
+| `--chain-dir` | Path | **required** | Directory with `.trace` files. |
 | `--chain-names` | str | `all` | Comma-separated names. `all` = auto-discover. |
 | `--output-dir / -o` | Path | `runs/tree/bi/tracecomp` | Output directory. |
 | `--overwrite` | flag | False | Delete and recreate output directory. |
@@ -309,7 +309,7 @@ phyloai tree bi tracecomp --chain-dir runs/tree/bi/chains --burnin 5000
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pb-path` | Path | None | PhyloBayes tools directory. |
+| `--pb-path` | Path | None | Directory containing `tracecomp`. |
 | `--dry-run` | flag | False | Print command without executing. |
 | `-q, --quiet` | flag | False | Suppress terminal output. |
 
@@ -368,7 +368,7 @@ phyloai tree bi readpb --chain chains/chain1 --mode ss,rr --dry-run
 |------|------|---------|-------------|
 | `--chain` | Path | **required** | Path to chain file without extension. |
 | `--mode` | str | **required** | Comma-separated analysis modes. |
-| `--output-dir / -o` | Path | `runs/tree/bi/readpb` | Output directory for `result.json` only. |
+| `--output-dir / -o` | Path | `runs/tree/bi/readpb` | Output directory for readpb outputs and `result.json`. |
 | `--overwrite` | flag | False | Delete and recreate `--output-dir`. |
 
 ### Analysis
@@ -384,7 +384,7 @@ phyloai tree bi readpb --chain chains/chain1 --mode ss,rr --dry-run
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pb-path` | Path | None | PhyloBayes tools directory. |
+| `--pb-path` | Path | None | Directory containing `readpb_mpi` and `mpirun`. |
 | `--dry-run` | flag | False | Print commands without executing. |
 | `-q, --quiet` | flag | False | Suppress terminal output. |
 
@@ -394,14 +394,14 @@ phyloai tree bi readpb --chain chains/chain1 --mode ss,rr --dry-run
 |---|---|---|---|
 | `rr` | `-rr` | `.meanrr` → `.exchangeabilities` | Posterior mean exchangeabilities (PAML format). |
 | `ss` | `-ss` | `.siteprofiles` → `.sitefreq` | Site-specific frequencies (IQ-TREE format). |
-| `r` | `-r` | `.meanrate` | Posterior mean site rates. |
-| `sitelogl` | `-sitelogl` | `.sitelogl` | Site-wise marginal log-likelihoods. |
-| `ppred` | `-ppred` | `.ppred.*` | Posterior predictive replicates. |
-| `div` | `-div` | `.div.*` | Diversity test (PPA-DIV). |
-| `sitecomp` | `-sitecomp` | `.sitecomp.*` | Compositional heterogeneity (PPA-VAR). |
-| `siteconvprob` | `-siteconvprob` | `.siteconvprob.*` | Convergence probability (PPA-CONV). |
-| `comp` | `-comp` | `.comp.*` | Compositional homogeneity test. |
-| `allppred` | `-allppred` | All above predictive outputs | All four predictive tests at once. |
+| `r` | `-r` | `.meansiterates` | Posterior mean site rates. |
+| `sitelogl` | `-sitelogl` | `.sitelogl`, `.cpo` | Site-wise marginal log-likelihoods and cross-validation. |
+| `ppred` | `-ppred` | `.ppred` | MSA simulation from posterior predictive distribution. |
+| `div` | `-div` | `.div` | Diversity test (PPA-DIV). |
+| `sitecomp` | `-sitecomp` | `.sitecomp` | Compositional heterogeneity (PPA-VAR). |
+| `siteconvprob` | `-siteconvprob` | `.siteconvprob` | Convergence probability (PPA-CONV). |
+| `comp` | `-comp` | `.comp` | Compositional homogeneity test. |
+| `allppred` | `-allppred` | `.ppred` | Combined posterior predictive checks. |
 
 `allppred` is mutually exclusive with `div`, `sitecomp`, `siteconvprob`, `comp`.
 
@@ -418,16 +418,16 @@ phyloai tree bi readpb --chain chains/chain1 --mode ss,rr --dry-run
 ## Outputs
 
 ```
-runs/tree/bi/chains/
-├── chain1.chain
-├── chain1.meanrr          # readpb_mpi -rr
-├── chain1.exchangeabilities  # PhyloAI post-processing
-├── chain1.siteprofiles    # readpb_mpi -ss
-├── chain1.sitefreq        # PhyloAI post-processing
-├── chain1.meanrate        # readpb_mpi -r
-└── chain1.sitelogl        # readpb_mpi -sitelogl
-
 runs/tree/bi/readpb/
+├── chain1.meanrr              # readpb_mpi -rr
+├── chain1.exchangeabilities   # PhyloAI post-processing
+├── chain1.siteprofiles        # readpb_mpi -ss
+├── chain1.sitefreq            # PhyloAI post-processing
+├── chain1.meansiterates       # readpb_mpi -r
+├── chain1.sitelogl            # readpb_mpi -sitelogl
+├── chain1.cpo                 # readpb_mpi -sitelogl
+├── chain1.ppred               # readpb_mpi -allppred
+├── ppred/chain1_ppred*.ali    # readpb_mpi -ppred
 └── result.json
 ```
 

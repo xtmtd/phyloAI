@@ -37,6 +37,7 @@ class ReportStep:
     output_files: dict[str, dict[str, str]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    tracecomp_diagnostics: list[dict[str, str | int | float]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,6 +52,7 @@ class ReportStep:
             "output_files": self.output_files,
             "warnings": self.warnings,
             "error": self.error,
+            "tracecomp_diagnostics": self.tracecomp_diagnostics,
         }
 
 
@@ -233,6 +235,7 @@ def assemble_report(
             "output_files": output_files,
             "warnings": raw_step.get("warnings") or raw_step.get("data", {}).get("warnings", []),
             "error": raw_step.get("error"),
+            "tracecomp_diagnostics": raw_step.get("tracecomp_diagnostics", []),
         }
         steps.append(step_record)
 

@@ -27,6 +27,34 @@ def _make_result_json(path: Path, step_command: str, extra: dict | None = None) 
 
 
 class TestEndToEnd:
+    def test_tracecomp_parameter_diagnostics_are_reported(self, tmp_path):
+        run_dir = tmp_path / "runs" / "tracecomp"
+        step_dir = run_dir / "4-tracecomp"
+        _make_result_json(
+            step_dir / "result.json",
+            "phyloai tree bi tracecomp --chain-dir chains --burnin 5000",
+        )
+        (step_dir / "tracecomp.contdiff").write_text(
+            "name mean rel_diff effsize\n"
+            "alpha 1.25 0.03 450\n"
+            "beta 2.5 0.07 320\n"
+        )
+
+        result = CliRunner().invoke(report, ["--run-dir", str(run_dir)])
+
+        assert result.exit_code == 0, result.output
+        report_dir = run_dir / "report"
+        report_json = json.loads((report_dir / "report.json").read_text())
+        diagnostics = report_json["steps"][0]["tracecomp_diagnostics"]
+        assert diagnostics == [
+            {"name": "alpha", "mean": 1.25, "rel_diff": 0.03, "effsize": 450},
+            {"name": "beta", "mean": 2.5, "rel_diff": 0.07, "effsize": 320},
+        ]
+        html = (report_dir / "report.html").read_text()
+        assert "Tracecomp parameter diagnostics" in html
+        assert "alpha" in html
+        assert "450" in html
+
     def test_module_run_single_step(self, tmp_path):
         run_dir = tmp_path / "runs" / "pretree"
         step_dir = run_dir / "2-align"

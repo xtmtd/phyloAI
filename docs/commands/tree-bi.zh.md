@@ -19,7 +19,7 @@
 
 ## 要求
 
-PhyloBayes-MPI 工具必须安装且可在 `PATH` 上发现（或通过 `--pb-path`）：
+每个子命令仅从 `PATH`（或 `--pb-path` 指定的目录）解析其所需的 PhyloBayes-MPI 工具：
 
 | 工具 | 所需子命令 | 用途 |
 |------|-----------|------|
@@ -49,7 +49,7 @@ phyloai tree bi pb --matrix <比对文件> [OPTIONS]
 # 默认：3 条链，CAT-GTR 模型，无限运行
 phyloai tree bi pb --matrix concat/matrix.phy
 
-# 同质 LG+G4，10000 个保存点后停止
+# 同质 LG+G4，10000 个 MCMC 总循环后停止
 phyloai tree bi pb --matrix concat/matrix.phy --model lg --mixture 1 --nsamples 10000
 
 # 向现有运行添加两条新链
@@ -83,7 +83,7 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 | 参数 | 可选值 | 默认值 | pb_mpi 标志 | 说明 |
 |------|--------|--------|-------------|------|
 | `--model` | `gtr`, `poisson`, `lg`, `wag`, `jtt`, `mtrev`, `mtzoa`, `mtart` | `gtr` | `-gtr`, `-poisson`, … | 速率矩阵。 |
-| `--mixture` | str | `auto` | `-cat` / `-ncat N` | `auto` = CAT Dirichlet；`1` = 同质；整数 N = 固定混合。 |
+| `--mixture` | `auto`、`1` 或整数 N | `auto` | `-cat` / 无混合标志 / `-ncat N` | `auto` = CAT Dirichlet 过程；`1` = 单矩阵同质模型；整数 N = 固定 N 组分混合。 |
 | `--gamma-cats` | int ≥ 1 | 4 | `-dgam N` | 离散 Gamma 速率类别。 |
 | `--start-tree` | Path | None | `-t <file>` | 起始树。与 `--fix-tree` 互斥。 |
 | `--fix-tree` | Path | None | `-T <file>` | 固定拓扑。与 `--start-tree` 互斥。 |
@@ -102,7 +102,7 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `--sample-freq` | int ≥ 1 | 1 | 每 N 个循环保存一个点。 |
-| `--nsamples` | int | `-1` | N 个循环后停止。`-1` = 无限运行。 |
+| `--nsamples` | int | `-1` | 每条链在 N 个 MCMC 总循环后停止。`-1` = 无限运行。使用 `--sample-freq N` 时，保存点数 = 循环数 / N。 |
 
 ### 收敛监控
 
@@ -122,7 +122,7 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--pb-path` | Path | None | PhyloBayes 工具目录。 |
+| `--pb-path` | Path | None | 包含 `pb_mpi`、`bpcomp`、`tracecomp` 和 `mpirun` 的目录。 |
 | `--dry-run` | flag | False | 打印命令不执行。 |
 | `-q, --quiet` | flag | False | 抑制终端输出。 |
 
@@ -173,15 +173,15 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 ## 用法
 
 ```bash
-phyloai tree bi bpcomp --chain-dir <链目录> --burnin <N> [OPTIONS]
+phyloai tree bi bpcomp --chain-dir <链目录> [OPTIONS]
 ```
 
 ## 示例
 
 ```bash
 phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --burnin 1000
-phyloai tree bi bpcomp --burnin 5000 --sample-freq 10
-phyloai tree bi bpcomp --chain-names chain1,chain2 --burnin 5000
+phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --burnin 5000 --sample-freq 10
+phyloai tree bi bpcomp --chain-dir runs/tree/bi/chains --chain-names chain1,chain2 --burnin 5000
 ```
 
 ## 参数
@@ -190,7 +190,7 @@ phyloai tree bi bpcomp --chain-names chain1,chain2 --burnin 5000
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--chain-dir` | Path | `runs/tree/bi/chains` | 包含 `.chain` 文件的目录。 |
+| `--chain-dir` | Path | **必需** | 包含 `.chain` 文件的目录。 |
 | `--chain-names` | str | `all` | 逗号分隔名称。`all` = 自动发现。 |
 | `--output-dir / -o` | Path | `runs/tree/bi/bpcomp` | 输出目录。 |
 | `--overwrite` | flag | False | 删除并重建输出目录。 |
@@ -208,7 +208,7 @@ phyloai tree bi bpcomp --chain-names chain1,chain2 --burnin 5000
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--pb-path` | Path | None | PhyloBayes 工具目录。 |
+| `--pb-path` | Path | None | 包含 `bpcomp` 的目录。 |
 | `--dry-run` | flag | False | 打印命令不执行。 |
 | `-q, --quiet` | flag | False | 抑制终端输出。 |
 
@@ -230,7 +230,7 @@ phyloai tree bi bpcomp --chain-names chain1,chain2 --burnin 5000
 ## 用法
 
 ```bash
-phyloai tree bi tracecomp --chain-dir <链目录> --burnin <N> [OPTIONS]
+phyloai tree bi tracecomp --chain-dir <链目录> [OPTIONS]
 ```
 
 ## 示例
@@ -245,7 +245,7 @@ phyloai tree bi tracecomp --chain-dir runs/tree/bi/chains --burnin 5000
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--chain-dir` | Path | `runs/tree/bi/chains` | 包含 `.trace` 文件的目录。 |
+| `--chain-dir` | Path | **必需** | 包含 `.trace` 文件的目录。 |
 | `--chain-names` | str | `all` | 逗号分隔名称。`all` = 自动发现。 |
 | `--output-dir / -o` | Path | `runs/tree/bi/tracecomp` | 输出目录。 |
 | `--overwrite` | flag | False | 删除并重建输出目录。 |
@@ -260,7 +260,7 @@ phyloai tree bi tracecomp --chain-dir runs/tree/bi/chains --burnin 5000
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--pb-path` | Path | None | PhyloBayes 工具目录。 |
+| `--pb-path` | Path | None | 包含 `tracecomp` 的目录。 |
 | `--dry-run` | flag | False | 打印命令不执行。 |
 | `-q, --quiet` | flag | False | 抑制终端输出。 |
 
@@ -303,7 +303,7 @@ phyloai tree bi readpb --chain chains/chain1 --mode allppred --burnin 2000
 |------|------|--------|------|
 | `--chain` | Path | **必需** | 无扩展名的链文件路径。 |
 | `--mode` | str | **必需** | 逗号分隔的分析模式。 |
-| `--output-dir / -o` | Path | `runs/tree/bi/readpb` | 仅用于 `result.json` 的输出目录。 |
+| `--output-dir / -o` | Path | `runs/tree/bi/readpb` | readpb 输出和 `result.json` 的输出目录。 |
 | `--overwrite` | flag | False | 删除并重建 `--output-dir`。 |
 
 ### 分析
@@ -319,7 +319,7 @@ phyloai tree bi readpb --chain chains/chain1 --mode allppred --burnin 2000
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--pb-path` | Path | None | PhyloBayes 工具目录。 |
+| `--pb-path` | Path | None | 包含 `readpb_mpi` 和 `mpirun` 的目录。 |
 | `--dry-run` | flag | False | 打印命令不执行。 |
 | `-q, --quiet` | flag | False | 抑制终端输出。 |
 
@@ -329,14 +329,14 @@ phyloai tree bi readpb --chain chains/chain1 --mode allppred --burnin 2000
 |---|-----------------|------|------|
 | `rr` | `-rr` | `.meanrr` → `.exchangeabilities` | 后验平均交换率（PAML 格式）。 |
 | `ss` | `-ss` | `.siteprofiles` → `.sitefreq` | 位点特异频率（IQ-TREE 格式）。 |
-| `r` | `-r` | `.meanrate` | 后验平均位点速率。 |
-| `sitelogl` | `-sitelogl` | `.sitelogl` | 位点边缘对数似然。 |
-| `ppred` | `-ppred` | `.ppred.*` | 后验预测复制。 |
-| `div` | `-div` | `.div.*` | 多样性检验（PPA-DIV）。 |
-| `sitecomp` | `-sitecomp` | `.sitecomp.*` | 组成异质性（PPA-VAR）。 |
-| `siteconvprob` | `-siteconvprob` | `.siteconvprob.*` | 收敛概率（PPA-CONV）。 |
-| `comp` | `-comp` | `.comp.*` | 组成同质性检验。 |
-| `allppred` | `-allppred` | 以上全部预测输出 | 一次运行全部四项预测检验。 |
+| `r` | `-r` | `.meansiterates` | 后验平均位点速率。 |
+| `sitelogl` | `-sitelogl` | `.sitelogl`, `.cpo` | 位点边缘对数似然及交叉验证。 |
+| `ppred` | `-ppred` | `.ppred` | 后验预测分布的 MSA 模拟。 |
+| `div` | `-div` | `.div` | 多样性检验（PPA-DIV）。 |
+| `sitecomp` | `-sitecomp` | `.sitecomp` | 组成异质性（PPA-VAR）。 |
+| `siteconvprob` | `-siteconvprob` | `.siteconvprob` | 收敛概率（PPA-CONV）。 |
+| `comp` | `-comp` | `.comp` | 组成同质性检验。 |
+| `allppred` | `-allppred` | `.ppred` | 联合后验预测检验。 |
 
 `allppred` 与 `div`, `sitecomp`, `siteconvprob`, `comp` 互斥。
 

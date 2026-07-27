@@ -92,7 +92,7 @@ Treat these as external tools. PhyloAI checks whether they are visible to the ac
 
 ### Bayesian Inference
 
-`phyloai tree bi` is a group with four subcommands (`pb`, `bpcomp`, `tracecomp`, `readpb`), all needing the PhyloBayes-MPI tool group.
+`phyloai tree bi` is a group with four subcommands (`pb`, `bpcomp`, `tracecomp`, `readpb`). Install the tools required by the subcommands you use.
 
 | Tool | Purpose | Install entry point | Detection name | Verify |
 |------|---------|---------------------|----------------|--------|
@@ -102,7 +102,7 @@ Treat these as external tools. PhyloAI checks whether they are visible to the ac
 | mpirun | MPI launcher (`bi pb`, `bi readpb`) | https://www.open-mpi.org/ | `mpirun` | `phyloai doctor` |
 | readpb_mpi | Posterior analysis (`bi readpb`) | https://github.com/bayesiancook/pbmpi | `readpb_mpi` | `phyloai doctor` |
 
-If the tools are installed outside `PATH`, use `--pb-path /path/to/pbmpi/bin` on any of the `tree bi` subcommands.
+If a required tool is outside `PATH`, pass `--pb-path /path/to/pbmpi/bin` to that `tree bi` subcommand. The directory must contain that subcommand's required executable(s).
 
 ### Filtering And Trimming Extras
 

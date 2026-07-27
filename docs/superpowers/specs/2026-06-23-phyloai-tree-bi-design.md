@@ -101,7 +101,7 @@ To stop a forever-running chain: use Ctrl+C (phyloai sends soft-stop), or direct
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `--pb-path` | Path | None | Directory containing PhyloBayes tools. Overrides PATH lookup for `pb_mpi`, `bpcomp`, and `tracecomp` (required by this command) and optionally `readpb_mpi` if present. Does not require `readpb_mpi` to exist. |
+| `--pb-path` | Path | None | Directory containing `pb_mpi`, `bpcomp`, `tracecomp`, and `mpirun`, which are required by `tree bi pb`. |
 | `--dry-run` | flag | False | Print all commands without executing. |
 | `-q, --quiet` | flag | False | Suppress terminal output (progress display and convergence statistics). |
 | `--help` | — | — | Show help and exit. |
@@ -109,7 +109,7 @@ To stop a forever-running chain: use Ctrl+C (phyloai sends soft-stop), or direct
 ### 2.2 Help Text
 
 ```
-Usage: phyloai tree bi [OPTIONS]
+Usage: phyloai tree bi pb [OPTIONS]
 
   Bayesian phylogenetic inference with PhyloBayes-MPI (pb_mpi).
 
@@ -120,27 +120,27 @@ Usage: phyloai tree bi [OPTIONS]
 
   Examples:
     # Standard: 3 chains, CAT-GTR, 4 MPI processes each, run forever
-    phyloai tree bi --matrix concat/matrix.phy
+    phyloai tree bi pb --matrix concat/matrix.phy
 
     # Homogeneous model LG+G4, stop after 10000 samples
-    phyloai tree bi --matrix concat/matrix.phy --model lg --mixture 1 \
+    phyloai tree bi pb --matrix concat/matrix.phy --model lg --mixture 1 \
         --nsamples 10000
 
     # Add two extra chains to an existing run directory
-    phyloai tree bi --matrix concat/matrix.phy --chain-names chain4,chain5 \
+    phyloai tree bi pb --matrix concat/matrix.phy --chain-names chain4,chain5 \
         --output-dir runs/tree/bi
 
     # Resume all chains in an existing directory
-    phyloai tree bi --output-dir runs/tree/bi --resume
+    phyloai tree bi pb --output-dir runs/tree/bi --resume
 
     # Resume only chain1 and chain3
-    phyloai tree bi --output-dir runs/tree/bi --resume chain1,chain3
+    phyloai tree bi pb --output-dir runs/tree/bi --resume chain1,chain3
 
     # Resume and extend to a new nsamples target
-    phyloai tree bi --output-dir runs/tree/bi --resume --nsamples 10000
+    phyloai tree bi pb --output-dir runs/tree/bi --resume --nsamples 10000
 
     # Resume and run forever (was previously set to 5000)
-    phyloai tree bi --output-dir runs/tree/bi --resume --nsamples -1
+    phyloai tree bi pb --output-dir runs/tree/bi --resume --nsamples -1
 ```
 
 ### 2.3 `rich_click` Option Groups
@@ -415,7 +415,7 @@ Follows the JSON output standard (`2026-06-21-phyloai-json-output-standard.md`).
 ```json
 {
   "status": "success | error",
-  "command": "phyloai tree bi --matrix concat/matrix.phy --model gtr --mixture auto --gamma-cats 4 --chains 3 --chain-prefix chain --threads 4 --sample-freq 1 --nsamples -1 --monitor-freq 100 --burnin-frac 0.5 --poll-interval 60 --output-dir runs/tree/bi",
+  "command": "phyloai tree bi pb --matrix concat/matrix.phy --model gtr --mixture auto --gamma-cats 4 --chains 3 --chain-prefix chain --threads 4 --sample-freq 1 --nsamples -1 --monitor-freq 100 --burnin-frac 0.5 --poll-interval 60 --output-dir runs/tree/bi",
   "wall_time": 3600.5,
   "tool_versions": {
     "pb_mpi": null,
@@ -690,6 +690,6 @@ The following references in existing specs conflict with this design and must be
 | Spec | Stale reference | Correct value |
 |------|----------------|---------------|
 | `2026-06-07-phyloai-design.md` line ~241 | output path `runs/tree/bi/phylobayes/` | `runs/tree/bi/` |
-| `2026-06-07-phyloai-design.md` CLI example | `phyloai tree bi phylobayes --matrix ...` | `phyloai tree bi --matrix ...` |
-| `2026-06-17-phyloai-tree-design.md` lines ~41-43 | `bi` as a Click Group with `phylobayes` subcommand | `bi` as a direct `@tree.command()` |
-| `2026-06-17-phyloai-tree-design.md` lines ~61-62 | CLI hierarchy showing `bi phylobayes` | `tree bi [OPTIONS]` |
+| `2026-06-07-phyloai-design.md` CLI example | `phyloai tree bi phylobayes --matrix ...` | `phyloai tree bi pb --matrix ...` |
+| `2026-06-17-phyloai-tree-design.md` lines ~41-43 | `bi` as a Click Group with `phylobayes` subcommand | `bi` as a Click Group with `pb`, `bpcomp`, `tracecomp`, and `readpb` subcommands |
+| `2026-06-17-phyloai-tree-design.md` lines ~61-62 | CLI hierarchy showing `bi phylobayes` | `tree bi pb [OPTIONS]` |

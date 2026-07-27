@@ -34,7 +34,7 @@ def _validate_chain_names(chain_dir: Path, names: list[str]) -> None:
 
 
 def run_bi_bpcomp(
-    chain_dir: Path = Path("runs/tree/bi/chains"),
+    chain_dir: Path,
     chain_names: str = "all",
     output_dir: Path = Path("runs/tree/bi/bpcomp"),
     overwrite: bool = False,
@@ -53,7 +53,7 @@ def run_bi_bpcomp(
     if sample_freq < 1:
         raise ValueError("--sample-freq must be >= 1")
     if not (0.0 < cutoff < 1.0):
-        raise ValueError("--cutoff must be between 0.0 and 1.0")
+        raise ValueError("--cutoff must be strictly between 0 and 1")
     if until != "all":
         try:
             _until = int(until)
@@ -70,9 +70,34 @@ def run_bi_bpcomp(
             raise ValueError("--chain-names must contain at least one non-empty name")
         _validate_chain_names(chain_dir, resolved)
 
-    if overwrite and output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        if not overwrite and output_dir.exists() and any(output_dir.iterdir()):
+            raise ValueError(
+                f"Output directory {output_dir} already exists and is non-empty. "
+                "Use --overwrite to replace."
+            )
+        if overwrite and output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- build full command string ---
+    _cmd_tokens = ["phyloai", "tree", "bi", "bpcomp",
+                   "--chain-dir", str(chain_dir),
+                   "--chain-names", chain_names,
+                   "--output-dir", str(output_dir),
+                   "--burnin", str(burnin),
+                   "--sample-freq", str(sample_freq),
+                   "--until", str(until),
+                   "--cutoff", str(cutoff)]
+    if pb_path is not None:
+        _cmd_tokens.extend(["--pb-path", str(pb_path)])
+    if overwrite:
+        _cmd_tokens.append("--overwrite")
+    if dry_run:
+        _cmd_tokens.append("--dry-run")
+    if quiet:
+        _cmd_tokens.append("--quiet")
+    command_str = " ".join(_cmd_tokens)
 
     if dry_run:
         from phyloai.tree.bi import _build_x_flag
@@ -82,7 +107,7 @@ def run_bi_bpcomp(
             cmd.append(os.path.relpath(chain_dir / name, output_dir))
         return {
             "status": "success",
-            "command": "phyloai tree bi bpcomp",
+            "command": command_str,
             "wall_time": time.monotonic() - start,
             "tool_versions": {},
             "params": {
@@ -134,9 +159,9 @@ def run_bi_bpcomp(
     if proc.returncode != 0:
         return {
             "status": "error",
-            "command": "phyloai tree bi bpcomp",
+            "command": command_str,
             "wall_time": time.monotonic() - start,
-            "tool_versions": {"bpcomp": bpcomp_ver, "mpirun": None},
+            "tool_versions": {"bpcomp": bpcomp_ver},
             "params": {
                 "chain_dir": str(chain_dir),
                 "chain_names": chain_names,
@@ -168,9 +193,9 @@ def run_bi_bpcomp(
                 missing.append(name)
         return {
             "status": "error",
-            "command": "phyloai tree bi bpcomp",
+            "command": command_str,
             "wall_time": time.monotonic() - start,
-            "tool_versions": {"bpcomp": bpcomp_ver, "mpirun": None},
+            "tool_versions": {"bpcomp": bpcomp_ver},
             "params": {
                 "chain_dir": str(chain_dir),
                 "chain_names": chain_names,
@@ -209,9 +234,9 @@ def run_bi_bpcomp(
 
     return {
         "status": "success",
-        "command": "phyloai tree bi bpcomp",
+        "command": command_str,
         "wall_time": time.monotonic() - start,
-        "tool_versions": {"bpcomp": bpcomp_ver, "mpirun": None},
+        "tool_versions": {"bpcomp": bpcomp_ver},
         "params": {
             "chain_dir": str(chain_dir),
             "chain_names": chain_names,

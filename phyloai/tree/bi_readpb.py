@@ -168,9 +168,34 @@ def run_bi_readpb(
         raise ValueError("--mode must contain at least one non-empty mode")
     _validate_modes(modes)
 
-    if overwrite and output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        if not overwrite and output_dir.exists() and any(output_dir.iterdir()):
+            raise ValueError(
+                f"Output directory {output_dir} already exists and is non-empty. "
+                "Use --overwrite to replace."
+            )
+        if overwrite and output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- build full command string ---
+    _cmd_tokens = ["phyloai", "tree", "bi", "readpb",
+                   "--chain", str(chain),
+                   "--mode", mode,
+                   "--output-dir", str(output_dir),
+                   "--burnin", str(burnin),
+                   "--sample-freq", str(sample_freq),
+                   "--until", str(until),
+                   "--threads", str(threads)]
+    if pb_path is not None:
+        _cmd_tokens.extend(["--pb-path", str(pb_path)])
+    if overwrite:
+        _cmd_tokens.append("--overwrite")
+    if dry_run:
+        _cmd_tokens.append("--dry-run")
+    if quiet:
+        _cmd_tokens.append("--quiet")
+    command_str = " ".join(_cmd_tokens)
 
     if dry_run:
         from phyloai.tree.bi import _build_x_flag
@@ -183,7 +208,7 @@ def run_bi_readpb(
                         *x_flag, _MODE_FLAG_MAP[m], chain_stem]
         return {
             "status": "success",
-            "command": "phyloai tree bi readpb",
+            "command": command_str,
             "wall_time": time.monotonic() - start,
             "tool_versions": {},
             "params": {
@@ -223,30 +248,89 @@ def run_bi_readpb(
     cmds: dict[str, list[str]] = {}
     all_stdout_parts: list[str] = []
     post_processing: dict[str, Any] = {}
-    output_files: dict[str, str] = {}
-    _pre_paths: dict[str, int] = {}
-    _stat_warnings: list[str] = []
-    for entry in work_dir.iterdir():
-        try:
-            _pre_paths[entry.name] = entry.stat().st_mtime_ns
-        except OSError:
-            _stat_warnings.append(f"cannot stat {entry.name}: skipped from pre-run snapshot")
-            continue
+    raw_output_files: dict[str, str] = {}
+    _MODE_OUTPUT_PREFIX: dict[str, str] = {
+        "rr": ".meanrr", "ss": ".siteprofiles", "r": ".meansiterates",
+        "sitelogl": ".sitelogl",
+    }
+    _MODE_OUTPUT_GLOB: set[str] = {
+        "ppred", "div", "sitecomp", "siteconvprob", "comp",
+    }
 
-    def _is_from_this_run(path: Path) -> bool:
-        if path.name not in _pre_paths:
-            return True
+    _detection_threshold = time.time()
+
+    def _file_exists(path: Path) -> bool:
         try:
-            return path.stat().st_mtime_ns != _pre_paths[path.name]
+            return path.is_file() and path.stat().st_size > 0 and path.stat().st_mtime >= _detection_threshold
         except OSError:
             return False
 
-    def _is_new_nonempty_file(path: Path) -> bool:
+    def _move_mode_outputs(mode_name: str) -> str | None:
+        found: list[Path] = []
+        if mode_name == "allppred":
+            found = [
+                path for path in work_dir.glob(f"{chain_stem}.ppred")
+                if _file_exists(path)
+            ]
+        elif mode_name == "ppred":
+            found = [
+                path for path in work_dir.glob(f"{chain_stem}*ppred*")
+                if _file_exists(path)
+            ]
+        elif mode_name in _MODE_OUTPUT_GLOB:
+            candidates = [work_dir / f"{chain_stem}.{mode_name}"]
+            candidates.extend(work_dir.glob(f"{chain_stem}.{mode_name}.*"))
+            found = [path for path in candidates if _file_exists(path)]
+        else:
+            suffix = _MODE_OUTPUT_PREFIX[mode_name]
+            path = work_dir / f"{chain_stem}{suffix}"
+            found = [path] if _file_exists(path) else []
+            if mode_name == "sitelogl":
+                cpo_path = work_dir / f"{chain_stem}.cpo"
+                if _file_exists(cpo_path):
+                    found.append(cpo_path)
+
+        if not found:
+            return f"tool exited 0 but no non-empty output found for --mode {mode_name}"
+
         try:
-            return path.is_file() and _is_from_this_run(path) and path.stat().st_size > 0
+            for source in found:
+                destination = output_dir / "ppred" if mode_name == "ppred" else output_dir
+                destination.mkdir(parents=True, exist_ok=True)
+                target = destination / source.name
+                shutil.move(str(source), str(target))
+                raw_output_files[source.name.replace(".", "_")] = str(target)
         except OSError as exc:
-            _stat_warnings.append(f"Could not inspect {path.name}: {exc}")
-            return False
+            return f"could not move --mode {mode_name} output: {exc}"
+
+        if mode_name == "rr":
+            meanrr_path = destination / f"{chain_stem}.meanrr"
+            try:
+                exchangeabilities = _convert_meanrr_to_exchangeabilities(meanrr_path)
+                post_processing["rr"] = {
+                    "input": meanrr_path.name,
+                    "output": exchangeabilities.name,
+                    "status": "success",
+                }
+                raw_output_files["exchangeabilities"] = str(exchangeabilities)
+            except Exception as exc:
+                return f"rr conversion failed: {exc}"
+        elif mode_name == "ss":
+            siteprofiles_path = destination / f"{chain_stem}.siteprofiles"
+            try:
+                sitefreq = _convert_siteprofiles_to_sitefreq(siteprofiles_path)
+                post_processing["ss"] = {
+                    "input": siteprofiles_path.name,
+                    "output": sitefreq.name,
+                    "status": "success",
+                }
+                raw_output_files["sitefreq"] = str(sitefreq)
+            except Exception as exc:
+                return f"ss conversion failed: {exc}"
+        else:
+            post_processing[mode_name] = {"status": "success"}
+
+        return None
 
     for m in modes:
         cmd = [mpirun_exe, "-np", str(threads), readpb_exe, *x_flag, _MODE_FLAG_MAP[m], chain_stem]
@@ -261,19 +345,20 @@ def run_bi_readpb(
         )
 
         mode_stdout = proc.stdout or ""
-        all_stdout_parts.append(f"--- {m} ---\n{mode_stdout}")
+        if mode_stdout:
+            all_stdout_parts.append(f"--- {m} ---\n{mode_stdout}")
         if mode_stdout.strip():
             (output_dir / f"{m}.stdout").write_text(mode_stdout)
             if not quiet:
                 sys.stdout.write(mode_stdout)
 
         if proc.returncode != 0:
-            _data_of = {k: {"path": v, "description": f"readpb_mpi output: {k}"} for k, v in output_files.items()}
+            _data_of = {k: {"path": v, "description": f"readpb_mpi output: {k}"} for k, v in raw_output_files.items()}
             return {
                 "status": "error",
-                "command": "phyloai tree bi readpb",
+                "command": command_str,
                 "wall_time": time.monotonic() - start,
-                "tool_versions": {},
+                "tool_versions": {"readpb_mpi": readpb_ver, "mpirun": mpirun_ver},
                 "params": {
                     "chain": str(chain),
                     "mode": mode,
@@ -287,118 +372,46 @@ def run_bi_readpb(
                     "dry_run": dry_run,
                     "quiet": quiet,
                 },
-                "key_results": {"modes_run": modes, "output_files": output_files},
+                "key_results": {"modes_run": modes, "output_files": raw_output_files},
                 "error": f"readpb_mpi --mode {m} exited with code {proc.returncode}",
-                "data": {"cmds": cmds, "output_files": _data_of, "post_processing": post_processing, "tool_stderr": "\n".join(all_stdout_parts), "warnings": _stat_warnings},
+                "data": {"cmds": cmds, "output_files": _data_of, "post_processing": post_processing, "tool_stderr": "\n".join(all_stdout_parts), "warnings": []},
             }
 
-    pp_status: dict[str, Any] = {}
-    _MODE_OUTPUT_PREFIX: dict[str, str] = {
-        "rr": ".meanrr", "ss": ".siteprofiles", "r": ".meanrate",
-        "sitelogl": ".sitelogl",
-    }
-    _MODE_OUTPUT_GLOB: set[str] = {
-        "ppred", "div", "sitecomp", "siteconvprob", "comp",
-    }
-    _ALLPPRED_GLOB = ["div", "sitecomp", "siteconvprob", "comp"]
-    for m in modes:
-        if m == "allppred":
-            missing_subs: list[str] = []
-            for sub in _ALLPPRED_GLOB:
-                found = [p for p in work_dir.glob(f"{chain_stem}.{sub}.*")
-                         if _is_new_nonempty_file(p)]
-                if not found:
-                    missing_subs.append(sub)
-                for p in found:
-                    output_files[p.name.replace(".", "_")] = str(p)
-            if missing_subs:
-                pp_status[m] = {
-                    "status": "error",
-                    "error": f"tool exited 0 but no new non-empty output matching {chain_stem}.{{{','.join(missing_subs)}}}.* found",
-                }
-            else:
-                pp_status[m] = {"status": "success"}
-        elif m in _MODE_OUTPUT_GLOB:
-            found = [p for p in work_dir.glob(f"{chain_stem}.{m}.*")
-                     if _is_new_nonempty_file(p)]
-            if not found:
-                pp_status[m] = {
-                    "status": "error",
-                    "error": f"tool exited 0 but no new non-empty output matching {chain_stem}.{m}.* found",
-                }
-            else:
-                pp_status[m] = {"status": "success"}
-                for p in found:
-                    output_files[p.name.replace(".", "_")] = str(p)
-        else:
-            suffix = _MODE_OUTPUT_PREFIX.get(m)
-            if suffix is not None:
-                expected = work_dir / f"{chain_stem}{suffix}"
-                if not _is_new_nonempty_file(expected):
-                    pp_status[m] = {
-                        "status": "error",
-                        "error": f"tool exited 0 but expected new non-empty output not found: {expected.name}",
-                    }
-                else:
-                    output_files[expected.name.replace(".", "_")] = str(expected)
+        move_error = _move_mode_outputs(m)
+        if move_error:
+            post_processing[m] = {"status": "error", "error": move_error}
+            return {
+                "status": "error",
+                "command": command_str,
+                "wall_time": time.monotonic() - start,
+                "tool_versions": {"readpb_mpi": readpb_ver, "mpirun": mpirun_ver},
+                "params": {
+                    "chain": str(chain), "mode": mode, "output_dir": str(output_dir),
+                    "overwrite": overwrite, "burnin": burnin, "sample_freq": sample_freq,
+                    "until": until, "threads": threads,
+                    "pb_path": str(pb_path) if pb_path else None,
+                    "dry_run": dry_run, "quiet": quiet,
+                },
+                "key_results": {"modes_run": modes, "output_files": raw_output_files},
+                "error": move_error,
+                "data": {
+                    "cmds": cmds, "output_files": {
+                        key: {"path": path, "description": f"readpb_mpi output: {key}"}
+                        for key, path in raw_output_files.items()
+                    },
+                    "post_processing": post_processing,
+                    "tool_stderr": "\n".join(all_stdout_parts), "warnings": [],
+                },
+            }
 
-    if "rr" in modes:
-        meanrr_path = work_dir / f"{chain_stem}.meanrr"
-        if _is_new_nonempty_file(meanrr_path):
-            try:
-                exch_path = _convert_meanrr_to_exchangeabilities(meanrr_path)
-                pp_status["rr"] = {
-                    "input": f"{chain_stem}.meanrr",
-                    "output": f"{chain_stem}.exchangeabilities",
-                    "status": "success",
-                }
-                output_files["exchangeabilities"] = str(exch_path)
-            except Exception as exc:
-                pp_status["rr"] = {
-                    "input": f"{chain_stem}.meanrr",
-                    "output": f"{chain_stem}.exchangeabilities",
-                    "status": "error",
-                    "error": str(exc),
-                }
-        else:
-            pp_status.setdefault("rr", {"status": "error", "error": f"new output not found: {chain_stem}.meanrr"})
-        if meanrr_path.exists() and _is_from_this_run(meanrr_path):
-            output_files["meanrr"] = str(meanrr_path)
-
-    if "ss" in modes:
-        siteprof_path = work_dir / f"{chain_stem}.siteprofiles"
-        if _is_new_nonempty_file(siteprof_path):
-            try:
-                sitefreq_path = _convert_siteprofiles_to_sitefreq(siteprof_path)
-                pp_status["ss"] = {
-                    "input": f"{chain_stem}.siteprofiles",
-                    "output": f"{chain_stem}.sitefreq",
-                    "status": "success",
-                }
-                output_files["sitefreq"] = str(sitefreq_path)
-            except Exception as exc:
-                pp_status["ss"] = {
-                    "input": f"{chain_stem}.siteprofiles",
-                    "output": f"{chain_stem}.sitefreq",
-                    "status": "error",
-                    "error": str(exc),
-                }
-        else:
-            pp_status.setdefault("ss", {"status": "error", "error": f"new output not found: {chain_stem}.siteprofiles"})
-        if siteprof_path.exists() and _is_from_this_run(siteprof_path):
-            output_files["siteprofiles"] = str(siteprof_path)
-
-    pp_errors = [
-        f"{m}: {info['error']}"
-        for m, info in pp_status.items()
-        if isinstance(info, dict) and info.get("status") == "error" and info.get("error")
-    ]
-    status = "error" if pp_errors else "success"
-    error_msg = "; ".join(pp_errors) if pp_errors else None
+    if not quiet and raw_output_files:
+        print("PhyloAI: output files:")
+        for key in sorted(raw_output_files):
+            print(f"  {key}: {raw_output_files[key]}")
 
     return {
-        "status": status,
-        "command": "phyloai tree bi readpb",
+        "status": "success",
+        "command": command_str,
         "wall_time": time.monotonic() - start,
         "tool_versions": {"readpb_mpi": readpb_ver, "mpirun": mpirun_ver},
         "params": {
@@ -416,15 +429,15 @@ def run_bi_readpb(
         },
         "key_results": {
             "modes_run": modes,
-            "output_files": output_files,
-            "post_processing": pp_status,
+            "output_files": raw_output_files,
+            "post_processing": post_processing,
         },
-        "error": error_msg,
+        "error": None,
         "data": {
             "cmds": cmds,
-            "post_processing": pp_status,
-            "output_files": {k: {"path": v, "description": f"readpb_mpi output: {k}"} for k, v in output_files.items()},
+            "post_processing": post_processing,
+            "output_files": {k: {"path": v, "description": f"readpb_mpi output: {k}"} for k, v in raw_output_files.items()},
             "tool_stderr": "\n".join(all_stdout_parts),
-            "warnings": _stat_warnings,
+            "warnings": [],
         },
     }

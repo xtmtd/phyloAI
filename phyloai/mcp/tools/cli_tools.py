@@ -13,6 +13,10 @@ from phyloai.mcp.tools.stubs import STUB_TOOLS, handle_stub
 
 Handler = Callable[..., Awaitable[str]]
 
+_CLICK_DEFAULT_OUTPUT_DIR_TOOLS = frozenset(
+    {"tree_bi_pb", "tree_bi_bpcomp", "tree_bi_tracecomp", "tree_bi_readpb"}
+)
+
 
 def make_tool_handlers() -> dict[str, Handler]:
     """Build async handlers for CLI-backed tools and unavailable stubs."""
@@ -61,6 +65,8 @@ def _make_launch_handler(descriptor: dict[str, Any]) -> Handler:
             return result
 
         output_dir = kwargs.get("output_dir") or kwargs.get("output-dir")
+        if output_dir is None and tool_name in _CLICK_DEFAULT_OUTPUT_DIR_TOOLS:
+            output_dir = next(param.default for param in descriptor["click_command"].params if param.name == "output_dir")
         if output_dir is None:
             return json.dumps({"status": "error", "message": f"output_dir is required for {tool_name}"})
         try:
