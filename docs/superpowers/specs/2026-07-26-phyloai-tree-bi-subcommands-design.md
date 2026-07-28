@@ -412,6 +412,7 @@ phyloai tree bi readpb --chain <chain_path> --mode <mode> [OPTIONS]
 - `allppred` combined with any of `div`, `sitecomp`, `siteconvprob`, `comp` → exit code 1: `"--mode allppred is mutually exclusive with div, sitecomp, siteconvprob, comp"`.
 - Any unrecognised mode value → exit code 1.
 - Duplicate mode values (e.g. `--mode rr,rr`) → exit code 1.
+- The PMSF simulation partition is generated only when `--mode` includes all of `ss`, `rr`, and `r`; otherwise no partition is produced.
 
 ### 5.6 Execution
 
@@ -423,9 +424,10 @@ mpirun -np <threads> readpb_mpi -x <burnin> [<every> [<until>]] <mode_flag(s)> <
 
 Working directory: parent directory of `--chain` (required because readpb_mpi derives output names from the chain stem). Immediately after each successful mode, PhyloAI moves that mode's files to `--output-dir` before starting the next mode. This keeps the chain directory free of readpb analysis outputs.
 
-Example for `--mode ss,rr --burnin 1000 --threads 8`:
+Example for `--mode ss,rr,r --burnin 1000 --threads 8`:
 1. `mpirun -np 8 readpb_mpi -x 1000 -ss chain1` (cwd = `chains/`)
 2. `mpirun -np 8 readpb_mpi -x 1000 -rr chain1` (cwd = `chains/`)
+3. `mpirun -np 8 readpb_mpi -x 1000 -r chain1` (cwd = `chains/`)
 
 Output transparency: use `stdout=subprocess.PIPE, stderr=None` so stderr (progress) streams to the terminal. If stdout is non-empty, write it to `<output-dir>/<mode>.stdout` and, unless `--quiet` is set, immediately replay it unchanged with `sys.stdout.write(proc.stdout)`. This preserves the screen output of a manual `readpb_mpi` invocation while retaining an audit copy per mode.
 
@@ -481,6 +483,23 @@ IQ-TREE AA order: `A R N D C Q E G H I L K M F P S T W Y V`
 
 The raw `<chain>.siteprofiles` file is moved to `--output-dir` immediately after `ss` completes. Conversion then writes `<chain>.sitefreq` beside it in `--output-dir`.
 
+#### `ss,rr,r` → `partition.PMSF.nex`
+
+When `--mode` includes `ss`, `rr`, and `r`, PhyloAI generates `<output-dir>/partition.PMSF.nex` immediately after all three raw outputs have been converted to `.sitefreq`, `.exchangeabilities`, and `.meansiterates`. It does not wait for later requested modes. A later-mode failure preserves the already-generated partition file. The output is an IQ-TREE partition file suitable for `iqtree3 --alisim`.
+
+The `.meansiterates` file provides `<zero-based site index> <posterior mean rate>`; PhyloAI maps each site index to the one-based NEXUS charset and uses the rate as its tree-length multiplier. The source `<chain>.trace` is filtered using the same `--burnin`, `--sample-freq`, and `--until` selection passed to `readpb_mpi`; PhyloAI averages the retained `alpha` column. The source `<chain>.log` declares the number of discrete Gamma categories. It must contain `discrete gamma distribution of rates across sites (<k> categories)`. The partition writes `+G<k>{mean_alpha}`; a standard PhyloBayes G4 run therefore writes `+G4{mean_alpha}`.
+
+```
+#nexus
+begin sets;
+    charset site_1 = 1;
+    charpartition PMSF =
+        <chain>.exchangeabilities+F{<20 site frequencies>}+G4{<mean_alpha>}:site_1{<posterior_mean_rate>};
+end;
+```
+
+Sites are emitted in ascending numeric site order. The model token is the generated `<chain>.exchangeabilities` file name, which resides beside `partition.PMSF.nex`. The site-frequency row supplies the 20 IQ-TREE-order amino-acid frequencies. Zero-based `.meansiterates` indices map exactly to one-based site-frequency identifiers; missing, duplicate, malformed, or extra records are errors.
+
 ### 5.8 Output Structure
 
 `readpb_mpi` initially writes beside the chain, but PhyloAI moves files immediately after each mode completes. All final analysis outputs therefore reside directly under `--output-dir`. The chain directory retains only the input chain and MCMC files.
@@ -496,6 +515,7 @@ runs/tree/bi/
     ├── chain1.exchangeabilities
     ├── chain1.siteprofiles
     ├── chain1.sitefreq
+    ├── partition.PMSF.nex
     ├── chain1.meansiterates
     ├── chain1.sitelogl
     ├── chain1.sitecomp
@@ -508,14 +528,14 @@ runs/tree/bi/
 ```json
 {
   "status": "success | error",
-  "command": "phyloai tree bi readpb --chain runs/tree/bi/chains/chain1 --mode ss,rr ...",
+  "command": "phyloai tree bi readpb --chain runs/tree/bi/chains/chain1 --mode ss,rr,r ...",
   "wall_time": 42.1,
   "tool_versions": { "readpb_mpi": "1.9", "mpirun": "4.1.2" },
   "params": {
     "chain": "runs/tree/bi/chains/chain1",
     "output_dir": "runs/tree/bi/readpb",
     "overwrite": false,
-    "mode": "ss,rr",
+    "mode": "ss,rr,r",
     "burnin": 1000,
     "sample_freq": 1,
     "until": "all",
@@ -529,6 +549,7 @@ runs/tree/bi/
     "output_files": {
       "siteprofiles": "runs/tree/bi/chains/chain1.siteprofiles",
       "sitefreq": "runs/tree/bi/chains/chain1.sitefreq",
+      "pmsf_partition": "runs/tree/bi/readpb/partition.PMSF.nex",
       "meanrr": "runs/tree/bi/chains/chain1.meanrr",
       "exchangeabilities": "runs/tree/bi/chains/chain1.exchangeabilities"
     }
@@ -541,6 +562,7 @@ runs/tree/bi/
     },
     "post_processing": {
       "ss": { "input": "chain1.siteprofiles", "output": "chain1.sitefreq", "status": "success" },
+      "pmsf_partition": { "inputs": ["chain1.meansiterates", "chain1.trace", "chain1.log"], "output": "partition.PMSF.nex", "gamma_categories": 4, "mean_alpha": 1.234567, "status": "success" },
       "rr": { "input": "chain1.meanrr", "output": "chain1.exchangeabilities", "status": "success" }
     }
   }
@@ -696,7 +718,7 @@ The following documents must be updated as part of this implementation:
 | `docs/superpowers/specs/2026-06-07-phyloai-design.md` | Update CLI table: `tree bi` → `tree bi pb` |
 | `docs/superpowers/specs/2026-06-17-phyloai-tree-design.md` | Update `bi` entry to reflect subcommand group |
 | `docs/superpowers/plans/2026-07-26-phyloai-tree-bi-subcommands.md` | Add the implementation plan for this approved spec |
-| `phyloai/mcp/schema_gen.py` | No manual tool registry change: verify its Click-tree walk automatically replaces `phyloai_tree_bi` with `phyloai_tree_bi_pb` and adds `phyloai_tree_bi_bpcomp`, `phyloai_tree_bi_tracecomp`, and `phyloai_tree_bi_readpb` |
+| `phyloai/mcp/schema_gen.py` | No manual tool registry change: verify its Click-tree walk exposes the unchanged `phyloai_tree_bi_readpb` tool without `--iqtree-rate` |
 | `skills/phyloai-workflow/SKILL.md` | Update `tree bi` workflow and required-tool guidance for the four subcommands |
 | `skills/phyloai-workflow/references/parameter-annotations.md` | Replace `### tree bi` with sections for `tree bi pb`, `tree bi bpcomp`, `tree bi tracecomp`, and `tree bi readpb` |
 | `skills/phyloai-workflow/references/workflow.md` | Update Bayesian workflow command from `tree bi` to `tree bi pb`; add final diagnostic and readpb workflow guidance |
@@ -730,7 +752,7 @@ Each subcommand must have a report template registered in the `phyloai report` s
 **Methods paragraph (one paragraph per mode run):**
 
 - `rr`: Posterior mean relative exchangeabilities were estimated from {n_samples} post-burnin samples of chain `{chain}` using `readpb_mpi -rr`. The resulting exchangeability matrix was converted to PAML lower-triangle format (`{chain}.exchangeabilities`) for use with IQ-TREE.
-- `ss`: Posterior mean site-specific amino acid frequencies were estimated from {n_samples} post-burnin samples using `readpb_mpi -ss`. Site frequency profiles were converted to IQ-TREE `-fs` format (`{chain}.sitefreq`).
+- `ss`/`rr`/`r`: Posterior mean site-specific amino acid frequencies, exchangeabilities, and site rates were estimated using `readpb_mpi -ss`, `-rr`, and `-r`. Their converted outputs, the posterior mean trace alpha, and the chain's discrete Gamma category count were combined into `{partition_file}` for `iqtree3 --alisim` simulation.
 - `r`: Posterior mean site rates were estimated using `readpb_mpi -r` and written to `{chain}.meansiterates`.
 - `sitelogl`: Site-specific marginal log-likelihoods were computed using `readpb_mpi -sitelogl` and written to `{chain}.sitelogl`. These values can be used to compute wAIC and leave-one-out cross-validation scores.
 - `div`/`sitecomp`/`siteconvprob`/`comp`/`allppred`: Posterior predictive checks were performed using `readpb_mpi -{mode}`. Observed test statistics were compared to the posterior predictive null distribution.

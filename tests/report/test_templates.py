@@ -158,6 +158,32 @@ class TestConcat:
         assert "50,000" in text
 
 
+class TestTreeBiReadpb:
+    def test_pmsf_partition(self):
+        text = generate_all_methods(
+            "tree.bi.readpb",
+            params={
+                "chain": "runs/tree/bi/chains/chain1",
+                "burnin": 1000,
+            },
+            key_results={
+                "modes_run": ["ss", "rr"],
+                "post_processing": {
+                    "pmsf_partition": {
+                        "inputs": ["chain1.meansiterates", "chain1.trace", "chain1.log"],
+                        "output": "partition.PMSF.nex",
+                        "status": "success",
+                    },
+                },
+            },
+            tool_versions={"readpb_mpi": "1.9"},
+        )
+
+        assert "partition.PMSF.nex" in text
+        assert "Posterior mean site rates" in text
+        assert "alisim" in text
+
+
 class TestIqtree:
     def test_unpartitioned(self):
         text = generate_all_methods(

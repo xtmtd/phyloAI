@@ -39,6 +39,7 @@ def test_tree_bi_tools_replace_legacy_tool() -> None:
         "tree_bi_readpb",
     } <= set(definitions)
     assert "tree_bi" not in definitions
+    assert "iqtree_rate" not in definitions["tree_bi_readpb"]["inputSchema"]["properties"]
 
 
 @pytest.mark.anyio

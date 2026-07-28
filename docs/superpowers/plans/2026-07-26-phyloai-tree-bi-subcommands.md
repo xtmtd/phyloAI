@@ -316,6 +316,79 @@ pytest tests/tree/test_bi_readpb.py -q
 
 ---
 
+## Task 4A: Add posterior-parameterized PMSF simulation partitions to `tree bi readpb`
+
+**Files:**
+- Modify: `phyloai/tree/bi_readpb.py`
+- Modify: `tests/tree/test_bi_readpb.py`
+
+**Goal:** Generate `partition.PMSF.nex` automatically when `--mode` includes `ss,rr,r`. Each one-site partition uses the generated `<chain>.exchangeabilities` model, the converted IQ-TREE-order frequency profile, zero-based `meansiterates` rate as the partition multiplier, and the selected posterior mean alpha with the discrete Gamma category count from the chain log.
+
+**Interfaces:**
+- Consumes: `_convert_meanrr_to_exchangeabilities(meanrr_path: Path) -> Path` and `_convert_siteprofiles_to_sitefreq(siteprofiles_path: Path) -> Path`.
+- Produces: `_write_pmsf_partition(sitefreq_path: Path, exchangeabilities_path: Path, meansiterates_path: Path, trace_path: Path, log_path: Path, burnin: int, sample_freq: int, until: str) -> tuple[Path, float, int]`.
+- Extends: `run_bi_readpb()` without new CLI parameters; the `ss,rr,r` mode combination activates the partition automatically.
+
+- [ ] **Step 1: Write failing partition-writer tests**
+
+Add `test_write_pmsf_partition()` to `tests/tree/test_bi_readpb.py`. Create a two-site `.sitefreq` with rows intentionally out of order, an existing `chain1.exchangeabilities`, a `.meansiterates` file with zero-based indices `0`, `1`, a `.trace` with `iter`/`alpha`, and a `.log` containing `discrete gamma distribution of rates across sites (4 categories)`. Assert all of:
+
+```python
+assert result.name == "partition.PMSF.nex"
+assert "charset site_1 = 1;" in text
+assert text.index("charset site_1") < text.index("charset site_2")
+assert "chain1.exchangeabilities+F{" in text
+assert "+G4{1.50000000}:site_1{1.42275}" in text
+assert "+G4{1.50000000}:site_2{0.82152};" in text
+```
+
+Add parameterized failing tests for duplicate/invalid meansiterates indices or rates, missing or extra zero-based meansiterates sites, missing/non-finite trace alpha, no retained trace sample after burnin/sample-freq/until filtering, missing Gamma category declaration, duplicate sitefreq IDs, non-numeric sitefreq values, and sitefreq rows not containing exactly 20 frequencies. Every case raises `ValueError` and leaves no `partition.PMSF.nex` behind.
+
+- [ ] **Step 2: Run the new tests to verify they fail**
+
+Run: `pytest tests/tree/test_bi_readpb.py -q -k pmsf`
+
+Expected: FAIL because `_write_pmsf_partition` is not defined.
+
+- [ ] **Step 3: Implement the strict, dependency-free writer**
+
+In `phyloai/tree/bi_readpb.py`, add `_write_pmsf_partition()` beside the two existing conversion helpers. It must parse `.sitefreq` as `<integer Site> <20 float frequencies>` and the real headerless `.meansiterates` output as zero-based `<site> <rate>` rows, reject malformed/duplicate/non-finite rows, and require identical site-ID sets after converting meansiterates indices to one-based site IDs. Preserve input numeric text in output. Write numeric sites in ascending order to a temporary sibling file, then atomically replace `partition.PMSF.nex` after validation completes.
+
+The generated NEXUS must have this exact model structure, using `exchangeabilities_path.name` rather than an absolute path:
+
+```text
+#nexus
+begin sets;
+    charset site_1 = 1;
+    charpartition PMSF =
+        chain1.exchangeabilities+F{0.05000000/...}+G{1.65360}:site_1{1.42275};
+end;
+```
+
+Do not introduce pandas, a helper module, or a new dependency.
+
+- [ ] **Step 4: Run writer tests**
+
+Run: `pytest tests/tree/test_bi_readpb.py -q -k pmsf`
+
+Expected: PASS.
+
+- [ ] **Step 5: Add posterior-parameter partition output reporting**
+
+Remove `iqtree_rate` from `run_bi_readpb()`, the command string, and all payloads. The partition trigger is `{"ss", "rr", "r"}.issubset(modes)`.
+
+After each mode successfully moves and converts its raw output, when all `ss`, `rr`, and `r` outputs are available, call `_write_pmsf_partition()` with `.sitefreq`, `.exchangeabilities`, `.meansiterates`, `<chain>.trace`, `<chain>.log`, and the current sampling flags. This runs once before a later mode starts. Add `pmsf_partition` to `key_results.output_files` and `data.output_files`; add `post_processing["pmsf_partition"]` with the three input basenames, output basename, `gamma_categories`, `mean_alpha`, and `success` status. On generation failure, return the normal error payload with `post_processing["pmsf_partition"] = {"status": "error", "error": ...}`.
+
+Dry-run validates the `ss,rr` mode requirement but neither reads the rate file nor creates an output directory or partition.
+
+- [ ] **Step 6: Write and run end-to-end tests**
+
+Extend the fake-tool round-trip test to use `ss,rr,r`, a trace and log fixture, and assert `partition.PMSF.nex` exists, references `chain1.exchangeabilities` (not `LG`), has two ascending `charset` rows, uses `+G4{mean_alpha}`, maps meansiterates index `0` to `site_1`, and is reported under `pmsf_partition`. Assert `ss,rr` alone produces no partition and dry-run creates no output directory.
+
+Run: `pytest tests/tree/test_bi_readpb.py -q`
+
+Expected: PASS.
+
 ## Task 5: Register CLI commands for `tree bi bpcomp`, `tree bi tracecomp`, `tree bi readpb`
 
 **Files:**
@@ -428,7 +501,7 @@ Parameters per design spec §4.3. Same command body pattern as bpcomp, calling `
 
 - [ ] **Step 4: Register `@bi.command("readpb", cls=_GroupedHelpCommand, ...)`**
 
-Parameters per design spec §5.3. Same pattern, calling `run_bi_readpb()` and using `_READPB_FLAG_MAP` in error handler calls.
+Parameters per design spec §5.3. No new option is added. `--mode ss,rr,r` automatically produces `partition.PMSF.nex`; the command calls `run_bi_readpb()` and uses `_READPB_FLAG_MAP` in error handler calls.
 
 - [ ] **Step 5: Verify CLI structure**
 
@@ -442,7 +515,7 @@ phyloai tree bi readpb --help
 
 - [ ] **Step 6: Run CLI tests**
 
-Add CLI tests for help output, invalid parameters, and dry-run output for each new subcommand. Then:
+Add CLI tests for help output, invalid parameters, and dry-run output for each new subcommand. For readpb, assert `--iqtree-rate` is absent from help and `--mode ss,rr,r --dry-run` prints all three readpb commands without creating `partition.PMSF.nex`. Then:
 
 ```bash
 pytest tests/cli/test_tree_bi.py -q
@@ -512,7 +585,7 @@ pytest tests/report/test_collector.py -q
 **Files:**
 - Inspect: `phyloai/mcp/schema_gen.py` (no changes expected).
 
-**Goal:** Confirm `walk_click_tree()` discovers `phyloai_tree_bi_pb`, `phyloai_tree_bi_bpcomp`, `phyloai_tree_bi_tracecomp`, `phyloai_tree_bi_readpb`. The old `phyloai_tree_bi` should not appear.
+**Goal:** Confirm `walk_click_tree()` discovers `phyloai_tree_bi_pb`, `phyloai_tree_bi_bpcomp`, `phyloai_tree_bi_tracecomp`, `phyloai_tree_bi_readpb`, without exposing the removed `iqtree_rate`. The old `phyloai_tree_bi` should not appear.
 
 - [ ] **Step 1: Add MCP schema test**
 
@@ -521,9 +594,11 @@ def test_tree_bi_subcommands_in_mcp_tools():
     from phyloai.mcp.tools.cli_tools import get_tool_definitions
     tools = get_tool_definitions()
     for name in ["phyloai_tree_bi_pb", "phyloai_tree_bi_bpcomp",
-                 "phyloai_tree_bi_tracecomp", "phyloai_tree_bi_readpb"]:
+                  "phyloai_tree_bi_tracecomp", "phyloai_tree_bi_readpb"]:
         assert name in tools, f"{name} missing from MCP tools"
     assert "phyloai_tree_bi" not in tools, "old phyloai_tree_bi must not exist"
+    properties = tools["tree_bi_readpb"]["inputSchema"]["properties"]
+    assert "iqtree_rate" not in properties
 ```
 
 - [ ] **Step 2: Run test**
@@ -548,6 +623,8 @@ pytest tests/mcp/ -q -k "tree_bi_subcommands"
 
 - `docs/commands/tree-bi.md`: Replace with four subcommand sections. `tree bi pb` = original content. Add `tree bi bpcomp`/`tree bi tracecomp`/`tree bi readpb` with parameter tables, examples, output file descriptions.
 - `docs/commands/tree-bi.zh.md`: Same in Chinese.
+- For `tree bi readpb`, document that `--mode ss,rr,r` writes `partition.PMSF.nex` from meansiterates rates, filtered trace alpha, and log Gamma categories. Add an `iqtree3 --alisim` example using the generated partition and `chain1.exchangeabilities` model entries.
+- `README.md` / `README.zh.md`: expand the `tree bi readpb` summary to mention automatic PMSF simulation partition generation from `ss,rr,r`.
 
 - [ ] **Step 3: Update design specs**
 
@@ -555,7 +632,7 @@ Per design spec §11 — add superseding notes, update CLI tables.
 
 - [ ] **Step 4: Update skill files**
 
-Per design spec §11 — update workflow guidance, parameter annotations, error catalog.
+Update `skills/phyloai-workflow/SKILL.md`, `skills/phyloai-workflow/references/workflow.md`, and `skills/phyloai-workflow/references/parameter-annotations.md`: explain that posterior PMSF simulation input requires `tree bi readpb --mode ss,rr,r`, and that generated `partition.PMSF.nex` uses meansiterates, filtered trace alpha, Gamma categories, and the co-generated `.exchangeabilities` file. No MCP parameter or manual registry entry is added.
 
 ---
 
@@ -599,7 +676,9 @@ Task 1 (refactor bi → group + pb)  ── required foundation
     ├── Task 3 (bi_tracecomp.py)──┤  can run in parallel
     └── Task 4 (bi_readpb.py)   ──┘
               │
-    Task 5 (CLI registration)     ── depends on Tasks 2-4
+        Task 4A (PMSF partition) ── depends on Task 4
+              │
+    Task 5 (CLI registration)     ── depends on Tasks 2-4 and Task 4A
     Task 6 (report collector)     ── depends on Task 1
     Task 7 (MCP verify)           ── depends on Task 5
               │

@@ -601,6 +601,9 @@ PhyloBayes 工具目录（包含 readpb_mpi 和 mpirun）。
 #### --output-dir
 readpb 输出目录。每个模式完成后，PhyloAI 将其生成的文件移入此目录；`allppred` 的 `<chain>.ppred` 直接位于输出目录根部。仅 `ppred` 模式的 `<chain>_ppred*.ali` 位于 `ppred/` 子目录。
 
+#### --mode ss,rr,r
+当三个模式同时指定时，PhyloAI 自动生成 `partition.PMSF.nex`。`r` 的 `.meansiterates` 提供从 0 开始的后验平均位点速率；`.trace` 的 `alpha` 列按 `--burnin`、`--sample-freq`、`--until` 取样求均值；`.log` 提供离散 Gamma 类别数。因此标准 G4 链写出 `+G4{alpha}`，并与 `<chain>.exchangeabilities` 和 site-specific frequencies 组合，可用于 `iqtree3 --alisim`。
+
 ---
 
 ### tree msc

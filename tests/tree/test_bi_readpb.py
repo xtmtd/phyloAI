@@ -8,10 +8,138 @@ import pytest
 from phyloai.tree.bi_readpb import (
     _convert_meanrr_to_exchangeabilities,
     _convert_siteprofiles_to_sitefreq,
+    _write_pmsf_partition,
     _validate_modes,
     run_bi_readpb,
     PAML_ORDER,
 )
+
+
+def test_write_pmsf_partition_uses_posterior_rates_alpha_and_gamma_categories(tmp_path: Path):
+    sitefreq = tmp_path / "chain1.sitefreq"
+    frequencies = " ".join(["0.05000000"] * 20)
+    sitefreq.write_text(f"2 {frequencies}\n1 {frequencies}\n")
+    exchangeabilities = tmp_path / "chain1.exchangeabilities"
+    exchangeabilities.write_text("custom model\n")
+    meansiterates = tmp_path / "chain1.meansiterates"
+    meansiterates.write_text("1\t0.82152\n0\t1.42275\n")
+    trace = tmp_path / "chain1.trace"
+    trace.write_text("iter\talpha\n0\t1.0\n1\t2.0\n")
+    log = tmp_path / "chain1.log"
+    log.write_text("discrete gamma distribution of rates across sites (4 categories)\n")
+
+    result, mean_alpha, categories = _write_pmsf_partition(
+        sitefreq, exchangeabilities, meansiterates, trace, log, 0, 1, "all",
+    )
+
+    text = result.read_text()
+    assert result.name == "partition.PMSF.nex"
+    assert "charset site_1 = 1;" in text
+    assert text.index("charset site_1") < text.index("charset site_2")
+    assert "chain1.exchangeabilities+F{" in text
+    assert "+G4{1.50000000}:site_1{1.42275}" in text
+    assert "+G4{1.50000000}:site_2{0.82152};" in text
+    assert mean_alpha == 1.5
+    assert categories == 4
+
+
+@pytest.mark.parametrize(
+    ("meansiterates_rows", "error"),
+    [
+        (["0\t1.0", "0\t1.0"], "Duplicate meansiterates"),
+        (["0\tbad", "1\t1.0"], "Invalid meansiterates rate"),
+        (["-1\t1.0", "1\t1.0"], "Invalid meansiterates site index"),
+        (["0\t0", "1\t1.0"], "Invalid meansiterates rate"),
+        (["0\t1.0"], "site IDs do not match"),
+        (["0\t1.0", "1\t1.0", "2\t1.0"], "site IDs do not match"),
+    ],
+)
+def test_write_pmsf_partition_rejects_invalid_meansiterates_records(
+    tmp_path: Path, meansiterates_rows: list[str], error: str,
+):
+    sitefreq = tmp_path / "chain1.sitefreq"
+    frequencies = " ".join(["0.05"] * 20)
+    sitefreq.write_text(f"1 {frequencies}\n2 {frequencies}\n")
+    exchangeabilities = tmp_path / "chain1.exchangeabilities"
+    exchangeabilities.write_text("model\n")
+    meansiterates = tmp_path / "chain1.meansiterates"
+    meansiterates.write_text("\n".join(meansiterates_rows) + "\n")
+    trace = tmp_path / "chain1.trace"
+    trace.write_text("iter\talpha\n0\t1.0\n")
+    log = tmp_path / "chain1.log"
+    log.write_text("discrete gamma distribution of rates across sites (4 categories)\n")
+
+    with pytest.raises(ValueError, match=error):
+        _write_pmsf_partition(sitefreq, exchangeabilities, meansiterates, trace, log, 0, 1, "all")
+    assert not (tmp_path / "partition.PMSF.nex").exists()
+
+
+def test_write_pmsf_partition_uses_requested_trace_sampling_window(tmp_path: Path):
+    sitefreq = tmp_path / "chain1.sitefreq"
+    frequencies = " ".join(["0.05"] * 20)
+    sitefreq.write_text(f"1 {frequencies}\n")
+    exchangeabilities = tmp_path / "chain1.exchangeabilities"
+    exchangeabilities.write_text("model\n")
+    meansiterates = tmp_path / "chain1.meansiterates"
+    meansiterates.write_text("0\t1.0\n")
+    trace = tmp_path / "chain1.trace"
+    trace.write_text("iter\talpha\n0\t1.0\n1\t2.0\n2\t4.0\n3\t8.0\n")
+    log = tmp_path / "chain1.log"
+    log.write_text("discrete gamma distribution of rates across sites (4 categories)\n")
+
+    result, mean_alpha, _ = _write_pmsf_partition(
+        sitefreq, exchangeabilities, meansiterates, trace, log, 1, 2, "3",
+    )
+
+    assert mean_alpha == 5.0
+    assert "+G4{5.00000000}" in result.read_text()
+
+
+def test_write_pmsf_partition_rejects_empty_sitefreq(tmp_path: Path):
+    sitefreq = tmp_path / "chain1.sitefreq"
+    sitefreq.write_text("")
+    exchangeabilities = tmp_path / "chain1.exchangeabilities"
+    exchangeabilities.write_text("model\n")
+    meansiterates = tmp_path / "chain1.meansiterates"
+    meansiterates.write_text("0\t1.0\n")
+    trace = tmp_path / "chain1.trace"
+    trace.write_text("iter\talpha\n0\t1.0\n")
+    log = tmp_path / "chain1.log"
+    log.write_text("discrete gamma distribution of rates across sites (4 categories)\n")
+
+    with pytest.raises(ValueError, match="no sites"):
+        _write_pmsf_partition(sitefreq, exchangeabilities, meansiterates, trace, log, 0, 1, "all")
+
+
+def test_write_pmsf_partition_rejects_nonpositive_sitefreq_id(tmp_path: Path):
+    sitefreq = tmp_path / "chain1.sitefreq"
+    sitefreq.write_text("0 " + " ".join(["0.05"] * 20) + "\n")
+    exchangeabilities = tmp_path / "chain1.exchangeabilities"
+    exchangeabilities.write_text("model\n")
+    meansiterates = tmp_path / "chain1.meansiterates"
+    meansiterates.write_text("0\t1.0\n")
+    trace = tmp_path / "chain1.trace"
+    trace.write_text("iter\talpha\n0\t1.0\n")
+    log = tmp_path / "chain1.log"
+    log.write_text("discrete gamma distribution of rates across sites (4 categories)\n")
+
+    with pytest.raises(ValueError, match="Invalid sitefreq site ID"):
+        _write_pmsf_partition(sitefreq, exchangeabilities, meansiterates, trace, log, 0, 1, "all")
+
+
+def test_write_pmsf_partition_reports_missing_metadata_as_validation_error(tmp_path: Path):
+    sitefreq = tmp_path / "chain1.sitefreq"
+    sitefreq.write_text("1 " + " ".join(["0.05"] * 20) + "\n")
+    exchangeabilities = tmp_path / "chain1.exchangeabilities"
+    exchangeabilities.write_text("model\n")
+    meansiterates = tmp_path / "chain1.meansiterates"
+    meansiterates.write_text("0\t1.0\n")
+
+    with pytest.raises(ValueError, match="Could not read PMSF metadata"):
+        _write_pmsf_partition(
+            sitefreq, exchangeabilities, meansiterates,
+            tmp_path / "chain1.trace", tmp_path / "chain1.log", 0, 1, "all",
+        )
 
 
 def test_validate_modes_unrecognized():
@@ -95,6 +223,22 @@ def test_convert_siteprofiles_to_sitefreq(tmp_path: Path):
         assert v >= 1e-8
 
 
+@pytest.mark.parametrize(
+    "data_line",
+    [
+        "1 " + " ".join(["0.05"] * 19),
+        "1 " + " ".join(["0.05"] * 20) + " extra",
+        "1 bad " + " ".join(["0.05"] * 19),
+    ],
+)
+def test_convert_siteprofiles_rejects_malformed_data_rows(tmp_path: Path, data_line: str):
+    siteprof = tmp_path / "chain1.siteprofiles"
+    siteprof.write_text("# header\n# header\n" + data_line + "\n")
+
+    with pytest.raises(ValueError, match="Invalid siteprofiles row 3"):
+        _convert_siteprofiles_to_sitefreq(siteprof)
+
+
 def test_run_bi_readpb_dry_run(tmp_path: Path):
     chain = tmp_path / "chain1"
     (tmp_path / "chain1.chain").write_text("fake state")
@@ -122,7 +266,7 @@ def test_run_bi_readpb_ss_rr_roundtrip(tmp_path: Path):
     chain_dir.mkdir()
     chain = chain_dir / "chain1"
     (chain_dir / "chain1.chain").write_text("fake state")
-    (chain_dir / "chain1.trace").write_text("iter time loglik\n1 0 -10\n")
+    (chain_dir / "chain1.trace").write_text("iter\talpha\n0\t1.0\n")
     (chain_dir / "chain1.treelist").write_text("(a,b);\n")
 
     tool_dir = tmp_path / "tools"
@@ -171,6 +315,7 @@ fi
     assert (out / "chain1.sitefreq").exists()
     assert (out / "chain1.meanrr").exists()
     assert (out / "chain1.exchangeabilities").exists()
+    assert not (out / "partition.PMSF.nex").exists()
     # Check post-processing status
     pp = payload["data"]["post_processing"]
     assert pp["ss"]["status"] == "success"
@@ -234,6 +379,105 @@ fi
     assert not (chain_dir / "chain1.meanrr").exists()
     assert not (chain_dir / "chain1.siteprofiles").exists()
     assert not (chain_dir / "chain1.ppred.1.ali").exists()
+
+
+def test_run_bi_readpb_writes_pmsf_partition_before_later_modes(tmp_path: Path):
+    chain_dir = tmp_path / "chains"
+    chain_dir.mkdir()
+    chain = chain_dir / "chain1"
+    (chain_dir / "chain1.chain").write_text("fake state")
+    (chain_dir / "chain1.trace").write_text("iter\talpha\n0\t1.0\n")
+    (chain_dir / "chain1.log").write_text("discrete gamma distribution of rates across sites (4 categories)\n")
+    out = tmp_path / "readpb"
+
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    mpirun = tool_dir / "mpirun"
+    mpirun.write_text("#!/bin/sh\nshift 2\nexec \"$@\"\n")
+    readpb = tool_dir / "readpb_mpi"
+    readpb.write_text(f"""#!/bin/sh
+set -e
+mode=""
+chain_name=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -ss) mode="ss";;
+        -rr) mode="rr";;
+        -r) mode="r";;
+        -*) ;;
+        *) chain_name="$1";;
+    esac
+    shift
+done
+if [ "$mode" = "ss" ]; then
+    printf '# header\\n# header\\n1 ' > "${{chain_name}}.siteprofiles"
+    printf '0.050000 %.0s' {{1..20}} >> "${{chain_name}}.siteprofiles"
+    printf '\\n' >> "${{chain_name}}.siteprofiles"
+elif [ "$mode" = "rr" ]; then
+    printf 'A C D E F G H I K L M N P Q R S T V W Y\\n' > "${{chain_name}}.meanrr"
+elif [ "$mode" = "r" ]; then
+    printf '0\\t1.0\\n' > "${{chain_name}}.meansiterates"
+fi
+""")
+    mpirun.chmod(0o755)
+    readpb.chmod(0o755)
+
+    payload = run_bi_readpb(
+        chain=chain, mode="ss,rr,r", output_dir=out,
+        pb_path=tool_dir, quiet=True,
+    )
+
+    assert payload["status"] == "success"
+    assert (out / "partition.PMSF.nex").exists()
+
+
+def test_run_bi_readpb_does_not_write_pmsf_partition_when_r_fails(tmp_path: Path):
+    chain_dir = tmp_path / "chains"
+    chain_dir.mkdir()
+    chain = chain_dir / "chain1"
+    (chain_dir / "chain1.chain").write_text("fake state")
+    (chain_dir / "chain1.trace").write_text("iter\talpha\n0\t1.0\n")
+    (chain_dir / "chain1.log").write_text("discrete gamma distribution of rates across sites (4 categories)\n")
+    out = tmp_path / "readpb"
+
+    tool_dir = tmp_path / "tools"
+    tool_dir.mkdir()
+    mpirun = tool_dir / "mpirun"
+    mpirun.write_text("#!/bin/sh\nshift 2\nexec \"$@\"\n")
+    readpb = tool_dir / "readpb_mpi"
+    readpb.write_text("""#!/bin/sh
+mode=""
+chain_name=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -ss) mode="ss";;
+        -rr) mode="rr";;
+        -r) mode="r";;
+        -*) ;;
+        *) chain_name="$1";;
+    esac
+    shift
+done
+if [ "$mode" = "ss" ]; then
+    printf '# header\n# header\n1 ' > "${chain_name}.siteprofiles"
+    printf '0.050000 %.0s' {1..20} >> "${chain_name}.siteprofiles"
+    printf '\n' >> "${chain_name}.siteprofiles"
+elif [ "$mode" = "rr" ]; then
+    printf 'A C D E F G H I K L M N P Q R S T V W Y\n' > "${chain_name}.meanrr"
+elif [ "$mode" = "r" ]; then
+    exit 7
+fi
+""")
+    mpirun.chmod(0o755)
+    readpb.chmod(0o755)
+
+    payload = run_bi_readpb(
+        chain=chain, mode="ss,rr,r", output_dir=out,
+        pb_path=tool_dir, quiet=True,
+    )
+
+    assert payload["status"] == "error"
+    assert not (out / "partition.PMSF.nex").exists()
 
 
 def test_run_bi_readpb_reports_new_rate_output(tmp_path: Path):

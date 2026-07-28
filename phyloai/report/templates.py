@@ -845,6 +845,15 @@ def generate_methods_tree_bi_readpb(
         desc = mode_descriptions.get(m, f"Analysis mode {m} was run using readpb_mpi -{m}.")
         parts.append(f" {desc}")
 
+    partition = pp.get("pmsf_partition", {})
+    if partition.get("status") == "success":
+        parts.append(
+            f" Posterior mean site rates, the selected posterior mean alpha, and "
+            f"the discrete Gamma category count were combined with rr-derived "
+            f"exchangeabilities and ss-derived site frequencies into "
+            f"{partition.get('output', 'partition.PMSF.nex')} for iqtree3 --alisim simulation."
+        )
+
     if pp:
         statuses = []
         for mode_name, info in pp.items():

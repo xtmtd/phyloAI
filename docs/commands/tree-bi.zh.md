@@ -291,6 +291,7 @@ phyloai tree bi readpb --chain <链路径> --mode <模式> [OPTIONS]
 
 ```bash
 phyloai tree bi readpb --chain chains/chain1 --mode ss,rr --burnin 5000
+phyloai tree bi readpb --chain chains/chain1 --mode ss,rr,r --burnin 5000
 phyloai tree bi readpb --chain chains/chain1 --mode r --burnin 1000
 phyloai tree bi readpb --chain chains/chain1 --mode allppred --burnin 2000
 ```
@@ -349,6 +350,14 @@ phyloai tree bi readpb --chain chains/chain1 --mode allppred --burnin 2000
 ### `ss` → sitefreq
 
 将 `<chain>.siteprofiles` 转换为 IQ-TREE `-fs` 格式（`<chain>.sitefreq`），从 PhyloBayes AA 顺序重排序到 IQ-TREE 顺序，`1e-8` 下限并重新归一化。
+
+### `ss,rr,r` → PMSF 模拟分区
+
+`r` 输出是无 header、从 0 开始的 `site rate` 后验平均位点速率；链的 trace 根据指定 burn-in/子采样窗口提供后验平均 alpha；链 log 提供离散 Gamma 类别数。它们与每个位点频率 profile 及同步生成的 `<chain>.exchangeabilities` 模型组合，写出含 `+Gk{alpha}` 的 `partition.PMSF.nex`。示例中的 `-p` 表示 edge-proportional 分区；仅在需要 edge-equal 分支长度时改用 `-q`。
+
+```bash
+iqtree3 --alisim simulated.phy -t tree.nwk -p runs/tree/bi/readpb/partition.PMSF.nex
+```
 
 ## 退出码
 

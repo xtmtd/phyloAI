@@ -350,6 +350,9 @@ phyloai tree bi readpb --chain <chain_path> --mode <modes> [OPTIONS]
 # Posterior mean exchangeabilities + site frequencies
 phyloai tree bi readpb --chain chains/chain1 --mode ss,rr --burnin 5000
 
+# PMSF simulation partition for iqtree3 --alisim
+phyloai tree bi readpb --chain chains/chain1 --mode ss,rr,r --burnin 5000
+
 # Site rates only
 phyloai tree bi readpb --chain chains/chain1 --mode r --burnin 1000
 
@@ -415,6 +418,14 @@ phyloai tree bi readpb --chain chains/chain1 --mode ss,rr --dry-run
 
 `<chain>.siteprofiles` is converted to IQ-TREE `-fs` format (`<chain>.sitefreq`), reindexing from PhyloBayes AA order to IQ-TREE order, with a `1e-8` floor and re-normalization.
 
+### `ss,rr,r` → PMSF simulation partition
+
+The `r` output supplies headerless, zero-based `site rate` posterior means, the chain trace supplies the posterior mean alpha using the requested burn-in/subsampling window, and the chain log supplies the discrete Gamma category count. These are combined with each site's converted frequency profile and co-generated `<chain>.exchangeabilities` model, producing one-site `+Gk{alpha}` partitions in `partition.PMSF.nex` for `iqtree3 --alisim`. The example uses `-p` for edge-proportional partitions; use `-q` instead only for edge-equal branch lengths.
+
+```bash
+iqtree3 --alisim simulated.phy -t tree.nwk -p runs/tree/bi/readpb/partition.PMSF.nex
+```
+
 ## Outputs
 
 ```
@@ -423,6 +434,7 @@ runs/tree/bi/readpb/
 ├── chain1.exchangeabilities   # PhyloAI post-processing
 ├── chain1.siteprofiles        # readpb_mpi -ss
 ├── chain1.sitefreq            # PhyloAI post-processing
+├── partition.PMSF.nex          # automatic ss,rr,r PMSF simulation partitions
 ├── chain1.meansiterates       # readpb_mpi -r
 ├── chain1.sitelogl            # readpb_mpi -sitelogl
 ├── chain1.cpo                 # readpb_mpi -sitelogl
