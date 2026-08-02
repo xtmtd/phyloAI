@@ -39,7 +39,7 @@ description: >-
 
 - Pretree: `convert -> align -> trim -> metrics / filter -> concat` (supermatrix) or `... -> gene trees` (supertree). `stats` inspects results at any step.
 - Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi pb` for Bayesian MCMC, `tree bi bpcomp`/`tree bi tracecomp` for final convergence diagnostics with user-chosen burn-in, `tree bi readpb` for posterior summaries. For custom CAT-PMSF-style ML, pass an AA exchangeability file with `tree ml iqtree --model`, a profile with `--site-freq-file`, and `--state-freq none`; raw `--tool-args -fs` overrides the structured profile. For PMSF simulation input, use `tree bi readpb --mode ss,rr,r`; it writes `partition.PMSF.nex` from posterior site rates, alpha, Gamma category count, and the co-generated `.exchangeabilities` model. Use `cf` on species trees.
-- Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`.
+- Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`, `modelcompare iqtree`, `modelcompare pb`.
 - Report: run `report` only when the user requests a report/methods draft or recovery needs `report.json`.
 
 ### posttree signal
@@ -106,6 +106,58 @@ mutually exclusive; minimum 4 taxsets.
 
 Outputs: IQ-TREE native `.iqtree` report (contains all lmap statistics),
 `<prefix>.lmap.eps` figure, `result.json`. IQ-TREE files in `iqtree/` subdirectory.
+
+### posttree modelcompare
+
+Two subcommands for relative substitution-model comparison and selection.
+
+#### modelcompare iqtree
+
+Purpose: ModelFinder (BIC/AIC/AICc) model comparison on a single alignment
+using IQ-TREE3 `-m MF` (Kalyaanamoorthy et al. 2017). Reports each model's
+BIC/AIC/AICc scores, weights, and 95% confidence-set membership.
+
+Required inputs: `--matrix`, `--homogeneous-model` (comma-separated standard
+models, maps to `-mset`).
+
+Optional: `--mrate` (E/G/R, default `E,G`), `--heterogeneous-model` (AA mixture
+models via `-madd`; AA only), `--het-mrate` (any subset of E/G/R, default `E,G`;
+each token selects a variant family — E = base models `C10,C10+F`, G = `+G4`,
+R = `+R4`, mirroring `--mrate`), `--seq-type`
+(`AA`/`NT`/`auto`, default `auto` — alignment is read to detect AA vs NT before
+model validation; an explicit value is cross-checked against the detected
+type), `--prefix` (must be a single filename — no `/`, `..`, or absolute
+paths), `--threads` (positive integer or `auto`), `--tool-args`
+(blocked: `-s`, `--prefix`; overrides PhyloAI-managed flags like `-madd`,
+`-mrate`, `-T` when present), `--resume`.
+
+Mutual exclusions: `--overwrite` vs `--resume`. Heterogeneous models rejected
+for NT data. Non-empty existing output dir requires `--overwrite`.
+
+Outputs: `model_fit.csv` (sorted by BIC, with `In_*_95` confidence-set columns),
+`result.json`. IQ-TREE files in `iqtree/` subdirectory.
+
+#### modelcompare pb
+
+Purpose: LOO-CV / wAIC model comparison from PhyloBayes `.sitelogl` site
+log-likelihood files (Lartillot 2023). Pure Python — no external tool.
+
+Required inputs: exactly one of `--sitelogl-dir` (comma-separated dirs, each
+globbing `*.sitelogl`) or repeated `--sitelogl` (each occurrence = one model's
+chain files). At least 2 `.sitelogl` files per model group. Both options use
+the Click `Path` type, so shell path completion works.
+
+Optional: `--model-names` (labels matching group count; unique; each must be a
+safe path component — no `/`, `..` — as it names an output subdirectory).
+
+Validation: within each group all files must share identical ordered `site`
+identifiers; across groups all must share identical site count AND ordered
+`site` identifiers (mismatch → hard error). Scores from different alignments
+are not comparable. Non-empty existing output dir requires `--overwrite`.
+
+Outputs: `model_fit.csv` (LOO-CV/wAIC score, bias, stdev, CI95, ESS quality
+columns, Delta values for multi-model), copied `.sitelogl` files under
+`sitelogl/model_N/`, `result.json`.
 
 ## Demo Data
 

@@ -11,18 +11,28 @@ from rich.console import Console
 from rich.table import Table
 
 from phyloai.core.iqtree import IQTREE_COMPATIBLE_EXTENSIONS
+from phyloai.posttree.modelcompare_iqtree import (
+    AA_HETEROGENEOUS_MODELS,
+    AA_STANDARD_MODELS,
+    NT_STANDARD_MODELS,
+)
 
 console = Console()
 
 
 class _PosttreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["topology", "dating", "signal"]
+        return ["topology", "dating", "signal", "modelcompare"]
 
 
 class _SignalGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
         return ["lnl", "fclm", "consistent"]
+
+
+class _ModelcompareGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["iqtree", "pb"]
 
 
 @click.group(cls=_PosttreeGroup)
@@ -1356,3 +1366,261 @@ def fclm_command(
         click.echo(f"Taxsets: {kr.get('n_taxsets')}")
         click.echo(f"Report:  {output_dir.resolve() / 'iqtree' / f'{prefix}.iqtree'}")
         click.echo(f"Result:  {result_path}")
+
+
+@posttree.group("modelcompare", cls=_ModelcompareGroup)
+def modelcompare() -> None:
+    """Relative model comparison and selection."""
+
+
+@modelcompare.command("iqtree")
+@click.option("--matrix", required=True, type=click.Path(exists=True, path_type=Path),
+              help="Single supermatrix alignment (FASTA/PHYLIP/NEXUS). Maps to IQ-TREE -s.")
+@click.option("--homogeneous-model", required=True, type=str,
+              help=("Comma-separated standard models for the homogeneous search space. "
+                    f"AA: {', '.join(sorted(AA_STANDARD_MODELS))}. "
+                    f"NT: {', '.join(sorted(NT_STANDARD_MODELS))}. Maps to IQ-TREE -mset."))
+@click.option("--mrate", type=str, default="E,G", show_default=True,
+              help="Rate heterogeneity types for homogeneous models. Valid: any subset of E, G, R. Maps to IQ-TREE -mrate.")
+@click.option("--heterogeneous-model", type=str, default=None,
+              help=("Comma-separated AA mixture models evaluated via -madd. AA only. "
+                    f"Valid: {', '.join(sorted(AA_HETEROGENEOUS_MODELS))}."))
+@click.option("--het-mrate", type=str, default="E,G", show_default=True,
+              help="Rate heterogeneity for heterogeneous model expansion. "
+                   "Each token selects variant families, mirroring --mrate: "
+                   "E = base models (C10, C10+F); G = +G4; R = +R4. Valid: any subset of E, G, R. AA only.")
+@click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True,
+              help="Sequence type. When auto, the alignment is read to detect AA vs NT before model validation.")
+@click.option("--prefix", type=str, default="modelcompare", show_default=True,
+              help="IQ-TREE output prefix.")
+@click.option("--threads", "-t", default="auto", show_default=True,
+              help="IQ-TREE -T value (integer or auto).")
+@click.option("--iqtree-path", type=str, default=None,
+              help="Explicit path to iqtree3 executable.")
+@click.option("--tool-args", type=str, default=None,
+              help="Extra IQ-TREE flags. Blocked: -s, --prefix.")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/modelcompare/iqtree"), show_default=True)
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate output directory.")
+@click.option("--resume", is_flag=True, default=False,
+              help="Resume incomplete IQ-TREE run (native checkpoint).")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Print the IQ-TREE command without executing.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+def modelcompare_iqtree_command(
+    matrix: Path, homogeneous_model: str, mrate: str,
+    heterogeneous_model: str | None, het_mrate: str, seq_type: str,
+    prefix: str, threads: str, iqtree_path: str | None,
+    tool_args: str | None, output_dir: Path,
+    overwrite: bool, resume: bool, dry_run: bool, quiet: bool,
+) -> None:
+    """Relative model comparison via IQ-TREE ModelFinder (BIC/AIC/AICc).
+
+    Runs IQ-TREE3 -m MF with -mset <homogeneous models> and -mrate, plus
+    optional -madd expansion of heterogeneous mixture models. Parses the
+    'List of models sorted by BIC scores:' section of the .iqtree report
+    into model_fit.csv, reporting BIC/AIC/AICc scores, weights, and 95%
+    confidence-set membership (Kalyaanamoorthy et al. 2017).
+
+    Examples:
+
+      # Homogeneous search only
+
+      phyloai posttree modelcompare iqtree --matrix concat.aa.fa --homogeneous-model LG,WAG --mrate E,G,R
+
+      # With heterogeneous mixture models
+
+      phyloai posttree modelcompare iqtree --matrix concat.aa.fa --homogeneous-model LG --heterogeneous-model C10,C20 --het-mrate G,R
+    """
+    from phyloai.posttree.modelcompare_iqtree import run_modelcompare_iqtree
+
+    result = run_modelcompare_iqtree(
+        matrix=matrix, homogeneous_model=homogeneous_model,
+        mrate=mrate, heterogeneous_model=heterogeneous_model,
+        het_mrate=het_mrate, seq_type=seq_type, prefix=prefix,
+        output_dir=output_dir, threads=threads, iqtree_path=iqtree_path,
+        tool_args=tool_args, overwrite=overwrite, resume=resume,
+        dry_run=dry_run, quiet=quiet,
+    )
+
+    result_path = output_dir.resolve() / "result.json"
+    if not (result["status"] == "error"
+            and not overwrite
+            and output_dir.exists()
+            and any(output_dir.iterdir())):
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(result_path, "w") as fh:
+            json.dump(result, fh, indent=2)
+
+    if result["status"] == "error":
+        cat = result.get("error_category")
+        _fail(result.get("error") or "Unknown error",
+              exit_code=1 if cat == "input" else 3 if cat == "env" else 2)
+
+    if dry_run:
+        click.echo(f"Would run: {' '.join(result['data']['cmd'])}")
+        return
+
+    if not quiet:
+        kr = result["key_results"]
+        click.echo(f"\nStatus:    {result['status']}")
+        click.echo(f"Wall time: {result['wall_time']:.1f}s")
+
+        models = result.get("data", {}).get("models", [])
+        if models:
+            table = Table(title="Model comparison (sorted by BIC)")
+            table.add_column("Rank", justify="right", style="cyan")
+            table.add_column("Model")
+            table.add_column("LogL", justify="right")
+            table.add_column("BIC", justify="right")
+            table.add_column("w-BIC", justify="right")
+            table.add_column("In_BIC_95", justify="center")
+            for m in models:
+                table.add_row(
+                    str(m.get("rank", "-")),
+                    m.get("model", "-"),
+                    f"{m.get('logl', '-')}" if m.get("logl") is not None else "-",
+                    f"{m.get('bic', '-'):.3f}" if m.get("bic") is not None else "-",
+                    f"{m.get('w_bic', '-'):.4f}" if m.get("w_bic") is not None else "-",
+                    "+" if m.get("in_bic_95") else "-",
+                )
+            console.print()
+            console.print(table)
+
+        click.echo(f"Best model (BIC): {kr.get('best_model_bic')}  "
+                   f"(AIC: {kr.get('best_model_aic')})  (AICc: {kr.get('best_model_aicc')})")
+        click.echo(f"Models tested: {kr.get('n_models_tested')}")
+        click.echo(f"Result:    {result_path}")
+
+
+@modelcompare.command("pb")
+@click.option("--sitelogl-dir", type=click.Path(path_type=str), default=None,
+              help="Comma-separated directories; each directory represents one model, "
+                   "globbing *.sitelogl (>= 2 files per directory). Mutually exclusive with --sitelogl.")
+@click.option("--sitelogl", type=click.Path(path_type=str), multiple=True, default=None,
+              help="Repeatable; each occurrence is comma-separated .sitelogl file paths for one "
+                   "model (>= 2 files per model). Mutually exclusive with --sitelogl-dir.")
+@click.option("--model-names", type=str, default=None,
+              help="Comma-separated model labels matching the number of model groups. "
+                   "If omitted, models are labeled model_1, model_2, etc.")
+@click.option("--output-dir", "-o", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/modelcompare/pb"), show_default=True)
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate output directory.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+def modelcompare_pb_command(
+    sitelogl_dir: str | None, sitelogl: tuple[str, ...] | None,
+    model_names: str | None, output_dir: Path,
+    overwrite: bool, quiet: bool,
+) -> None:
+    """Model comparison via PhyloBayes LOO-CV / wAIC.
+
+    Computes leave-one-out cross-validation (LOO-CV) and widely applicable
+    information criterion (wAIC) scores from PhyloBayes .sitelogl files,
+    following Lartillot (2023). Each model is represented by >= 2 independent
+    MCMC chains (--sitelogl-dir directories or repeated --sitelogl groups).
+    Scores from different alignments are not comparable: all model groups must
+    share identical site identifiers.
+
+    Examples:
+
+      # Two model directories, each with >= 2 chain files
+
+      phyloai posttree modelcompare pb --sitelogl-dir model1,model2
+
+      # Explicit chain groups
+
+      phyloai posttree modelcompare pb --sitelogl model1/c1.sitelogl,model1/c2.sitelogl --sitelogl model2/c1.sitelogl,model2/c2.sitelogl
+    """
+    from phyloai.posttree.modelcompare_pb import run_modelcompare_pb
+
+    result = run_modelcompare_pb(
+        sitelogl_dir=sitelogl_dir,
+        sitelogl=list(sitelogl) if sitelogl else None,
+        model_names=model_names, output_dir=output_dir,
+        overwrite=overwrite, quiet=quiet,
+    )
+
+    result_path = output_dir.resolve() / "result.json"
+    if not (result["status"] == "error"
+            and not overwrite
+            and output_dir.exists()
+            and any(output_dir.iterdir())):
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(result_path, "w") as fh:
+            json.dump(result, fh, indent=2)
+
+    if result["status"] == "error":
+        cat = result.get("error_category")
+        _fail(result.get("error") or "Unknown error",
+              exit_code=1 if cat == "input" else 3 if cat == "env" else 2)
+
+    if not quiet:
+        kr = result["key_results"]
+        click.echo(f"\nStatus:    {result['status']}")
+        click.echo(f"Wall time: {result['wall_time']:.1f}s")
+
+        models = result.get("data", {}).get("models", [])
+        if len(models) == 1:
+            table = Table(title="LOO-CV / wAIC model fit")
+            table.add_column("Metric", style="cyan")
+            table.add_column("Score", justify="right")
+            table.add_column("Bias", justify="right")
+            table.add_column("StDev", justify="right")
+            table.add_column("CI95min", justify="right")
+            table.add_column("CI95max", justify="right")
+            table.add_column("ESS", justify="right")
+            table.add_column("%(ess<10)", justify="right")
+            table.add_column("f(ess<10)", justify="right")
+            table.add_column("Quality", justify="center")
+            m = models[0]
+            for metric, name in (("loocv", "LOO-CV"), ("waic", "wAIC")):
+                d = m.get(metric, {})
+                table.add_row(
+                    name,
+                    f"{d.get('score', '-'):.4f}" if d.get("score") is not None else "-",
+                    f"{d.get('bias', '-'):.4f}" if d.get("bias") is not None else "-",
+                    f"{d.get('stdev', '-'):.4f}" if d.get("stdev") is not None else "-",
+                    f"{d.get('ci95_min', '-'):.4f}" if d.get("ci95_min") is not None else "-",
+                    f"{d.get('ci95_max', '-'):.4f}" if d.get("ci95_max") is not None else "-",
+                    f"{d.get('ess', '-'):.2f}" if d.get("ess") is not None else "-",
+                    f"{d.get('pct_ess_lt10', '-'):.3f}" if d.get("pct_ess_lt10") is not None else "-",
+                    f"{d.get('frac_ess_lt10', '-'):.3f}" if d.get("frac_ess_lt10") is not None else "-",
+                    d.get("quality", "-") or "-",
+                )
+            console.print()
+            console.print(table)
+        elif models:
+            table = Table(title="LOO-CV / wAIC model comparison")
+            table.add_column("Model")
+            table.add_column("LOO-CV", justify="right")
+            table.add_column("LOO-CV_Q", justify="center")
+            table.add_column("wAIC", justify="right")
+            table.add_column("wAIC_Q", justify="center")
+            if len(models) > 1:
+                table.add_column("Δ_LOOCV", justify="right")
+                table.add_column("Δ_wAIC", justify="right")
+            for m in models:
+                loocv = m.get("loocv", {})
+                waic = m.get("waic", {})
+                row = [
+                    m.get("model", "-"),
+                    f"{loocv.get('score', '-'):.4f}" if loocv.get("score") is not None else "-",
+                    loocv.get("quality", "-") or "-",
+                    f"{waic.get('score', '-'):.4f}" if waic.get("score") is not None else "-",
+                    waic.get("quality", "-") or "-",
+                ]
+                if len(models) > 1:
+                    row.append(f"{m.get('delta_loocv', '-'):.4f}" if m.get("delta_loocv") is not None else "-")
+                    row.append(f"{m.get('delta_waic', '-'):.4f}" if m.get("delta_waic") is not None else "-")
+                table.add_row(*row)
+            console.print()
+            console.print(table)
+
+        click.echo(f"Best model (LOO-CV): {kr.get('best_model_loocv')}  "
+                   f"(wAIC: {kr.get('best_model_waic')})")
+        click.echo(f"Sites: {kr.get('n_sites')} | Models: {kr.get('n_models')}")
+        click.echo(f"Result:    {result_path}")

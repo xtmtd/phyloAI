@@ -1229,6 +1229,122 @@ def generate_methods_posttree_signal_fclm(
     )
 
 
+def generate_methods_posttree_modelcompare_iqtree(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    version = tool_versions.get("iqtree3") or tool_versions.get("iqtree", "unknown version")
+    hom_models = params.get("homogeneous_model", "")
+    mrate = params.get("mrate", "")
+    het_models = params.get("heterogeneous_model")
+    het_mrate = params.get("het_mrate", "")
+    n_models = key_results.get("n_models_tested", 0)
+    best = key_results.get("best_model_bic", "")
+    bic = key_results.get("best_model_bic_value")
+    w_bic = key_results.get("best_model_bic_weight")
+
+    text = (
+        f"Relative model fit was assessed using ModelFinder "
+        f"(Kalyaanamoorthy et al. 2017) as implemented in IQ-TREE3 v{version}. "
+        f"The homogeneous model search space included {hom_models} "
+        f"with rate heterogeneity types {mrate}. "
+    )
+
+    if het_models:
+        n_madd = key_results.get("n_madd_expanded", 0)
+        text += (
+            f"Heterogeneous mixture models ({het_models}) were additionally evaluated "
+            f"with rate-variation families {het_mrate}, yielding {_describe_n(n_madd, 'expanded model configuration', 'expanded model configurations')} "
+            f"passed via -madd. "
+        )
+
+    text += f"A total of {_describe_n(n_models, 'model configuration', 'model configurations')} were evaluated. "
+    if best:
+        text += f"The best-fitting model according to BIC was {best}"
+        if bic is not None:
+            text += f" (BIC = {_safe_fmt(bic, '.3f')}"
+            if w_bic is not None:
+                text += f", w-BIC = {_safe_fmt(w_bic, '.4g')}"
+            text += ")"
+        text += "."
+
+    return text
+
+
+def generate_methods_posttree_modelcompare_pb(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    n_sites = key_results.get("n_sites", 0)
+    n_models = key_results.get("n_models", 1)
+
+    if n_models is not None and n_models > 1:
+        best_loocv = key_results.get("best_model_loocv", "")
+        best_waic = key_results.get("best_model_waic", "")
+        loocv_score = key_results.get("best_loocv_score")
+        loocv_quality = key_results.get("best_loocv_quality", "")
+        waic_score = key_results.get("best_waic_score")
+        waic_quality = key_results.get("best_waic_quality", "")
+        text = (
+            f"Relative model fit was evaluated using leave-one-out cross-validation (LOO-CV) "
+            f"and the widely applicable information criterion (wAIC) following Lartillot (2023), "
+            f"computed from site log-likelihood files ({n_sites} sites). "
+            f"{_describe_n(n_models, 'candidate model', 'candidate models')} were compared. "
+        )
+        if best_loocv:
+            text += f"The best-fitting model according to LOO-CV was {best_loocv}"
+            if loocv_score is not None:
+                text += f" (LOO-CV = {_safe_fmt(loocv_score, '.4f')}, Δ = 0"
+                if loocv_quality:
+                    text += f"; quality: {loocv_quality}"
+                text += ")"
+            text += ". "
+        if best_waic:
+            text += f"The best-fitting model according to wAIC was {best_waic}"
+            if waic_score is not None:
+                text += f" (wAIC = {_safe_fmt(waic_score, '.4f')}"
+                if waic_quality:
+                    text += f"; quality: {waic_quality}"
+                text += ")"
+            text += "."
+    else:
+        n_runs = key_results.get("n_runs", 0)
+        loocv_score = key_results.get("best_loocv_score")
+        loocv_quality = key_results.get("best_loocv_quality", "")
+        loocv_ess = key_results.get("best_loocv_ess")
+        loocv_pct = key_results.get("best_loocv_pct_ess_lt10")
+        loocv_frac = key_results.get("best_loocv_frac_ess_lt10")
+        waic_score = key_results.get("best_waic_score")
+        waic_quality = key_results.get("best_waic_quality", "")
+        text = (
+            f"Model fit was evaluated using leave-one-out cross-validation (LOO-CV) "
+            f"and the widely applicable information criterion (wAIC) following Lartillot (2023), "
+            f"computed from {_describe_n(n_runs, 'independent MCMC chain', 'independent MCMC chains')} "
+            f"site log-likelihood files ({n_sites} sites). "
+        )
+        if loocv_score is not None:
+            text += f"The debiased LOO-CV score was {_safe_fmt(loocv_score, '.4f')}"
+            if loocv_quality:
+                text += f" (quality: {loocv_quality}"
+                if loocv_ess is not None:
+                    text += f"; ESS = {_safe_fmt(loocv_ess, '.1f')}"
+                if loocv_pct is not None:
+                    text += f"; %(ESS<10) = {_safe_fmt(loocv_pct, '.3f')}"
+                if loocv_frac is not None:
+                    text += f"; f(ESS<10) = {_safe_fmt(loocv_frac, '.3f')}"
+                text += ")"
+            text += ". "
+        if waic_score is not None:
+            text += f"The debiased wAIC score was {_safe_fmt(waic_score, '.4f')}"
+            if waic_quality:
+                text += f" (quality: {waic_quality})"
+            text += "."
+
+    return text
+
+
 def generate_methods_posttree_syserror_brlen(
     params: dict[str, Any],
     key_results: dict[str, Any],
@@ -1303,6 +1419,8 @@ METHODS_GENERATORS: dict[str, Any] = {
     "posttree.signal.lnl": generate_methods_posttree_signal_lnl,
     "posttree.signal.consistent": generate_methods_posttree_signal_consistent,
     "posttree.signal.fclm": generate_methods_posttree_signal_fclm,
+    "posttree.modelcompare.iqtree": generate_methods_posttree_modelcompare_iqtree,
+    "posttree.modelcompare.pb": generate_methods_posttree_modelcompare_pb,
     "posttree.syserror.brlen": generate_methods_posttree_syserror_brlen,
     "posttree.syserror.cca": generate_methods_posttree_syserror_cca,
     "posttree.syserror.sites": generate_methods_posttree_syserror_sites,

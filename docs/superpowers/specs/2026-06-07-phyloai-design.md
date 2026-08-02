@@ -71,7 +71,9 @@ phyloai/
 │   ├── dating.py       # MCMCTree (PAML): fossil calibration, convergence diagnostics
 │   ├── signal.py       # phylogenetic signal distribution, Four-cluster Likelihood Mapping (FcLM)
 │   ├── syserror.py     # systematic error diagnosis (iterative, atom operations)
-│   └── simulate.py     # AliSim (MSA simulation), gene-jackknife resampling
+│   ├── modelcompare_iqtree.py # relative model comparison via IQ-TREE ModelFinder (BIC/AIC/AICc)
+│   ├── modelcompare_pb.py     # relative model comparison via PhyloBayes LOO-CV/wAIC (pure Python)
+│   └── simulate.py     # planned group: AliSim simulation/gene-jackknife and PB posterior-predictive adequacy
 │
 ├── report/
 │   ├── collector.py    # directory scanning, result.json discovery, step ordering
@@ -130,7 +132,10 @@ phyloai posttree dating mcmc  --hessian-dir ./hessian
 phyloai posttree signal lnl     --matrix ./matrix.fa --candidate-trees h1.nwk,h2.nwk
 phyloai posttree signal consistent --matrix ./matrix.fa --candidate-trees T1.nwk,T2.nwk --tree-dir gene_trees/
 phyloai posttree signal fclm     --matrix ./matrix.fa --taxset-csv taxsets.csv
-phyloai posttree simulate    --tree ./tree.nwk --replicates 100 --tool alisim
+phyloai posttree modelcompare iqtree --matrix ./matrix.fa --homogeneous-model LG,WAG
+phyloai posttree modelcompare pb --sitelogl-dir ./cat_sitelogl,./gtr_sitelogl
+phyloai posttree simulate alisim   --tree ./tree.nwk --replicates 100
+phyloai posttree simulate adequacy ...
 phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk
 phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
@@ -255,6 +260,7 @@ runs/
 │   ├── topology/
 │   ├── dating/
 │   ├── signal/
+│   ├── modelcompare/
 │   ├── syserror/
 │   └── simulate/
 └── <run-dir>/report/               # written alongside the run being reported
@@ -498,7 +504,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 1 | `core/` infrastructure | env, runner, formats, logger | — |
 | 2 | `pretree/` modules | stats, convert, align, trim, metrics, filter, concat | Phase 1 |
 | 3 | `tree/` modules | ml, bi, msc, cf | Phase 1 |
-| 4 | `posttree/` modules | topology, dating, signal, syserror, simulate | Phases 2–3 |
+| 4 | `posttree/` modules | topology, dating, signal, modelcompare, syserror, simulate | Phases 2–3 |
 | 5 | `phyloai run` | one-click supermatrix and supertree pipelines | Phases 2–3 |
 | 6 | `report/` module | collector, templates, schema, renderer; outputs report.json + report.html | Phases 2–4 |
 | 7 | MCP Server | All CLI tools wrapped (fine-grained, one tool per subcommand); check_status / read_result / read_report / get_command_schema utilities; stub tools for future commands; stdio transport | Phases 1–6 |
