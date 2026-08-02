@@ -34,6 +34,8 @@ STEP_ORDER: list[str] = [
     "posttree.signal.lnl",
     "posttree.signal.consistent",
     "posttree.signal.fclm",
+    "posttree.modelcompare.iqtree",
+    "posttree.modelcompare.pb",
     "posttree.syserror.brlen",
     "posttree.syserror.cca",
     "posttree.syserror.sites",
@@ -60,7 +62,7 @@ def parse_step_id(command: str) -> str:
     _ROOT_SUBCOMMANDS: dict[str, set[str] | None] = {
         "pretree": {"convert", "stats", "align", "trim", "metrics", "filter", "concat"},
         "tree":    {"ml", "bi", "msc", "cf"},
-        "posttree":{"topology", "dating", "signal", "syserror", "simulate"},
+        "posttree": {"topology", "dating", "signal", "modelcompare", "syserror", "simulate"},
         "run":     None,
         "doctor":  None,
     }
@@ -72,6 +74,7 @@ def parse_step_id(command: str) -> str:
         "syserror": {"brlen", "cca", "sites"},
         "bi": {"pb", "bpcomp", "tracecomp", "readpb"},
         "signal": {"lnl", "consistent", "fclm"},
+        "modelcompare": {"iqtree", "pb"},
     }
 
     try:

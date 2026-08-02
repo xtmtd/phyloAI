@@ -128,4 +128,6 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree topology` | 树拓扑检验（AU / KH / SH / WKH / WSH / c-ELW），将候选树与超矩阵进行比较。 | [docs/commands/posttree-topology.md](docs/commands/posttree-topology.md) |
 | `phyloai posttree dating`  | 使用 MCMCtree 进行贝叶斯分子定年：IQ-TREE Hessian 计算 + 带诊断的 MCMC 分歧时间估计。 | [docs/commands/posttree-dating.md](docs/commands/posttree-dating.md) |
 | `phyloai posttree signal` | 系统发育信号分布分析：位点/基因 lnL 打分、一致基因识别、四簇似然映射。命令：`signal lnl`、`signal consistent`、`signal fclm`。 | [docs/commands/posttree-signal.md](docs/commands/posttree-signal.md) |
+| `phyloai posttree modelcompare iqtree` | 使用 IQ-TREE3 ModelFinder 进行相对模型比较（BIC/AIC/AICc），支持通过 `-madd` 展开异质混合模型。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
+| `phyloai posttree modelcompare pb` | 使用 PhyloBayes `.sitelogl` 位点对数似然文件进行 LOO-CV / wAIC 相对模型比较（Lartillot 2023），纯 Python 实现。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
 | `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.md) |
