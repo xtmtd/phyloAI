@@ -39,7 +39,7 @@ description: >-
 
 - Pretree: `convert -> align -> trim -> metrics / filter -> concat` (supermatrix) or `... -> gene trees` (supertree). `stats` inspects results at any step.
 - Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi pb` for Bayesian MCMC, `tree bi bpcomp`/`tree bi tracecomp` for final convergence diagnostics with user-chosen burn-in, `tree bi readpb` for posterior summaries. For custom CAT-PMSF-style ML, pass an AA exchangeability file with `tree ml iqtree --model`, a profile with `--site-freq-file`, and `--state-freq none`; raw `--tool-args -fs` overrides the structured profile. For PMSF simulation input, use `tree bi readpb --mode ss,rr,r`; it writes `partition.PMSF.nex` from posterior site rates, alpha, Gamma category count, and the co-generated `.exchangeabilities` model. Use `cf` on species trees.
-- Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`, `modelcompare iqtree`, `modelcompare pb`.
+- Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`, `modelcompare iqtree`, `modelcompare pb`, `simulate alisim`.
 - Report: run `report` only when the user requests a report/methods draft or recovery needs `report.json`.
 
 ### posttree signal
@@ -158,6 +158,35 @@ are not comparable. Non-empty existing output dir requires `--overwrite`.
 Outputs: `model_fit.csv` (LOO-CV/wAIC score, bias, stdev, CI95, ESS quality
 columns, Delta values for multi-model), copied `.sitelogl` files under
 `sitelogl/model_N/`, `result.json`.
+
+### posttree simulate alisim
+
+Three-subcommand IQ-TREE3 AliSim workflow that preserves empirical dataset
+properties instead of using arbitrary model parameters:
+
+- `alisim params` — extract per-locus simulation parameters (model string
+  components, frequencies, proportion of invariant sites, rate heterogeneity,
+  tree) from existing `.iqtree` reports into `params.tsv`.
+- `alisim iqtree` — simulate MSAs. Single mode takes `--ref-tree` + a model
+  source (`--model` or `--model-partitions`). Batch mode takes `--model-params`
+  + `--strategy complete|mixed|pdf` + `--num-simulations`, samples rows as
+  atomic units (model core + rate group stay together; `+I` presence decided
+  before its value is resampled), is resumable via `--resume`, and writes every
+  used row to `params_sampled.tsv`. `--override` (keys `length`, `prop_inv`)
+  fixes values across all simulations.
+- `alisim transfergaps` — transfer the original per-taxon gap mask onto a
+  simulated (gap-free) MSA; taxon sets and lengths must match.
+  `--exclude-ambiguity` transfers only `-`/`.` instead of all non-standard
+  characters.
+
+`adequacy` and `phybase` are future placeholders (not-implemented message).
+
+**Approval:** `alisim iqtree` executes IQ-TREE3, so run `doctor`, review the
+full parameter card, and get explicit user approval before invoking it —
+including `--dry-run` to show the sampling plan/command first. `alisim params`
+and `alisim transfergaps` are local-only (no external tool) but still get the
+standard parameter review. `check_status`, `read_result`, `read_report`, and
+`get_command_schema` remain directly inspectable without approval.
 
 ## Demo Data
 

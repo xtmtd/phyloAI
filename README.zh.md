@@ -130,4 +130,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree signal` | 系统发育信号分布分析：位点/基因 lnL 打分、一致基因识别、四簇似然映射。命令：`signal lnl`、`signal consistent`、`signal fclm`。 | [docs/commands/posttree-signal.md](docs/commands/posttree-signal.md) |
 | `phyloai posttree modelcompare iqtree` | 使用 IQ-TREE3 ModelFinder 进行相对模型比较（BIC/AIC/AICc），支持通过 `-madd` 展开异质混合模型。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
 | `phyloai posttree modelcompare pb` | 使用 PhyloBayes `.sitelogl` 位点对数似然文件进行 LOO-CV / wAIC 相对模型比较（Lartillot 2023），纯 Python 实现。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
+| `phyloai posttree simulate alisim` | 基于 IQ-TREE3 AliSim 的序列模拟，保留数据集实证特征：`params` 从 IQ-TREE 报告中提取逐位点参数，`iqtree` 模拟单个或批量 MSA（complete/mixed/pdf 策略，可恢复），`transfergaps` 重新引入原始 gap 掩码。 | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.md) |
 | `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.md) |
