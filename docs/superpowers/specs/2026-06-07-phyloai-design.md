@@ -73,7 +73,9 @@ phyloai/
 │   ├── syserror.py     # systematic error diagnosis (iterative, atom operations)
 │   ├── modelcompare_iqtree.py # relative model comparison via IQ-TREE ModelFinder (BIC/AIC/AICc)
 │   ├── modelcompare_pb.py     # relative model comparison via PhyloBayes LOO-CV/wAIC (pure Python)
-│   └── simulate.py     # planned group: AliSim simulation/gene-jackknife and PB posterior-predictive adequacy
+│   ├── simulate_alisim_params.py     # extract empirical AliSim parameters from .iqtree files
+│   ├── simulate_alisim_iqtree.py     # IQ-TREE3 AliSim MSA simulation (single + batch)
+│   └── simulate_alisim_transfergaps.py # transfer an original MSA gap mask to one simulated MSA
 │
 ├── report/
 │   ├── collector.py    # directory scanning, result.json discovery, step ordering
@@ -134,8 +136,11 @@ phyloai posttree signal consistent --matrix ./matrix.fa --candidate-trees T1.nwk
 phyloai posttree signal fclm     --matrix ./matrix.fa --taxset-csv taxsets.csv
 phyloai posttree modelcompare iqtree --matrix ./matrix.fa --homogeneous-model LG,WAG
 phyloai posttree modelcompare pb --sitelogl-dir ./cat_sitelogl,./gtr_sitelogl
-phyloai posttree simulate alisim   --tree ./tree.nwk --replicates 100
-phyloai posttree simulate adequacy ...
+phyloai posttree simulate alisim params   --iqtree-dir ./logs --tree-dir ./trees
+phyloai posttree simulate alisim iqtree  --model-params params.tsv --strategy complete --num-simulations 100
+phyloai posttree simulate alisim transfergaps --original-msa orig.fa --simulated-msa sim.fa
+phyloai posttree simulate adequacy ...  # future stub: model-adequacy checks
+phyloai posttree simulate phybase ...   # future stub: Phybase R-script generation
 phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk
 phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
@@ -263,6 +268,10 @@ runs/
 │   ├── modelcompare/
 │   ├── syserror/
 │   └── simulate/
+│       └── alisim/
+│           ├── params/          # utility: no log, no checkpoint
+│           ├── iqtree/          # single or batch; batch has checkpoint + per-task logs
+│           └── transfergaps/    # single-file gap-mask transfer + result.json
 └── <run-dir>/report/               # written alongside the run being reported
     ├── report.json                 # machine-readable source of truth; AI/MCP entry point
     └── report.html                 # human-readable; embedded PDF figures, sortable tables
@@ -541,6 +550,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | Format handling per-module | Different tools need different formats; per-module via core/formats.py |
 | backtrans in align | Direct post-processing of alignment, uses trimAl already a dependency |
 | syserror exposed as atomic ops only | Full diagnosis needs iterative human decisions; CLI atomics + Skill orchestration |
+| simulate starts with AliSim only | Current implementation covers parameter extraction, AliSim alignment simulation, and single-file gap-mask transfer; adequacy and phybase remain explicit future CLI stubs |
 | genetree in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
 | JSON result.json for non-doctor commands | One stable machine-readable result path for MCP wrapping |
 | JSON key_results in all pipeline modules | Enables report summary and methods text without post-hoc data extraction |
