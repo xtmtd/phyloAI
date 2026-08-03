@@ -29,8 +29,8 @@ def test_parse_gtr_f_i_g_and_tree_pair(tmp_path: Path) -> None:
     assert parsed["seqtype"] == "DNA"
     assert parsed["length"] == "100"
     assert parsed["subs_model"] == "GTR"
-    assert parsed["subs_rate"] == "1/2/3/4/5"
-    assert parsed["freq"] == ".1/.2/.3/.4"
+    assert parsed["subs_rate"] == "1,2,3,4,5"
+    assert parsed["freq"] == ".1,.2,.3,.4"
     assert parsed["prop_inv"] == ".2"
     assert parsed["rate_heterogeneity"] == "G"
     assert parsed["rate_categories"] == "4"
@@ -65,7 +65,7 @@ def test_parse_freerate_pairs(tmp_path: Path) -> None:
     assert parsed["seqtype"] == "AA"
     assert parsed["rate_heterogeneity"] == "R"
     assert parsed["rate_categories"] == "2"
-    assert parsed["rate_param"] == "0.863674/0.350977/0.136326/5.11179"
+    assert parsed["rate_param"] == "0.863674,0.350977,0.136326,5.11179"
 
 
 def test_parse_aa_f_falls_back_to_pi_lines(tmp_path: Path) -> None:
@@ -80,8 +80,20 @@ def test_parse_aa_f_falls_back_to_pi_lines(tmp_path: Path) -> None:
         'iqtree3 --alisim sim -m "LG+F" --length 100\n',
     )
     parsed = parse_iqtree_report(report)
-    assert parsed["freq"].startswith("0.08/0.06/0.04/0.05")
-    assert parsed["freq"].count("/") == 19
+    assert parsed["freq"].startswith("0.08,0.06,0.04,0.05")
+    assert parsed["freq"].count(",") == 19
+
+
+def test_parse_aa_f_rejects_partial_pi_set(tmp_path: Path) -> None:
+    report = _write_report(
+        tmp_path / "partial.iqtree",
+        "Input data: amino-acid\n"
+        "pi(A) = 0.08\npi(R) = 0.06\npi(N) = 0.04\n"
+        "To simulate an alignment of the same\n"
+        'iqtree3 --alisim sim -m "LG+F" --length 100\n',
+    )
+    with pytest.raises(ValueError, match="missing"):
+        parse_iqtree_report(report)
 
 
 def test_parse_nt_no_f_leaves_freq_empty(tmp_path: Path) -> None:
@@ -93,7 +105,7 @@ def test_parse_nt_no_f_leaves_freq_empty(tmp_path: Path) -> None:
     parsed = parse_iqtree_report(report)
     assert parsed["seqtype"] == "DNA"
     assert parsed["freq"] == ""
-    assert parsed["subs_rate"] == "1/2/3/4/5"
+    assert parsed["subs_rate"] == "1,2,3,4,5"
 
 
 def test_run_skips_unmatched_and_rejects_ambiguous_tree(tmp_path: Path) -> None:
@@ -199,3 +211,25 @@ def test_run_writes_absolute_paths_and_tab_delimited(tmp_path: Path) -> None:
     result = json.loads((out / "result.json").read_text())
     assert Path(result["data"]["output_files"]["params_tsv"]["path"]).is_absolute()
     assert result["params"]["iqtree_dir"] == str(reports.resolve())
+    assert "--iqtree-dir" in result["command"]
+    assert "--tree-dir" in result["command"]
+    assert "-o" in result["command"]
+    assert result["command"].startswith("phyloai posttree simulate alisim params")
+
+
+def test_run_records_overwrite_in_command(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    trees = tmp_path / "trees"
+    reports.mkdir()
+    trees.mkdir()
+    _write_report(
+        reports / "AAA.iqtree",
+        "Input data: amino-acid\nTo simulate an alignment of the same\n"
+        'iqtree3 --alisim sim -m "LG+G4{0.5}" --length 42\n',
+    )
+    (trees / "AAA.treefile").write_text("(A,B);\n")
+    out = tmp_path / "out"
+    run_alisim_params(iqtree_dir=reports, tree_dir=trees, output_dir=out,
+                      overwrite=True)
+    result = json.loads((out / "result.json").read_text())
+    assert "--overwrite" in result["command"]

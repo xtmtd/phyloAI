@@ -304,15 +304,26 @@ class TestAlisim:
         )
         assert "histogram" in text.lower()
         assert "1 failed" in text
+        assert "probability density function (PDF)" in text
 
-    def test_iqtree_batch_complete_strategy_tree_sentence(self):
+    def test_iqtree_batch_complete_strategy_methods_detail(self):
         text = generate_all_methods(
             "posttree.simulate.alisim.iqtree",
             params={"strategy": "complete"},
             key_results={"source_loci": 4, "n_simulations_completed": 3, "n_simulations_failed": 0},
             tool_versions={"iqtree3": "3.1"},
         )
+        assert "replicates the full parameter set of a single source gene model" in text
         assert "together with all model parameters" in text
+
+    def test_iqtree_batch_mixed_strategy_methods_detail(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.iqtree",
+            params={"strategy": "mixed"},
+            key_results={"source_loci": 4, "n_simulations_completed": 3, "n_simulations_failed": 0},
+            tool_versions={"iqtree3": "3.1"},
+        )
+        assert "sampled independently from the empirical gene-model distribution" in text
 
     def test_transfergaps_methods(self):
         text = generate_all_methods(
@@ -324,3 +335,29 @@ class TestAlisim:
         assert "ACDEFGHIKLMNPQRSTVWY" in text
         assert "gap" in text.lower()
 
+    def test_transfergaps_methods_batch(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.transfergaps",
+            params={"seq_type": "AA"},
+            key_results={"detected_seq_type": "AA", "n_sequences": 6, "n_msas": 5},
+            tool_versions={},
+        )
+        assert "transferred to 5 simulated alignments" in text
+
+    def test_transfergaps_methods_exclude_ambiguity(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.transfergaps",
+            params={"seq_type": "AA", "exclude_ambiguity": True},
+            key_results={"detected_seq_type": "AA", "n_sequences": 6, "n_msas": 1},
+            tool_versions={},
+        )
+        assert "ambiguity codes were left untouched" in text
+
+    def test_transfergaps_methods_masks_ambiguity_by_default(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.transfergaps",
+            params={"seq_type": "AA"},
+            key_results={"detected_seq_type": "AA", "n_sequences": 6, "n_msas": 1},
+            tool_versions={},
+        )
+        assert "gaps and ambiguity codes" in text

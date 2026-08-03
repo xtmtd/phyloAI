@@ -53,3 +53,22 @@ async def test_tree_bi_handlers_accept_default_output_dir(monkeypatch: pytest.Mo
     result = json.loads(await make_tool_handlers()[tool_name]())
 
     assert result["status"] == "launched"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "posttree_simulate_alisim_params",
+        "posttree_simulate_alisim_iqtree",
+        "posttree_simulate_alisim_transfergaps",
+    ],
+)
+async def test_alisim_handlers_accept_default_output_dir(
+    monkeypatch: pytest.MonkeyPatch, tool_name: str,
+) -> None:
+    monkeypatch.setattr(cli_tools, "launch_cli", lambda descriptor, params, output_dir: (output_dir, 123))
+
+    result = json.loads(await make_tool_handlers()[tool_name]())
+
+    assert result["status"] == "launched"

@@ -169,13 +169,22 @@ properties instead of using arbitrary model parameters:
   tree) from existing `.iqtree` reports into `params.tsv`.
 - `alisim iqtree` — simulate MSAs. Single mode takes `--ref-tree` + a model
   source (`--model` or `--model-partitions`). Batch mode takes `--model-params`
-  + `--strategy complete|mixed|pdf` + `--num-simulations`, samples rows as
-  atomic units (model core + rate group stay together; `+I` presence decided
-  before its value is resampled), is resumable via `--resume`, and writes every
-  used row to `params_sampled.tsv`. `--override` (keys `length`, `prop_inv`)
-  fixes values across all simulations.
-- `alisim transfergaps` — transfer the original per-taxon gap mask onto a
-  simulated (gap-free) MSA; taxon sets and lengths must match.
+  + `--strategy complete|mixed|pdf` (default `complete`) +
+  `--num-simulations`, samples rows as atomic units (model core + rate group
+  stay together; `+I` presence decided before its value is resampled), is
+  resumable via `--resume`, and writes every used row to `params_sampled.tsv`
+  (`source_id` column only for the `complete` strategy; each simulation gets an
+  independent random seed from the master-seeded generator). `--override` (keys
+  `length`, `prop_inv`) fixes values across all simulations. PDF density plots
+  (`server.R` palette) are generated only under `--strategy pdf`.
+  `--tool-args` may override non-I/O IQ-TREE flags (e.g. `--length`,
+  `--num-alignments`); only `--alisim`, `-t`, `--prefix`, `--out-format`,
+  `-af` are blocked.
+- `alisim transfergaps` — transfer the original per-taxon gap mask onto one
+  simulated (gap-free) MSA (`--simulated-msa`) or a directory of simulated
+  MSAs (`--simulated-dir`, exactly one required, mutually exclusive). Taxon
+  sets and lengths must match. Batch mode writes `<stem>.gaps.fa` per input
+  (output is always FASTA).
   `--exclude-ambiguity` transfers only `-`/`.` instead of all non-standard
   characters.
 

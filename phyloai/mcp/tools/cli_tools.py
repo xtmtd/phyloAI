@@ -13,9 +13,19 @@ from phyloai.mcp.tools.stubs import STUB_TOOLS, handle_stub
 
 Handler = Callable[..., Awaitable[str]]
 
-_CLICK_DEFAULT_OUTPUT_DIR_TOOLS = frozenset(
-    {"tree_bi_pb", "tree_bi_bpcomp", "tree_bi_tracecomp", "tree_bi_readpb"}
-)
+
+def _default_output_dir(descriptor: dict[str, Any]) -> str | None:
+    """CLI default for ``--output-dir`` when the caller omits it.
+
+    Any tool whose click ``output_dir`` parameter declares a default (the
+    generated schema advertises it) gets that default here; otherwise the
+    call is rejected as missing a required input.
+    """
+    for param in descriptor["click_command"].params:
+        if param.name == "output_dir" and param.default is not None \
+                and param.default is not ...:
+            return str(param.default)
+    return None
 
 
 def make_tool_handlers() -> dict[str, Handler]:
@@ -69,8 +79,8 @@ def _make_launch_handler(descriptor: dict[str, Any]) -> Handler:
             return result
 
         output_dir = kwargs.get("output_dir") or kwargs.get("output-dir")
-        if output_dir is None and tool_name in _CLICK_DEFAULT_OUTPUT_DIR_TOOLS:
-            output_dir = next(param.default for param in descriptor["click_command"].params if param.name == "output_dir")
+        if output_dir is None:
+            output_dir = _default_output_dir(descriptor)
         if output_dir is None:
             return json.dumps({"status": "error", "message": f"output_dir is required for {tool_name}"})
         try:

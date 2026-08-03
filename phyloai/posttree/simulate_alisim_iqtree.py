@@ -38,6 +38,8 @@ REQUIRED_COLUMNS = (
     "tree_path",
 )
 
+# source_id is written only for the complete strategy (mixed/pdf rows are
+# assembled from multiple source rows, so the column would be meaningless).
 SAMPLED_COLUMNS = (
     "simulation_id", "source_id", "seqtype", "length", "subs_model",
     "subs_rate", "freq", "prop_inv", "rate_heterogeneity",
@@ -45,13 +47,16 @@ SAMPLED_COLUMNS = (
 )
 
 _BLOCKED_FLAGS = frozenset({
-    "--alisim", "-t", "-m", "-p", "-q", "-Q", "--seqtype", "--length",
-    "--out-format", "-af", "--num-alignments", "-T", "--seed", "--prefix",
+    "--alisim", "-t", "--prefix", "--out-format", "-af",
 })
 
 VALID_OVERRIDE_KEYS = frozenset({"length", "prop_inv"})
 VALID_PDF_PARAMS = frozenset({"length", "prop_inv", "rate_param"})
 OUT_FORMAT_EXT = {"fasta": ".fa", "phy": ".phy"}
+
+
+class IQTreeExecutionError(RuntimeError):
+    """IQ-TREE ran but returned a non-zero exit code (exit-code 2 contract)."""
 
 
 # ===================================================================
@@ -170,10 +175,12 @@ def _sample_density(
         return rng.choice(values)
     index = rng.choices(range(len(counts)), weights=counts, k=1)[0]
     left, right = edges[index], edges[index + 1]
+    midpoint = (left + right) / 2.0
+    half_width = (right - left) / 2.0
     if noise_scale <= 0.0 or right <= left:
-        value = (left + right) / 2.0
+        value = midpoint
     else:
-        value = left + rng.uniform(0.0, right - left) * noise_scale
+        value = midpoint + rng.uniform(-1.0, 1.0) * half_width * noise_scale
     return max(lo, min(value, hi))
 
 
@@ -183,19 +190,25 @@ def _sample_rate_group(
 ) -> tuple[str, str, str]:
     """Sample (rate_heterogeneity, rate_categories, rate_param) as one unit.
 
-    The three fields always come from the same source row, keeping Gamma
-    alpha vs FreeRate pairs intact.  Distinct (type, categories, param)
-    combinations are the sampling units so that model configurations are
-    not diluted by row repetition in the table.
+    Follows the design's two-step rule (mirrors ``prop_inv``): first the
+    presence/type of rate heterogeneity (+G / +R / none) is decided from the
+    empirical frequency of each type among the rows, then the categories and
+    parameter value are sampled only from rows matching that decision.  This
+    preserves empirical type ratios instead of weighting every distinct
+    combination equally.
     """
-    by_key: dict[tuple[str, str, str], dict[str, str]] = {}
-    for row in rows:
-        key = (row["rate_heterogeneity"], row["rate_categories"], row["rate_param"])
-        if key not in by_key:
-            by_key[key] = row
-    if not by_key:
+    types = [row["rate_heterogeneity"] for row in rows]
+    present_types = sorted({t for t in types if t})
+    if not present_types:
         return "", "", ""
-    source = rng.choice(list(by_key.values()))
+    ratio = sum(1 for t in types if t) / len(types)
+    if ratio >= 1.0 or rng.random() < ratio:
+        type_counts = [sum(1 for t in types if t == tp) for tp in present_types]
+        chosen_type = rng.choices(present_types, weights=type_counts, k=1)[0]
+    else:
+        return "", "", ""
+    matching = [row for row in rows if row["rate_heterogeneity"] == chosen_type]
+    source = rng.choice(matching)
     return source["rate_heterogeneity"], source["rate_categories"], source["rate_param"]
 
 
@@ -256,11 +269,6 @@ def sample_batch_rows(
             )
         sampled = [dict(rng.choice(usable)) for _ in range(n)]
     else:
-        core_groups: dict[tuple[str, str, str, str], dict[str, str]] = {}
-        for row in rows:
-            key = (row["seqtype"], row["subs_model"], row["subs_rate"], row["freq"])
-            if key not in core_groups:
-                core_groups[key] = row
         tree_rows = [row for row in rows if row["tree_path"]]
         empirical_lengths = [float(row["length"]) for row in rows if row["length"]]
         empirical_prop_inv = [float(row["prop_inv"]) for row in rows if row["prop_inv"]]
@@ -271,7 +279,7 @@ def sample_batch_rows(
 
         sampled = []
         for _ in range(n):
-            core = rng.choice(list(core_groups.values()))
+            core = rng.choice(rows)
             rate_het, rate_cats, rate_param = _sample_rate_group(rows, rng)
             row: dict[str, str] = {
                 "id": core["id"],
@@ -297,14 +305,15 @@ def sample_batch_rows(
                     row["length"] = str(max(1, int(round(value))))
                 if "prop_inv" in pdf_params and empirical_prop_inv and row["prop_inv"]:
                     value = _sample_density(empirical_prop_inv, rng, noise_scale)
-                    row["prop_inv"] = f"{max(0.0, min(value, 1.0)):.6f}"
+                    row["prop_inv"] = f"{max(0.0, min(value, 1.0 - 1e-9)):.6f}"
                 if "rate_param" in pdf_params and gamma_alphas and rate_het == "G":
                     value = _sample_density(gamma_alphas, rng, noise_scale)
                     row["rate_param"] = f"{value:.6f}"
-
-            for key, value in overrides.items():
-                row[key] = value
             sampled.append(row)
+
+    for row in sampled:
+        for key, value in overrides.items():
+            row[key] = value
 
     return sampled
 
@@ -316,8 +325,20 @@ def sample_batch_rows(
 def _check_managed_flag_conflict(tool_args: str) -> None:
     tokens = shlex.split(tool_args)
     for token in tokens:
-        if token in _BLOCKED_FLAGS:
+        if token.split("=")[0] in _BLOCKED_FLAGS:
             raise ValueError(f"Blocked managed flag in --tool-args: {token}")
+
+
+def _overridden_flags(tool_args: str | None) -> frozenset[str]:
+    """Managed flags that the user re-specifies in --tool-args.
+
+    PhyloAI skips emitting its own copy of these so the final IQ-TREE command
+    contains each flag exactly once (tool-args value wins by default of being
+    the only occurrence).
+    """
+    if not tool_args:
+        return frozenset()
+    return frozenset(token.split("=")[0] for token in shlex.split(tool_args))
 
 
 def _build_alisim_cmd(
@@ -335,21 +356,26 @@ def _build_alisim_cmd(
     seed: int,
     tool_args: str | None,
 ) -> list[str]:
+    overridden = _overridden_flags(tool_args)
     cmd = [
         executable, "--alisim", msa_prefix,
-        "--seqtype", seq_type,
         "-t", ref_tree,
     ]
-    if model is not None:
+    if "--seqtype" not in overridden:
+        cmd.extend(["--seqtype", seq_type])
+    if model is not None and "-m" not in overridden:
         cmd.extend(["-m", model])
-    if model_partitions is not None:
+    if model_partitions is not None and "-p" not in overridden:
         cmd.extend(["-p", model_partitions])
-    if length is not None:
+    if length is not None and "--length" not in overridden:
         cmd.extend(["--length", str(length)])
     cmd.extend(["--out-format", out_format])
-    cmd.extend(["--num-alignments", str(num_alignments)])
-    cmd.extend(["-T", str(iqtree_threads)])
-    cmd.extend(["--seed", str(seed)])
+    if "--num-alignments" not in overridden:
+        cmd.extend(["--num-alignments", str(num_alignments)])
+    if "-T" not in overridden:
+        cmd.extend(["-T", str(iqtree_threads)])
+    if "--seed" not in overridden:
+        cmd.extend(["--seed", str(seed)])
     if tool_args:
         cmd.extend(shlex.split(tool_args))
     return cmd
@@ -448,6 +474,9 @@ def _run_single_mode(
     work_dir = output_dir / "_work"
     work_dir.mkdir(parents=True, exist_ok=True)
 
+    stray_log = Path(str(ref_tree.resolve()) + ".log")
+    stray_log_existed = stray_log.exists()
+
     result = Runner().run(cmd, "iqtree3", cwd=work_dir)
     tool_stderr = result.stderr
 
@@ -456,10 +485,14 @@ def _run_single_mode(
     msa_dir.mkdir(exist_ok=True)
     logs_dir.mkdir(exist_ok=True)
 
-    if num_alignments == 1:
-        names = [f"{msa_prefix}{ext}"]
-    else:
-        names = [f"{msa_prefix}_{i}{ext}" for i in range(1, num_alignments + 1)]
+    log_text = f"{result.stdout}\n{result.stderr}".strip()
+    if log_text:
+        (logs_dir / f"{msa_prefix}.log").write_text(log_text, encoding="utf-8")
+
+    names = sorted(
+        path.name for path in work_dir.glob(f"{msa_prefix}*{ext}")
+        if path.is_file()
+    )
 
     for name in names:
         source = work_dir / name
@@ -474,23 +507,17 @@ def _run_single_mode(
             else:
                 tool_stderr = (tool_stderr + "\n" + "; ".join(warnings)).strip()
 
-    for suffix in (".iqtree", ".log"):
-        source = work_dir / f"{msa_prefix}{suffix}"
-        if source.exists():
-            shutil.move(str(source), str(logs_dir / f"{msa_prefix}{suffix}"))
+    if not stray_log_existed:
+        stray_log.unlink(missing_ok=True)
 
     if result.returncode != 0:
-        raise RuntimeError(
+        raise IQTreeExecutionError(
             f"IQ-TREE AliSim failed with exit code {result.returncode}.\n"
             f"Command: {' '.join(cmd)}\n{result.stderr}"
         )
 
     output_files = {
         "msas": {"path": str(msa_dir), "description": "Simulated MSA files"},
-        "iqtree_report": {
-            "path": str(logs_dir / f"{msa_prefix}.iqtree"),
-            "description": "IQ-TREE AliSim report",
-        },
         "iqtree_log": {
             "path": str(logs_dir / f"{msa_prefix}.log"),
             "description": "IQ-TREE console log",
@@ -510,12 +537,20 @@ def _run_single_mode(
 # Batch-mode worker
 # ===================================================================
 
-def _run_simulation_worker(args: tuple[str, str, str, str, int, int, str, str | None]) -> dict[str, Any]:
-    """Run one batch simulation in its own working directory."""
+def _run_simulation_worker(
+    args: tuple[str, str, str, str, int, int, str, str | None, str, int, str],
+) -> dict[str, Any]:
+    """Run one batch simulation in its own working directory.
+
+    The generated MSA is moved into ``msa_dir`` (the final MSAs directory)
+    *before* the per-task work directory is cleaned up, so the parent can
+    always find it after the future resolves.
+    """
     (
         simulation_id, seq_type, ref_tree, model, length, seed,
-        iqtree_exe, tool_args,
+        iqtree_exe, tool_args, out_format, iqtree_threads, msa_dir,
     ) = args
+    ext = OUT_FORMAT_EXT[out_format]
     work_dir = Path(f"./_work_{simulation_id}")
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -527,20 +562,27 @@ def _run_simulation_worker(args: tuple[str, str, str, str, int, int, str, str | 
         model=model,
         model_partitions=None,
         length=length,
-        out_format="fasta",
+        out_format=out_format,
         num_alignments=1,
-        iqtree_threads=1,
+        iqtree_threads=iqtree_threads,
         seed=seed,
         tool_args=tool_args,
     )
 
     start = _time.time()
+    output_path: Path | None = None
     try:
         result = Runner().run(cmd, "iqtree3", cwd=work_dir)
         wall_time = _time.time() - start
         status = "success" if result.returncode == 0 else "failed"
         log_text = f"{result.stdout}\n{result.stderr}".strip()
         reason = None if status == "success" else result.stderr.strip() or "IQ-TREE failed"
+        if status == "success":
+            source = work_dir / f"{simulation_id}{ext}"
+            if source.exists():
+                target = Path(msa_dir) / f"{simulation_id}{ext}"
+                shutil.move(str(source), str(target))
+                output_path = target
         return {
             "simulation_id": simulation_id,
             "status": status,
@@ -548,8 +590,8 @@ def _run_simulation_worker(args: tuple[str, str, str, str, int, int, str, str | 
             "cmd": cmd,
             "log_file": f"logs/{simulation_id}.log",
             "log_text": log_text,
-            "output_file": f"MSAs/{simulation_id}.fa",
-            "output_path": work_dir / f"{simulation_id}.fa",
+            "output_file": f"MSAs/{simulation_id}{ext}",
+            "output_path": output_path,
             "reason": reason,
         }
     finally:
@@ -566,8 +608,9 @@ def _read_params_sampled(output_dir: Path) -> list[dict[str, str]]:
 
 
 def _write_params_sampled(output_dir: Path, rows: list[dict[str, str]]) -> None:
+    fieldnames = [col for col in SAMPLED_COLUMNS if any(col in row for row in rows)]
     with open(output_dir / "params_sampled.tsv", "w", encoding="utf-8", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=SAMPLED_COLUMNS, delimiter="\t")
+        writer = csv.DictWriter(fh, fieldnames=fieldnames, delimiter="\t")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -577,10 +620,16 @@ def _write_params_sampled(output_dir: Path, rows: list[dict[str, str]]) -> None:
 # PDF density plots
 # ===================================================================
 
+_EMPIRICAL_COLOR = "#2E86AB"
+_SIMULATED_COLOR = "#A23B72"
+
+
 def _plot_density(empirical: list[float], simulated: list[float], title: str, path: Path) -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import numpy as np
+    from scipy.stats import gaussian_kde
 
     combined = empirical + simulated
     if not combined or max(combined) == min(combined):
@@ -589,13 +638,21 @@ def _plot_density(empirical: list[float], simulated: list[float], title: str, pa
         ax.axis("off")
     else:
         fig, ax = plt.subplots(figsize=(6, 4))
-        bins = _fd_bins(combined)[0]
-        if len(bins) < 2:
-            bins = 20
-        ax.hist(empirical, bins=bins, density=True, alpha=0.6, color="blue", label="empirical")
-        ax.hist(simulated, bins=bins, density=True, alpha=0.6, color="orange", label="simulated")
+        x_range = np.linspace(min(combined), max(combined), 200)
+        for data, color, label in (
+            (empirical, _EMPIRICAL_COLOR, "Empirical"),
+            (simulated, _SIMULATED_COLOR, "Simulated"),
+        ):
+            if len(data) < 2 or min(data) == max(data):
+                continue
+            try:
+                kde = gaussian_kde(data)
+            except Exception:
+                continue
+            density = kde(x_range)
+            ax.plot(x_range, density, color=color, linewidth=2, label=label)
         ax.set_xlabel(title)
-        ax.set_ylabel("density")
+        ax.set_ylabel("Density")
         ax.legend()
     fig.tight_layout()
     fig.savefig(path)
@@ -661,6 +718,7 @@ def _run_batch_mode(
     noise_scale: float,
     pdf_params: tuple[str, ...],
     msa_prefix: str,
+    out_format: str,
     iqtree_threads: int,
     threads: int,
     seed: int | None,
@@ -679,13 +737,16 @@ def _run_batch_mode(
     if dry_run:
         master_seed = seed if seed is not None else random.randint(1, 2**31 - 1)
         rng = random.Random(master_seed)
+        seed_rng = random.Random(master_seed)
         sampled = sample_batch_rows(
             rows, strategy=strategy, n=num_simulations, rng=rng,
             pdf_params=pdf_params, noise_scale=noise_scale, overrides=overrides,
         )
         for index, row in enumerate(sampled):
             row["simulation_id"] = f"{msa_prefix}{index + 1:03d}"
-            row["seed"] = master_seed + index
+            row["seed"] = seed_rng.randint(1, 2**31 - 1)
+            if strategy == "complete":
+                row["source_id"] = row["id"]
         payload = _assemble_batch_result(
             run_start=run_start, tool_versions={"iqtree3": "dry-run"},
             params=params, rows=rows, sampled=sampled, files=[],
@@ -696,14 +757,16 @@ def _run_batch_mode(
 
     master_seed = seed if seed is not None else random.randint(1, 2**31 - 1)
     rng = random.Random(master_seed)
+    seed_rng = random.Random(master_seed)
 
     ckpt_path = output_dir / "checkpoint.json"
     step = "posttree.simulate.alisim.iqtree"
+    ext = OUT_FORMAT_EXT[out_format]
 
     def _verifier(task: CheckpointTask) -> bool:
         msa = Path(task.outputs.get("output_file") or "")
         if msa.exists():
-            ok, _ = _validate_output(msa, "fasta")
+            ok, _ = _validate_output(msa, out_format)
             return ok
         return False
 
@@ -724,7 +787,7 @@ def _run_batch_mode(
                     "wall_time": task.outputs.get("wall_time") or 0.0,
                     "cmd": task.input,
                     "log_file": f"logs/{task.task_id}.log",
-                    "output_file": f"MSAs/{task.task_id}.fa",
+                    "output_file": f"MSAs/{task.task_id}{ext}",
                 })
             else:
                 to_run.append(task.task_id)
@@ -738,9 +801,9 @@ def _run_batch_mode(
                 params=params, rows=rows, sampled=completed_rows,
                 files=files, n_completed=len(files),
                 n_failed=0, strategy=strategy, dry_run=False,
-                plots=_generate_density_plots(
+                plots=(_generate_density_plots(
                     rows, completed_rows, pdf_params, output_dir,
-                ),
+                ) if strategy == "pdf" else {}),
             )
         num_simulations = len(to_run)
     else:
@@ -763,9 +826,8 @@ def _run_batch_mode(
         completed_rows = []
         for index, row in enumerate(sampled):
             simulation_id = f"{msa_prefix}{index + 1:03d}"
-            completed_rows.append({
+            row_out: dict[str, str] = {
                 "simulation_id": simulation_id,
-                "source_id": row["id"],
                 "seqtype": row["seqtype"],
                 "length": row["length"],
                 "subs_model": row["subs_model"],
@@ -776,8 +838,11 @@ def _run_batch_mode(
                 "rate_categories": row["rate_categories"],
                 "rate_param": row["rate_param"],
                 "tree_path": row["tree_path"],
-                "seed": str(master_seed + index),
-            })
+                "seed": str(seed_rng.randint(1, 2**31 - 1)),
+            }
+            if strategy == "complete":
+                row_out["source_id"] = row["id"]
+            completed_rows.append(row_out)
         _write_params_sampled(output_dir, completed_rows)
 
         tasks = [
@@ -785,7 +850,7 @@ def _run_batch_mode(
                 task_id=row["simulation_id"],
                 status="pending",
                 input="",
-                outputs={"output_file": str(output_dir / "MSAs" / f"{row['simulation_id']}.fa")},
+                outputs={"output_file": str(output_dir / "MSAs" / f"{row['simulation_id']}{ext}")},
             )
             for row in completed_rows
         ]
@@ -827,6 +892,7 @@ def _run_batch_mode(
                     simulation_id, row["seqtype"], row["tree_path"],
                     build_model_string(row), int(row["length"]),
                     int(row["seed"]), iqtree_exe, tool_args,
+                    out_format, iqtree_threads, str(msa_dir),
                 ))
             futures = {pool.submit(_run_simulation_worker, arg): arg[0] for arg in worker_args}
             for future in as_completed(futures):
@@ -850,10 +916,9 @@ def _run_batch_mode(
                     output_path = worker_result.get("output_path")
                     ok = False
                     if output_path and output_path.exists():
-                        target = msa_dir / f"{simulation_id}.fa"
-                        shutil.move(str(output_path), str(target))
-                        _wrap_fasta(target)
-                        ok, _warnings = _validate_output(target, "fasta")
+                        if out_format == "fasta":
+                            _wrap_fasta(output_path)
+                        ok, _warnings = _validate_output(output_path, out_format)
                     if ok:
                         files.append({
                             "simulation_id": simulation_id,
@@ -890,8 +955,9 @@ def _run_batch_mode(
     checkpoint.completed_at = checkpoint.touch()
     save_checkpoint_atomic(checkpoint, ckpt_path)
 
-    plots = _generate_density_plots(rows, completed_rows, pdf_params, output_dir)
-    n_failed = len(to_run) - len([f for f in files if f["status"] == "success"])
+    plots = (_generate_density_plots(rows, completed_rows, pdf_params, output_dir)
+             if strategy == "pdf" else {})
+    n_failed = len(completed_rows) - len([f for f in files if f["status"] == "success"])
     return _assemble_batch_result(
         run_start=run_start,
         tool_versions=_detect_iqtree_version(iqtree_exe),
@@ -1095,16 +1161,18 @@ def run_alisim_iqtree(
         rows = load_params_table(model_params)
 
     _command_parts = ["phyloai", "posttree", "simulate", "alisim", "iqtree"]
-    if model_params:
-        _command_parts += ["--model-params", str(model_params)]
-    if strategy and batch_mode:
-        _command_parts += ["--strategy", strategy]
-    if num_simulations and batch_mode:
-        _command_parts += ["--num-simulations", str(num_simulations)]
-    if override:
-        _command_parts += ["--override", override]
     if batch_mode:
-        _command_parts += ["--seed", str(resolved_seed), "--output-dir", str(output_dir)]
+        _command_parts += ["--model-params", str(model_params)]
+        if strategy:
+            _command_parts += ["--strategy", strategy]
+        if num_simulations:
+            _command_parts += ["--num-simulations", str(num_simulations)]
+        if override:
+            _command_parts += ["--override", override]
+        if strategy == "pdf":
+            _command_parts += ["--noise-scale", str(noise_scale),
+                               "--pdf-params", pdf_params]
+        _command_parts += ["--msa-prefix", msa_prefix]
     else:
         _command_parts += ["--ref-tree", str(ref_tree)]
         if model:
@@ -1114,19 +1182,33 @@ def run_alisim_iqtree(
         _command_parts += ["--seq-type", seq_type]
         if length is not None:
             _command_parts += ["--length", str(length)]
-        _command_parts += ["--out-format", out_format, "--num-alignments", str(num_alignments)]
+        _command_parts += ["--msa-prefix", msa_prefix, "--num-alignments",
+                           str(num_alignments)]
         if seed is not None:
             _command_parts += ["--seed", str(seed)]
-        _command_parts += ["--output-dir", str(output_dir)]
-    full_command = " ".join(_command_parts)
+    _command_parts += ["--out-format", out_format, "--iqtree-threads",
+                       str(iqtree_threads), "-t", str(threads), "--seed",
+                       str(resolved_seed)]
+    if tool_args:
+        _command_parts += ["--tool-args", tool_args]
+    _command_parts += ["-o", str(output_dir)]
+    if overwrite:
+        _command_parts.append("--overwrite")
+    if resume:
+        _command_parts.append("--resume")
+    if dry_run:
+        _command_parts.append("--dry-run")
+    if quiet:
+        _command_parts.append("--quiet")
+    full_command = shlex.join(_command_parts)
 
     params: dict[str, Any] = {
         "model_params": str(model_params.resolve()) if model_params else None,
         "strategy": strategy,
         "num_simulations": num_simulations,
         "override": override,
-        "noise_scale": noise_scale,
-        "pdf_params": pdf_params,
+        "noise_scale": noise_scale if strategy == "pdf" else None,
+        "pdf_params": pdf_params if strategy == "pdf" else None,
         "msa_prefix": msa_prefix,
         "out_format": out_format,
         "iqtree_threads": iqtree_threads,
@@ -1169,6 +1251,7 @@ def run_alisim_iqtree(
             noise_scale=noise_scale,
             pdf_params=pdf_param_tuple,
             msa_prefix=msa_prefix,
+            out_format=out_format,
             iqtree_threads=iqtree_threads,
             threads=threads,
             seed=resolved_seed,
@@ -1189,10 +1272,12 @@ def run_alisim_iqtree(
 
     if not dry_run:
         if output_dir.exists() and any(output_dir.iterdir()):
-            raise ValueError(
-                f"Output directory '{output_dir}' already exists and is non-empty. "
-                "Use --overwrite to replace it."
-            )
+            if not overwrite:
+                raise ValueError(
+                    f"Output directory '{output_dir}' already exists and is non-empty. "
+                    "Use --overwrite to replace it."
+                )
+            shutil.rmtree(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
     data, n_generated = _run_single_mode(

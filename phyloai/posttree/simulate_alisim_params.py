@@ -48,13 +48,15 @@ def _extract_pi_frequencies(report_text: str) -> str:
     by_aa: dict[str, str] = {}
     for aa, value in _PI_RE.findall(report_text):
         by_aa.setdefault(aa.upper(), value)
-    values = [by_aa[aa] for aa in _AA_PI_ORDER if aa in by_aa]
-    if not values:
+    missing = [aa for aa in _AA_PI_ORDER if aa not in by_aa]
+    if missing:
+        present = "".join(aa for aa in _AA_PI_ORDER if aa in by_aa) or "(none)"
         raise ValueError(
-            "+F was specified without explicit values and no pi(X) lines "
-            "were found in the report"
+            "+F was specified without explicit values and the report's pi(X) "
+            "lines are incomplete for amino acids: missing "
+            f"{' '.join(missing)} (present: {present})"
         )
-    return "/".join(values)
+    return ",".join(by_aa[aa] for aa in _AA_PI_ORDER)
 
 
 def _parse_model_string(model_string: str, report_text: str) -> dict[str, str]:
@@ -101,17 +103,14 @@ def _parse_model_string(model_string: str, report_text: str) -> dict[str, str]:
     if residue and residue != "+":
         raise ValueError(f"unrecognized model components: {residue!r} in {model_string!r}")
 
-    def _slash(value: str) -> str:
-        return value.replace(",", "/")
-
     return {
         "subs_model": subs_model,
-        "subs_rate": _slash(subs_rate),
-        "freq": _slash(freq),
+        "subs_rate": subs_rate,
+        "freq": freq,
         "prop_inv": prop_inv,
         "rate_heterogeneity": rate_heterogeneity,
         "rate_categories": rate_categories,
-        "rate_param": _slash(rate_param),
+        "rate_param": rate_param,
     }
 
 
@@ -286,10 +285,22 @@ def run_alisim_params(
     n_matched = len(rows)
     n_unmatched = len(unmatched)
 
+    command_parts = [
+        "phyloai", "posttree", "simulate", "alisim", "params",
+        "--iqtree-dir", str(iqtree_dir), "--tree-dir", str(tree_dir),
+        "-o", str(output_dir),
+    ]
+    if overwrite:
+        command_parts.append("--overwrite")
+    if dry_run:
+        command_parts.append("--dry-run")
+    if quiet:
+        command_parts.append("--quiet")
+    full_command = shlex.join(command_parts)
+
     payload: dict[str, Any] = {
         "status": "success",
-        "command": "phyloai posttree simulate alisim params "
-                   f"--iqtree-dir {iqtree_dir} --tree-dir {tree_dir}",
+        "command": full_command,
         "wall_time": round(_time.time() - run_start, 3),
         "tool_versions": {},
         "params": {
