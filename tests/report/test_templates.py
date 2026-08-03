@@ -269,3 +269,58 @@ class TestIqtree:
         # "The '/TMP/CUSTOM substitution model was used."
         assert "custom exchangeability matrix" in text
         assert "substitution model was used" not in text
+
+
+class TestAlisim:
+    def test_params_methods(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.params",
+            params={},
+            key_results={"n_loci_parsed": 800, "n_loci_matched": 780, "n_loci_unmatched": 20},
+            tool_versions={},
+        )
+        assert "800" in text
+        assert "780" in text
+        assert "20" in text
+
+    def test_iqtree_single_methods(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.iqtree",
+            params={"seq_type": "DNA", "model": "GTR+F+G4", "length": 500, "seed": 42},
+            key_results={"n_msas_generated": 2},
+            tool_versions={"iqtree3": "3.1"},
+        )
+        assert "IQ-TREE3 v3.1" in text
+        assert "500 sites" in text
+        assert "2 replicate alignment(s)" in text
+        assert "seed 42" in text
+
+    def test_iqtree_batch_methods_mentions_strategy_and_failures(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.iqtree",
+            params={"model_params": "x.tsv", "strategy": "pdf", "pdf_params": "length", "noise_scale": 1.0},
+            key_results={"source_loci": 4, "n_simulations_completed": 3, "n_simulations_failed": 1},
+            tool_versions={"iqtree3": "3.1"},
+        )
+        assert "histogram" in text.lower()
+        assert "1 failed" in text
+
+    def test_iqtree_batch_complete_strategy_tree_sentence(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.iqtree",
+            params={"strategy": "complete"},
+            key_results={"source_loci": 4, "n_simulations_completed": 3, "n_simulations_failed": 0},
+            tool_versions={"iqtree3": "3.1"},
+        )
+        assert "together with all model parameters" in text
+
+    def test_transfergaps_methods(self):
+        text = generate_all_methods(
+            "posttree.simulate.alisim.transfergaps",
+            params={"seq_type": "AA"},
+            key_results={"detected_seq_type": "AA", "n_sequences": 6, "alignment_length": 2082},
+            tool_versions={},
+        )
+        assert "ACDEFGHIKLMNPQRSTVWY" in text
+        assert "gap" in text.lower()
+
