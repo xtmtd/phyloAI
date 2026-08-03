@@ -1427,13 +1427,33 @@ def generate_methods_posttree_simulate_alisim_iqtree(
     strategy = params.get("strategy", "?")
     n_completed = key_results.get("n_simulations_completed", 0)
     n_failed = key_results.get("n_simulations_failed", 0)
-    pdf_sentence = ""
-    if strategy == "pdf":
-        pdf_sentence = (
-            f"For parameters {params.get('pdf_params', '')}, values were drawn "
-            f"from histogram-based density resampling (Freedman-Diaconis "
-            f"binning) with noise scale {params.get('noise_scale', 1.0)}. "
-        )
+
+    strategy_sentence = {
+        "complete": (
+            "the complete sampling strategy, in which each simulated alignment "
+            "replicates the full parameter set of a single source gene model "
+            "(substitution model, rate heterogeneity, alignment length, "
+            "invariant-site proportion, and reference tree all taken together "
+            "from one empirical row of the source table)"
+        ),
+        "mixed": (
+            "the mixed sampling strategy, in which the model core, rate "
+            "heterogeneity group, alignment length, invariant-site proportion, "
+            "and reference tree were each sampled independently from the "
+            "empirical gene-model distribution, preserving the empirical "
+            "distributions of individual parameters and their "
+            "presence/absence ratios"
+        ),
+        "pdf": (
+            "the probability density function (PDF) sampling strategy, built "
+            "on mixed sampling; for the parameters "
+            f"{params.get('pdf_params', '')}, values were resampled from "
+            "histogram-based estimates of the empirical probability density "
+            f"(Freedman-Diaconis binning) with noise scale "
+            f"{params.get('noise_scale', 1.0)}"
+        ),
+    }.get(strategy, f"the {strategy} sampling strategy")
+
     override_sentence = ""
     if params.get("override"):
         override_sentence = (
@@ -1449,10 +1469,9 @@ def generate_methods_posttree_simulate_alisim_iqtree(
     return (
         f"Sequence alignments were simulated using IQ-TREE3 v{version} AliSim "
         f"(Ly-Trong et al. 2023). Simulation parameters were drawn from an "
-        f"empirical distribution of {source_loci} gene models using the "
-        f"{strategy} sampling strategy. {pdf_sentence}{override_sentence}A total "
-        f"of {n_completed} alignments were generated ({n_failed} failed)."
-        f"{tree_sentence}"
+        f"empirical distribution of {source_loci} gene models using "
+        f"{strategy_sentence}. {override_sentence}A total of {n_completed} "
+        f"alignments were generated ({n_failed} failed). {tree_sentence}"
     )
 
 
@@ -1463,14 +1482,31 @@ def generate_methods_posttree_simulate_alisim_transfergaps(
 ) -> str:
     detected = key_results.get("detected_seq_type", params.get("seq_type", "AA"))
     valid = "ACDEFGHIKLMNPQRSTVWY" if detected == "AA" else "ACGT"
-    return (
+    n_msas = key_results.get("n_msas", 1)
+    target = "alignments" if n_msas > 1 else "alignment"
+    count_sentence = (
+        f"Gap patterns from the original alignment were transferred to {n_msas} "
+        f"simulated {target} to restore biologically realistic indel patterns. "
+    ) if n_msas > 1 else (
         "Gap patterns from the original alignment were transferred to the "
         "simulated alignment to restore biologically realistic indel patterns. "
-        "Positions containing non-standard characters (gaps and ambiguity codes) "
-        "in the original sequences were replaced with gap characters (-) at the "
-        f"corresponding positions in the simulated sequences. The valid character "
-        f"set was {valid}; all other characters were treated as gaps."
     )
+    exclude_ambiguity = bool(params.get("exclude_ambiguity", False))
+    if exclude_ambiguity:
+        masking_sentence = (
+            "Positions marked as gaps (-) in the original sequences were replaced "
+            "with gap characters (-) at the corresponding positions in the "
+            "simulated sequences; ambiguity codes were left untouched."
+        )
+    else:
+        masking_sentence = (
+            "Positions containing non-standard characters (gaps and ambiguity "
+            "codes) in the original sequences were replaced with gap characters "
+            f"(-) at the corresponding positions in the simulated sequences. The "
+            f"valid character set was {valid}; all other characters were treated "
+            "as gaps."
+        )
+    return count_sentence + masking_sentence
 
 
 # ---------------------------------------------------------------------------

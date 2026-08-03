@@ -147,7 +147,8 @@ def load_checkpoint(path: Path) -> Checkpoint:
     return Checkpoint.from_dict(data)
 
 
-_RESUME_EXCLUDED_KEYS = frozenset({"resume", "overwrite", "dry_run", "quiet"})
+_RESUME_EXCLUDED_KEYS = frozenset({"resume", "overwrite", "dry_run", "quiet",
+                                   "_command"})
 
 
 def _clean_params_for_resume(params: dict[str, Any]) -> dict[str, Any]:

@@ -5,6 +5,7 @@ import json
 import shlex
 import shutil
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -43,6 +44,65 @@ class _SimulateGroup(click.Group):
 class _AlisimGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
         return ["params", "iqtree", "transfergaps"]
+
+
+class _CaseInsensitiveChoice(click.Choice):
+    """Choice accepting any case input while displaying canonical values in help."""
+
+    def __init__(self, choices: list[str], **kwargs: Any) -> None:
+        super().__init__(choices, case_sensitive=False, **kwargs)
+
+    def get_metavar(self, param: click.Parameter, ctx: click.Context | None = None) -> str:
+        return f"[{'|'.join(self.choices)}]"
+
+
+class _GroupedCommand(click.Command):
+    """Click Command that renders options under labeled help sections.
+
+    Subclasses map parameter names to section titles via ``option_sections``;
+    unlisted options fall under "Common Options". Sections render in the order
+    listed by ``section_order``.
+    """
+
+    option_sections: dict[str, str] = {}
+    section_order: tuple[str, ...] = ("Common Options", "Single Mode Options",
+                                      "Batch Mode Options")
+
+    def format_options(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        opts = []
+        for param in self.get_params(ctx):
+            rv = param.get_help_record(ctx)
+            if rv is not None:
+                opts.append((param.name, rv))
+        grouped: dict[str, list] = {}
+        for name, rv in opts:
+            title = self.option_sections.get(name, "Common Options")
+            grouped.setdefault(title, []).append(rv)
+        for title in self.section_order:
+            if title not in grouped:
+                continue
+            with formatter.section(title):
+                formatter.write_dl(grouped[title])
+        self.format_epilog(ctx, formatter)
+
+
+class _GroupedIqtreeCommand(_GroupedCommand):
+    option_sections = {
+        "model_params": "Batch Mode Options",
+        "strategy": "Batch Mode Options",
+        "num_simulations": "Batch Mode Options",
+        "override": "Batch Mode Options",
+        "noise_scale": "Batch Mode Options",
+        "pdf_params": "Batch Mode Options",
+        "threads": "Batch Mode Options",
+        "resume": "Batch Mode Options",
+        "ref_tree": "Single Mode Options",
+        "model": "Single Mode Options",
+        "model_partitions": "Single Mode Options",
+        "seq_type": "Single Mode Options",
+        "length": "Single Mode Options",
+        "num_alignments": "Single Mode Options",
+    }
 
 
 @click.group(cls=_PosttreeGroup)
@@ -1721,13 +1781,14 @@ def params_command(
         _fail(str(exc), exit_code=1)
 
 
-@alisim.command("iqtree")
+@alisim.command("iqtree", cls=_GroupedIqtreeCommand)
 @click.option("--model-params", type=click.Path(path_type=Path), default=None,
               help=(
                   "TSV table from 'alisim params' (or manually constructed). "
                   "Activates batch mode."
               ))
-@click.option("--strategy", type=click.Choice(["complete", "mixed", "pdf"]), default=None,
+@click.option("--strategy", type=click.Choice(["complete", "mixed", "pdf"]),
+              default="complete", show_default=True,
               help="Sampling strategy (batch mode only).")
 @click.option("--num-simulations", type=int, default=None,
               help="Total number of MSAs to simulate (batch mode only).")
@@ -1763,7 +1824,7 @@ def params_command(
                   "NEXUS partition model file. Single mode. Maps to IQ-TREE -p. "
                   "Mutually exclusive with --model."
               ))
-@click.option("--seq-type", type=click.Choice(["AA", "DNA"], case_sensitive=False),
+@click.option("--seq-type", type=_CaseInsensitiveChoice(["AA", "DNA"]),
               default=None,
               help="Sequence type. Single mode. Maps to IQ-TREE --seqtype.")
 @click.option("--length", type=int, default=None,
@@ -1782,15 +1843,17 @@ def params_command(
 @click.option("--seed", type=int, default=None,
               help=(
                   "Random seed. Single mode maps to IQ-TREE --seed. Batch mode is "
-                  "the master seed; per-task seeds = master + task index."
+                  "the master seed; each simulation gets an independent random "
+                  "seed drawn from a master-seeded generator."
               ))
 @click.option("--iqtree-path", type=str, default=None,
               help="Explicit path to iqtree3 executable.")
 @click.option("--tool-args", type=str, default=None,
               help=(
-                  "Extra IQ-TREE flags. Blocked: --alisim, -t, -m, -p, -q, -Q, "
-                  "--seqtype, --length, --out-format, -af, --num-alignments, -T, "
-                  "--seed, --prefix."
+                  "Extra IQ-TREE flags. Blocked (PhyloAI-managed I/O): --alisim, "
+                  "-t, --prefix, --out-format, -af. Other flags (e.g. --seqtype, "
+                  "--length, --num-alignments, -T) may override PhyloAI defaults "
+                  "since they are appended last."
               ))
 @click.option("-o", "--output-dir", type=click.Path(path_type=Path),
               default=Path("runs/posttree/simulate/alisim/iqtree"), show_default=True,
@@ -1836,11 +1899,13 @@ def iqtree_command(
     \b
     Single mode (one IQ-TREE call):
       phyloai posttree simulate alisim iqtree --ref-tree ref.nwk --model LG+G4 --seq-type AA --length 2000
-
     Batch mode (resumable, one AliSim call per MSA):
       phyloai posttree simulate alisim iqtree --model-params params.tsv --strategy pdf --num-simulations 100
     """
-    from phyloai.posttree.simulate_alisim_iqtree import run_alisim_iqtree
+    from phyloai.posttree.simulate_alisim_iqtree import (
+        IQTreeExecutionError,
+        run_alisim_iqtree,
+    )
 
     err_cmd = shlex.join([
         "phyloai", "posttree", "simulate", "alisim", "iqtree",
@@ -1860,6 +1925,9 @@ def iqtree_command(
     except ValueError as exc:
         _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
         _fail(str(exc), exit_code=1)
+    except IQTreeExecutionError as exc:
+        _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "iqtree")
+        _fail(str(exc), exit_code=2)
     except Exception as exc:
         _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "env")
         _fail(str(exc), exit_code=3)
@@ -1868,10 +1936,20 @@ def iqtree_command(
 @alisim.command("transfergaps")
 @click.option("--original-msa", type=click.Path(path_type=Path), required=True,
               help="Single original (gapped) MSA file.")
-@click.option("--simulated-msa", type=click.Path(path_type=Path), required=True,
-              help="Single simulated (gap-free) MSA file from 'alisim iqtree'.")
-@click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"],
-              case_sensitive=False), default="auto", show_default=True,
+@click.option("--simulated-msa", type=click.Path(path_type=Path), default=None,
+              help=(
+                  "Single simulated (gap-free) MSA file from 'alisim iqtree'. "
+                  "Mutually exclusive with --simulated-dir."
+              ))
+@click.option("--simulated-dir", type=click.Path(path_type=Path), default=None,
+              help=(
+                  "Directory of simulated (gap-free) MSA files from "
+                  "'alisim iqtree' (FASTA/PHYLIP/NEXUS/PHYLIP-PAML). One "
+                  "transferred file is written per input as <stem>.gaps.fa "
+                  "(always FASTA). Mutually exclusive with --simulated-msa."
+              ))
+@click.option("--seq-type", type=_CaseInsensitiveChoice(["AA", "NT", "auto"]),
+              default="auto", show_default=True,
               help=(
                   "Sequence type. Determines the valid character set for "
                   "identifying non-standard positions."
@@ -1884,7 +1962,7 @@ def iqtree_command(
 @click.option("-o", "--output-dir", type=click.Path(path_type=Path),
               default=Path("runs/posttree/simulate/alisim/transfergaps"),
               show_default=True,
-              help="Output directory for result.json and the transferred MSA file.")
+              help="Output directory for result.json and the transferred MSA file(s).")
 @click.option("--overwrite", is_flag=True, default=False,
               help="Delete and recreate output directory.")
 @click.option("--dry-run", is_flag=True, default=False,
@@ -1893,7 +1971,8 @@ def iqtree_command(
               help="Suppress terminal output except errors.")
 def transfergaps_command(
     original_msa: Path,
-    simulated_msa: Path,
+    simulated_msa: Path | None,
+    simulated_dir: Path | None,
     seq_type: str,
     exclude_ambiguity: bool,
     output_dir: Path,
@@ -1901,29 +1980,37 @@ def transfergaps_command(
     dry_run: bool,
     quiet: bool,
 ) -> None:
-    """Transfer gap patterns from an original MSA onto a simulated MSA.
+    """Transfer gap patterns from an original MSA onto simulated MSAs.
 
     Replaces non-standard (or, with --exclude-ambiguity, only gap) positions
     of the simulated sequences with '-' using the original per-taxon mask.
-    Output order follows the original MSA.
+    Output order follows the original MSA. Exactly one of --simulated-msa
+    (single mode) or --simulated-dir (batch mode) must be provided.
 
-    Example:
+    \b
+    Examples:
 
       phyloai posttree simulate alisim transfergaps --original-msa original.fa --simulated-msa sim001.fa
+
+      phyloai posttree simulate alisim transfergaps --original-msa original.fa --simulated-dir MSAs/
     """
     from phyloai.posttree.simulate_alisim_transfergaps import run_alisim_transfergaps
 
-    err_cmd = shlex.join([
-        "phyloai", "posttree", "simulate", "alisim", "transfergaps",
-        "--original-msa", str(original_msa), "--simulated-msa", str(simulated_msa),
-        "-o", str(output_dir),
-    ])
+    input_parts = ["--original-msa", str(original_msa)]
+    if simulated_msa is not None:
+        input_parts += ["--simulated-msa", str(simulated_msa)]
+    if simulated_dir is not None:
+        input_parts += ["--simulated-dir", str(simulated_dir)]
+    err_cmd = shlex.join(
+        ["phyloai", "posttree", "simulate", "alisim", "transfergaps",
+         *input_parts, "-o", str(output_dir)]
+    )
     try:
         run_alisim_transfergaps(
             original_msa=original_msa, simulated_msa=simulated_msa,
-            seq_type=seq_type, exclude_ambiguity=exclude_ambiguity,
-            output_dir=output_dir, overwrite=overwrite, dry_run=dry_run,
-            quiet=quiet,
+            simulated_dir=simulated_dir, seq_type=seq_type,
+            exclude_ambiguity=exclude_ambiguity, output_dir=output_dir,
+            overwrite=overwrite, dry_run=dry_run, quiet=quiet,
         )
     except ValueError as exc:
         _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")

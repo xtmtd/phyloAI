@@ -83,6 +83,44 @@ def test_alisim_iqtree_single_dry_run(tmp_path: Path) -> None:
     assert "--alisim" in result.output or result.output == ""
 
 
+def test_alisim_iqtree_iqtree_failure_exits_2(tmp_path: Path, monkeypatch) -> None:
+    import phyloai.posttree.simulate_alisim_iqtree as sim
+    from phyloai.posttree.simulate_alisim_iqtree import IQTreeExecutionError
+
+    def _boom(**kwargs):
+        raise IQTreeExecutionError("IQ-TREE AliSim failed with exit code 1.")
+
+    monkeypatch.setattr(sim, "run_alisim_iqtree", _boom)
+    ref_tree = tmp_path / "ref.nwk"
+    ref_tree.write_text("(A,B);\n")
+    output_dir = tmp_path / "out"
+    result = CliRunner().invoke(cli, [
+        "posttree", "simulate", "alisim", "iqtree",
+        "--ref-tree", str(ref_tree), "--model", "LG+G4", "--seq-type", "AA",
+        "--length", "100", "--output-dir", str(output_dir), "--quiet",
+    ])
+    assert result.exit_code == 2
+    payload = json.loads((output_dir / "result.json").read_text())
+    assert payload["error_category"] == "iqtree"
+
+
+def test_alisim_iqtree_env_failure_exits_3(tmp_path: Path, monkeypatch) -> None:
+    import phyloai.posttree.simulate_alisim_iqtree as sim
+
+    def _boom(**kwargs):
+        raise FileNotFoundError("Executable not found: 'iqtree3'")
+
+    monkeypatch.setattr(sim, "run_alisim_iqtree", _boom)
+    ref_tree = tmp_path / "ref.nwk"
+    ref_tree.write_text("(A,B);\n")
+    result = CliRunner().invoke(cli, [
+        "posttree", "simulate", "alisim", "iqtree",
+        "--ref-tree", str(ref_tree), "--model", "LG+G4", "--seq-type", "AA",
+        "--length", "100", "--quiet",
+    ])
+    assert result.exit_code == 3
+
+
 def test_alisim_iqtree_batch_dry_run(tmp_path: Path) -> None:
     table = tmp_path / "params.tsv"
     table.write_text(
@@ -145,3 +183,69 @@ def test_alisim_transfergaps_error_writes_result_json(tmp_path: Path) -> None:
     payload = json.loads((output_dir / "result.json").read_text())
     assert payload["status"] == "error"
     assert payload["error_category"] == "input"
+
+
+def test_alisim_transfergaps_dir_dry_run(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    original.write_text(">A\nAC-GT-\n>B\nACG-TA\n")
+    sim_dir = tmp_path / "sims"
+    sim_dir.mkdir()
+    (sim_dir / "sim001.fa").write_text(">A\nACGTGT\n>B\nACGTAC\n")
+    (sim_dir / "sim002.fa").write_text(">A\nACGTGT\n>B\nACGTAC\n")
+    output_dir = tmp_path / "out"
+    result = CliRunner().invoke(cli, [
+        "posttree", "simulate", "alisim", "transfergaps",
+        "--original-msa", str(original), "--simulated-dir", str(sim_dir),
+        "--output-dir", str(output_dir), "--dry-run",
+    ])
+    assert result.exit_code == 0
+    assert "MSAs processed: 2" in result.output
+    assert not output_dir.exists()
+
+
+def test_alisim_transfergaps_dir_writes_gaps_files(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    original.write_text(">A\nAC-GT-\n")
+    sim_dir = tmp_path / "sims"
+    sim_dir.mkdir()
+    (sim_dir / "sim001.fa").write_text(">A\nACGTGT\n")
+    output_dir = tmp_path / "out"
+    result = CliRunner().invoke(cli, [
+        "posttree", "simulate", "alisim", "transfergaps",
+        "--original-msa", str(original), "--simulated-dir", str(sim_dir),
+        "--output-dir", str(output_dir),
+    ])
+    assert result.exit_code == 0
+    assert (output_dir / "sim001.gaps.fa").exists()
+    assert result.output.count("transferred") == 0
+
+
+def test_alisim_transfergaps_rejects_both_inputs(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    original.write_text(">A\nAC-GT-\n")
+    sim_file = tmp_path / "sim001.fa"
+    sim_file.write_text(">A\nACGTGT\n")
+    sim_dir = tmp_path / "sims"
+    sim_dir.mkdir()
+    output_dir = tmp_path / "out"
+    result = CliRunner().invoke(cli, [
+        "posttree", "simulate", "alisim", "transfergaps",
+        "--original-msa", str(original), "--simulated-msa", str(sim_file),
+        "--simulated-dir", str(sim_dir), "--output-dir", str(output_dir),
+    ])
+    assert result.exit_code == 1
+    assert "exactly one of" in result.output
+    payload = json.loads((output_dir / "result.json").read_text())
+    assert payload["status"] == "error"
+
+
+def test_alisim_transfergaps_rejects_missing_input(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    original.write_text(">A\nAC-GT-\n")
+    output_dir = tmp_path / "out"
+    result = CliRunner().invoke(cli, [
+        "posttree", "simulate", "alisim", "transfergaps",
+        "--original-msa", str(original), "--output-dir", str(output_dir),
+    ])
+    assert result.exit_code == 1
+    assert "exactly one of" in result.output
