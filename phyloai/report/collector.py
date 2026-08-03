@@ -39,7 +39,9 @@ STEP_ORDER: list[str] = [
     "posttree.syserror.brlen",
     "posttree.syserror.cca",
     "posttree.syserror.sites",
-    "posttree.simulate",
+    "posttree.simulate.alisim.params",
+    "posttree.simulate.alisim.iqtree",
+    "posttree.simulate.alisim.transfergaps",
 ]
 
 _EXCLUDE_DIRS = {"report", "logs"}
@@ -75,6 +77,10 @@ def parse_step_id(command: str) -> str:
         "bi": {"pb", "bpcomp", "tracecomp", "readpb"},
         "signal": {"lnl", "consistent", "fclm"},
         "modelcompare": {"iqtree", "pb"},
+        "simulate": {"alisim"},
+    }
+    _FOURTH_LEVEL: dict[str, set[str]] = {
+        "alisim": {"params", "iqtree", "transfergaps"},
     }
 
     try:
@@ -117,6 +123,11 @@ def parse_step_id(command: str) -> str:
     l3 = after[1]
     third = _THIRD_LEVEL.get(l2, set())
     if l3 in third:
+        if len(after) >= 3:
+            l4 = after[2]
+            fourth = _FOURTH_LEVEL.get(l3, set())
+            if l4 in fourth:
+                return f"{root}.{l2}.{l3}.{l4}"
         return f"{root}.{l2}.{l3}"
     return f"{root}.{l2}"
 

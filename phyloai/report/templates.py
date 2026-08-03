@@ -1375,16 +1375,101 @@ def generate_methods_posttree_syserror_sites(
     )
 
 
-def generate_methods_posttree_simulate(
+def generate_methods_posttree_simulate_alisim_params(
     params: dict[str, Any],
     key_results: dict[str, Any],
     tool_versions: dict[str, Any],
 ) -> str:
-    tool = params.get("tool", "alisim")
-    n_reps = key_results.get("n_replicates", params.get("replicates", 100))
+    n_parsed = key_results.get("n_loci_parsed", 0)
+    n_matched = key_results.get("n_loci_matched", 0)
+    n_unmatched = key_results.get("n_loci_unmatched", 0)
+    unmatched_sentence = ""
+    if n_unmatched:
+        unmatched_sentence = (
+            f"{n_unmatched} loci could not be matched to tree files and were "
+            "excluded. "
+        )
     return (
-        f"Sequence data were simulated using {str(tool).upper()} with "
-        f"{_describe_n(n_reps, 'replicate')}."
+        f"Simulation parameters were extracted from {n_parsed} IQ-TREE report "
+        f"files. {n_matched} loci were successfully matched with corresponding "
+        f"tree files. {unmatched_sentence}Extracted parameters include "
+        "substitution model, state frequencies, proportion of invariable sites, "
+        "rate heterogeneity model, and alignment length for each locus."
+    )
+
+
+def generate_methods_posttree_simulate_alisim_iqtree(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    version = (tool_versions or {}).get("iqtree3", "unknown version")
+    if key_results.get("n_msas_generated") is not None:
+        seqtype = params.get("seq_type", "?")
+        model = params.get("model") or params.get("model_partitions") or "?"
+        length = params.get("length", "?")
+        n_msas = key_results["n_msas_generated"]
+        seed = params.get("seed", "random")
+        partition_sentence = ""
+        if params.get("model_partitions"):
+            partition_sentence = (
+                " A per-site partition model was used with edge-proportional "
+                "branch lengths (-p)."
+            )
+        return (
+            f"Sequence alignment was simulated using IQ-TREE3 v{version} AliSim "
+            f"(Ly-Trong et al. 2023). The simulation used a {seqtype} {model} "
+            f"model with {length} sites. {n_msas} replicate alignment(s) were "
+            f"generated from the reference tree with random seed {seed}."
+            f"{partition_sentence}"
+        )
+    source_loci = key_results.get("source_loci", 0)
+    strategy = params.get("strategy", "?")
+    n_completed = key_results.get("n_simulations_completed", 0)
+    n_failed = key_results.get("n_simulations_failed", 0)
+    pdf_sentence = ""
+    if strategy == "pdf":
+        pdf_sentence = (
+            f"For parameters {params.get('pdf_params', '')}, values were drawn "
+            f"from histogram-based density resampling (Freedman-Diaconis "
+            f"binning) with noise scale {params.get('noise_scale', 1.0)}. "
+        )
+    override_sentence = ""
+    if params.get("override"):
+        override_sentence = (
+            f"The following parameters were fixed across all simulations: "
+            f"{params['override']}. "
+        )
+    tree_sentence = (
+        "Reference trees were sampled together with all model parameters "
+        "(complete strategy)."
+        if strategy == "complete"
+        else "Reference trees were sampled independently from the model parameters."
+    )
+    return (
+        f"Sequence alignments were simulated using IQ-TREE3 v{version} AliSim "
+        f"(Ly-Trong et al. 2023). Simulation parameters were drawn from an "
+        f"empirical distribution of {source_loci} gene models using the "
+        f"{strategy} sampling strategy. {pdf_sentence}{override_sentence}A total "
+        f"of {n_completed} alignments were generated ({n_failed} failed)."
+        f"{tree_sentence}"
+    )
+
+
+def generate_methods_posttree_simulate_alisim_transfergaps(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    detected = key_results.get("detected_seq_type", params.get("seq_type", "AA"))
+    valid = "ACDEFGHIKLMNPQRSTVWY" if detected == "AA" else "ACGT"
+    return (
+        "Gap patterns from the original alignment were transferred to the "
+        "simulated alignment to restore biologically realistic indel patterns. "
+        "Positions containing non-standard characters (gaps and ambiguity codes) "
+        "in the original sequences were replaced with gap characters (-) at the "
+        f"corresponding positions in the simulated sequences. The valid character "
+        f"set was {valid}; all other characters were treated as gaps."
     )
 
 
@@ -1424,7 +1509,9 @@ METHODS_GENERATORS: dict[str, Any] = {
     "posttree.syserror.brlen": generate_methods_posttree_syserror_brlen,
     "posttree.syserror.cca": generate_methods_posttree_syserror_cca,
     "posttree.syserror.sites": generate_methods_posttree_syserror_sites,
-    "posttree.simulate": generate_methods_posttree_simulate,
+    "posttree.simulate.alisim.params": generate_methods_posttree_simulate_alisim_params,
+    "posttree.simulate.alisim.iqtree": generate_methods_posttree_simulate_alisim_iqtree,
+    "posttree.simulate.alisim.transfergaps": generate_methods_posttree_simulate_alisim_transfergaps,
 }
 
 

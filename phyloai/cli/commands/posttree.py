@@ -22,7 +22,7 @@ console = Console()
 
 class _PosttreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["topology", "dating", "signal", "modelcompare"]
+        return ["topology", "dating", "signal", "modelcompare", "simulate"]
 
 
 class _SignalGroup(click.Group):
@@ -33,6 +33,16 @@ class _SignalGroup(click.Group):
 class _ModelcompareGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
         return ["iqtree", "pb"]
+
+
+class _SimulateGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["alisim", "adequacy", "phybase"]
+
+
+class _AlisimGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["params", "iqtree", "transfergaps"]
 
 
 @click.group(cls=_PosttreeGroup)
@@ -1624,3 +1634,297 @@ def modelcompare_pb_command(
                    f"(wAIC: {kr.get('best_model_waic')})")
         click.echo(f"Sites: {kr.get('n_sites')} | Models: {kr.get('n_models')}")
         click.echo(f"Result:    {result_path}")
+
+
+@posttree.group("simulate", cls=_SimulateGroup)
+def simulate() -> None:
+    """Sequence simulation commands.
+
+    \b
+    1. phyloai posttree simulate alisim params       — extract empirical
+                                                       simulation parameters
+    2. phyloai posttree simulate alisim iqtree       — simulate MSAs with
+                                                       IQ-TREE3 AliSim
+    3. phyloai posttree simulate alisim transfergaps — restore gap patterns
+    """
+
+
+@simulate.command("adequacy")
+def simulate_adequacy_command() -> None:
+    """Assess model adequacy (not yet implemented)."""
+    click.echo("'posttree simulate adequacy' is not yet implemented.")
+
+
+@simulate.command("phybase")
+def simulate_phybase_command() -> None:
+    """Phybase coalescent simulation (not yet implemented)."""
+    click.echo("'posttree simulate phybase' is not yet implemented.")
+
+
+@simulate.group("alisim", cls=_AlisimGroup)
+def alisim() -> None:
+    """IQ-TREE AliSim sequence simulation."""
+
+
+@alisim.command("params")
+@click.option("--iqtree-dir", type=click.Path(path_type=Path), required=True,
+              help=(
+                  "Directory containing .iqtree report files (any nesting depth; "
+                  "globbed as **/*.iqtree)."
+              ))
+@click.option("--tree-dir", type=click.Path(path_type=Path), required=True,
+              help=(
+                  "Directory containing tree files. Matched to .iqtree files by "
+                  "logical locus name (suffix-agnostic)."
+              ))
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/simulate/alisim/params"), show_default=True,
+              help="Output directory for params.tsv and result.json.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate output directory.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Validate inputs and report counts without writing files.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+def params_command(
+    iqtree_dir: Path,
+    tree_dir: Path,
+    output_dir: Path,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Extract AliSim simulation parameters from IQ-TREE reports.
+
+    Matches each .iqtree report to a tree file by logical locus name and
+    writes a params.tsv table usable as --model-params by
+    'phyloai posttree simulate alisim iqtree'.
+
+    Examples:
+
+      phyloai posttree simulate alisim params --iqtree-dir runs/tree/ml/iqtree --tree-dir runs/tree/ml/iqtree
+    """
+    from phyloai.posttree.simulate_alisim_params import run_alisim_params
+
+    err_cmd = shlex.join([
+        "phyloai", "posttree", "simulate", "alisim", "params",
+        "--iqtree-dir", str(iqtree_dir), "--tree-dir", str(tree_dir),
+        "-o", str(output_dir),
+    ])
+    try:
+        run_alisim_params(
+            iqtree_dir=iqtree_dir, tree_dir=tree_dir, output_dir=output_dir,
+            overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+        )
+    except ValueError as exc:
+        _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
+        _fail(str(exc), exit_code=1)
+
+
+@alisim.command("iqtree")
+@click.option("--model-params", type=click.Path(path_type=Path), default=None,
+              help=(
+                  "TSV table from 'alisim params' (or manually constructed). "
+                  "Activates batch mode."
+              ))
+@click.option("--strategy", type=click.Choice(["complete", "mixed", "pdf"]), default=None,
+              help="Sampling strategy (batch mode only).")
+@click.option("--num-simulations", type=int, default=None,
+              help="Total number of MSAs to simulate (batch mode only).")
+@click.option("--override", type=str, default=None,
+              help=(
+                  "Comma-separated key=value pairs fixed across all simulations "
+                  "(e.g. length=500,prop_inv=0.1). Valid keys: length, prop_inv. "
+                  "Batch mode only."
+              ))
+@click.option("--noise-scale", type=click.FloatRange(0.0, 1.0), default=1.0,
+              show_default=True,
+              help=(
+                  "Histogram resampling noise amplitude: 0 = bin centers, "
+                  "1 = full within-bin uniform jitter. Requires --strategy pdf."
+              ))
+@click.option("--pdf-params", type=str, default="length,prop_inv,rate_param",
+              show_default=True,
+              help=(
+                  "Comma-separated parameters sampled via histogram-based density "
+                  "resampling. Requires --strategy pdf. Valid: length, prop_inv, "
+                  "rate_param."
+              ))
+@click.option("--ref-tree", type=click.Path(path_type=Path), default=None,
+              help="Reference tree (Newick). Single mode. Maps to IQ-TREE -t.")
+@click.option("--model", type=str, default=None,
+              help=(
+                  "IQ-TREE model string (e.g. 'GTR{XXX}+F{XXX}+G4{XXX}'). Single "
+                  "mode. Maps to IQ-TREE -m. Mutually exclusive with "
+                  "--model-partitions."
+              ))
+@click.option("--model-partitions", type=click.Path(path_type=Path), default=None,
+              help=(
+                  "NEXUS partition model file. Single mode. Maps to IQ-TREE -p. "
+                  "Mutually exclusive with --model."
+              ))
+@click.option("--seq-type", type=click.Choice(["AA", "DNA"], case_sensitive=False),
+              default=None,
+              help="Sequence type. Single mode. Maps to IQ-TREE --seqtype.")
+@click.option("--length", type=int, default=None,
+              help="Alignment length. Single mode. Maps to IQ-TREE --length.")
+@click.option("--msa-prefix", type=str, default="sim", show_default=True,
+              help="Output MSA file prefix. Maps to IQ-TREE --alisim.")
+@click.option("--num-alignments", type=int, default=1, show_default=True,
+              help="Number of MSAs per IQ-TREE call. Single mode only.")
+@click.option("--out-format", type=click.Choice(["fasta", "phy"]), default="fasta",
+              show_default=True,
+              help="Output MSA format. Maps to IQ-TREE --out-format.")
+@click.option("--iqtree-threads", type=int, default=1, show_default=True,
+              help="Threads per IQ-TREE invocation. Maps to IQ-TREE -T.")
+@click.option("-t", "--threads", type=int, default=4, show_default=True,
+              help="Parallel simulation tasks (batch mode only).")
+@click.option("--seed", type=int, default=None,
+              help=(
+                  "Random seed. Single mode maps to IQ-TREE --seed. Batch mode is "
+                  "the master seed; per-task seeds = master + task index."
+              ))
+@click.option("--iqtree-path", type=str, default=None,
+              help="Explicit path to iqtree3 executable.")
+@click.option("--tool-args", type=str, default=None,
+              help=(
+                  "Extra IQ-TREE flags. Blocked: --alisim, -t, -m, -p, -q, -Q, "
+                  "--seqtype, --length, --out-format, -af, --num-alignments, -T, "
+                  "--seed, --prefix."
+              ))
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/simulate/alisim/iqtree"), show_default=True,
+              help="Output directory.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate output directory.")
+@click.option("--resume", is_flag=True, default=False,
+              help="Resume a batch run from checkpoint.json. Batch mode only.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Show the sampling plan/commands without executing.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+def iqtree_command(
+    model_params: Path | None,
+    strategy: str | None,
+    num_simulations: int | None,
+    override: str | None,
+    noise_scale: float,
+    pdf_params: str,
+    ref_tree: Path | None,
+    model: str | None,
+    model_partitions: Path | None,
+    seq_type: str | None,
+    length: int | None,
+    msa_prefix: str,
+    num_alignments: int,
+    out_format: str,
+    iqtree_threads: int,
+    threads: int,
+    seed: int | None,
+    iqtree_path: str | None,
+    tool_args: str | None,
+    output_dir: Path,
+    overwrite: bool,
+    resume: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Simulate sequence alignments with IQ-TREE3 AliSim.
+
+    Two mutually exclusive modes:
+
+    \b
+    Single mode (one IQ-TREE call):
+      phyloai posttree simulate alisim iqtree --ref-tree ref.nwk --model LG+G4 --seq-type AA --length 2000
+
+    Batch mode (resumable, one AliSim call per MSA):
+      phyloai posttree simulate alisim iqtree --model-params params.tsv --strategy pdf --num-simulations 100
+    """
+    from phyloai.posttree.simulate_alisim_iqtree import run_alisim_iqtree
+
+    err_cmd = shlex.join([
+        "phyloai", "posttree", "simulate", "alisim", "iqtree",
+        "-o", str(output_dir),
+    ])
+    try:
+        run_alisim_iqtree(
+            ref_tree=ref_tree, model=model, model_partitions=model_partitions,
+            seq_type=seq_type, length=length, model_params=model_params,
+            strategy=strategy, num_simulations=num_simulations, override=override,
+            noise_scale=noise_scale, pdf_params=pdf_params, msa_prefix=msa_prefix,
+            out_format=out_format, num_alignments=num_alignments,
+            iqtree_threads=iqtree_threads, threads=threads, seed=seed,
+            iqtree_path=iqtree_path, tool_args=tool_args, output_dir=output_dir,
+            overwrite=overwrite, resume=resume, dry_run=dry_run, quiet=quiet,
+        )
+    except ValueError as exc:
+        _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
+        _fail(str(exc), exit_code=1)
+    except Exception as exc:
+        _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "env")
+        _fail(str(exc), exit_code=3)
+
+
+@alisim.command("transfergaps")
+@click.option("--original-msa", type=click.Path(path_type=Path), required=True,
+              help="Single original (gapped) MSA file.")
+@click.option("--simulated-msa", type=click.Path(path_type=Path), required=True,
+              help="Single simulated (gap-free) MSA file from 'alisim iqtree'.")
+@click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"],
+              case_sensitive=False), default="auto", show_default=True,
+              help=(
+                  "Sequence type. Determines the valid character set for "
+                  "identifying non-standard positions."
+              ))
+@click.option("--exclude-ambiguity", is_flag=True, default=False,
+              help=(
+                  "When set, only real gap characters (-, .) are transferred; "
+                  "ambiguity codes are left as simulated characters."
+              ))
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/simulate/alisim/transfergaps"),
+              show_default=True,
+              help="Output directory for result.json and the transferred MSA file.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate output directory.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Validate inputs without writing files.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+def transfergaps_command(
+    original_msa: Path,
+    simulated_msa: Path,
+    seq_type: str,
+    exclude_ambiguity: bool,
+    output_dir: Path,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Transfer gap patterns from an original MSA onto a simulated MSA.
+
+    Replaces non-standard (or, with --exclude-ambiguity, only gap) positions
+    of the simulated sequences with '-' using the original per-taxon mask.
+    Output order follows the original MSA.
+
+    Example:
+
+      phyloai posttree simulate alisim transfergaps --original-msa original.fa --simulated-msa sim001.fa
+    """
+    from phyloai.posttree.simulate_alisim_transfergaps import run_alisim_transfergaps
+
+    err_cmd = shlex.join([
+        "phyloai", "posttree", "simulate", "alisim", "transfergaps",
+        "--original-msa", str(original_msa), "--simulated-msa", str(simulated_msa),
+        "-o", str(output_dir),
+    ])
+    try:
+        run_alisim_transfergaps(
+            original_msa=original_msa, simulated_msa=simulated_msa,
+            seq_type=seq_type, exclude_ambiguity=exclude_ambiguity,
+            output_dir=output_dir, overwrite=overwrite, dry_run=dry_run,
+            quiet=quiet,
+        )
+    except ValueError as exc:
+        _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
+        _fail(str(exc), exit_code=1)
