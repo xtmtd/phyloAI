@@ -66,13 +66,14 @@ phyloai run --seq-dir ./markers
 phyloai run --seq-dir ./markers --mode supertree --speed fast --threads 16
 ```
 
-三步 AliSim 模拟工作流：从 IQ-TREE 报告提取每个位点的实证参数，
-批量模拟比对，再重新应用原始 gap 掩码：
+四步模拟工作流：从 IQ-TREE 报告提取每个位点的实证参数，
+批量模拟比对，重新应用原始 gap 掩码，并评估模型适当性：
 
 ```bash
 phyloai posttree simulate alisim params --iqtree-dir reports --tree-dir trees -o runs/params
 phyloai posttree simulate alisim iqtree --model-params runs/params/params.tsv --strategy pdf --num-simulations 100 -o runs/sim
 phyloai posttree simulate alisim transfergaps --original-msa markers/concat.aa.fa --simulated-dir runs/sim/MSAs -o runs/transfer
+phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulated-dir runs/transfer -o runs/adequacy
 ```
 
 显示所有可用命令：
@@ -140,4 +141,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree modelcompare iqtree` | 使用 IQ-TREE3 ModelFinder 进行相对模型比较（BIC/AIC/AICc），支持通过 `-madd` 展开异质混合模型。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
 | `phyloai posttree modelcompare pb` | 使用 PhyloBayes `.sitelogl` 位点对数似然文件进行 LOO-CV / wAIC 相对模型比较（Lartillot 2023），纯 Python 实现。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
 | `phyloai posttree simulate alisim` | 基于 IQ-TREE3 AliSim 的序列模拟，保留数据集实证特征：`params` 从 IQ-TREE 报告中提取逐位点参数，`iqtree` 模拟单个或批量 MSA（complete/mixed/pdf 策略，可恢复），`transfergaps` 将原始 gap 掩码重新引入一条或多条模拟比对。 | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.md) |
+| `phyloai posttree simulate adequacy` | 使用本地纯 Python 后验预测检验，将观测 PPA-DIV、PPA-CONV、PPA-VAR 和 PPA-COMP 与模拟 MSA 比较。 | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.md) |
 | `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.md) |

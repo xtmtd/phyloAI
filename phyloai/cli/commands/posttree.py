@@ -1698,21 +1698,77 @@ def modelcompare_pb_command(
 
 @posttree.group("simulate", cls=_SimulateGroup)
 def simulate() -> None:
-    """Sequence simulation commands.
-
-    \b
-    1. phyloai posttree simulate alisim params       — extract empirical
-                                                       simulation parameters
-    2. phyloai posttree simulate alisim iqtree       — simulate MSAs with
-                                                       IQ-TREE3 AliSim
-    3. phyloai posttree simulate alisim transfergaps — restore gap patterns
-    """
+    """Sequence simulation and model adequacy commands."""
 
 
 @simulate.command("adequacy")
-def simulate_adequacy_command() -> None:
-    """Assess model adequacy (not yet implemented)."""
-    click.echo("'posttree simulate adequacy' is not yet implemented.")
+@click.option("--original-msa", type=click.Path(path_type=Path), required=True,
+              help="Observed MSA (FASTA/PHYLIP-relaxed/PHYLIP-PAML/NEXUS).")
+@click.option("--simulated-dir", type=click.Path(path_type=Path), required=True,
+              help="Directory of simulated MSAs in supported alignment formats.")
+@click.option("--seq-type", type=_CaseInsensitiveChoice(["AA", "NT", "auto"]),
+              default="auto", show_default=True)
+@click.option("--threads", type=click.IntRange(1), default=4, show_default=True,
+              help="Parallel workers for simulated MSA statistics.")
+@click.option("--table-format", type=click.Choice(["csv", "tsv"]), default="csv", show_default=True,
+              help="Delimiter and suffix for all output tables.")
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/simulate/adequacy"), show_default=True,
+              help="Directory for tables, checkpoint.json, and result.json.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate a non-empty output directory.")
+@click.option("--resume", is_flag=True, default=False,
+              help="Resume from checkpoint.json; rejects changed observed MSA.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Validate inputs without writing files.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+def simulate_adequacy_command(
+    original_msa: Path,
+    simulated_dir: Path,
+    seq_type: str,
+    threads: int,
+    table_format: str,
+    output_dir: Path,
+    overwrite: bool,
+    resume: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Assess model adequacy from an observed MSA and simulated replicates.
+
+    Compares PPA-DIV, PPA-CONV, PPA-VAR, and PPA-COMP against the
+    empirical distribution from at least 10 valid simulated MSAs.
+
+    \b
+    Examples:
+
+      phyloai posttree simulate adequacy --original-msa matrix.fa --simulated-dir runs/simulated
+
+      phyloai posttree simulate adequacy --original-msa concat.aa.fa --simulated-dir runs/transfer --seq-type AA --threads 8 -o runs/adequacy
+
+      phyloai posttree simulate adequacy --original-msa concat.aa.fa --simulated-dir runs/transfer --resume
+    """
+    from phyloai.posttree.simulate_adequacy import PreflightError, run_simulate_adequacy
+
+    err_cmd = shlex.join([
+        "phyloai", "posttree", "simulate", "adequacy",
+        "--original-msa", str(original_msa.resolve()),
+        "--simulated-dir", str(simulated_dir.resolve()), "--seq-type", seq_type,
+        "--threads", str(threads), "--table-format", table_format,
+        "-o", str(output_dir.resolve()),
+    ])
+    try:
+        run_simulate_adequacy(
+            original_msa=original_msa, simulated_dir=simulated_dir, seq_type=seq_type,
+            threads=threads, table_format=table_format, output_dir=output_dir,
+            overwrite=overwrite, resume=resume, dry_run=dry_run, quiet=quiet,
+        )
+    except PreflightError as exc:
+        _fail(str(exc), exit_code=1)
+    except ValueError as exc:
+        _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
+        _fail(str(exc), exit_code=1)
 
 
 @simulate.command("phybase")

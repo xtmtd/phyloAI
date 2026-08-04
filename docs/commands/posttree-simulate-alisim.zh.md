@@ -178,7 +178,7 @@ phyloai posttree simulate alisim iqtree --model-params params.tsv --strategy pdf
 
 ## 备注
 
-- `adequacy` 与 `phybase` 子命令保留给未来工作，目前返回未实现消息。
+- 在 `transfergaps` 后运行 [posttree simulate adequacy](posttree-simulate-adequacy.zh.md)，比较观测与模拟 MSA 的 PPA-DIV、PPA-CONV、PPA-VAR 和 PPA-COMP 统计量。`phybase` 仍为未来占位命令。
 - `alisim iqtree` 的 `--tool-args` 透传额外的 IQ-TREE 标志；仅受管的 I/O 标志（`--alisim`、`-t`、`--prefix`、`--out-format`、`-af`，`--flag` 或 `--flag=value` 两种形式均被拦截）被阻止。其它标志（如 `--seqtype`、`--length`、`--num-alignments`、`-T`）可覆盖 PhyloAI 默认值；PhyloAI 会抑制自身已覆盖的受管标志，最终 IQ-TREE 命令中每个标志只出现一次。
 - AliSim 不产生 `.iqtree` 报告；`logs/` 存放捕获的 IQ-TREE 控制台输出。
 - IQ-TREE3（`iqtree3`）必须在 `PATH` 上（或通过 `--iqtree-path` 指定）；`phyloai doctor` 报告其检测状态。

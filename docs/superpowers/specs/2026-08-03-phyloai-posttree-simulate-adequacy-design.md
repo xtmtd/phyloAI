@@ -48,8 +48,10 @@ per-taxon breakdown. No external tools are required; the module is pure Python
    `result.json` schema.
 4. **Per-simulation transparency.** `per_simulation_stats.csv` records every
    simulated file's raw statistic values.
-5. **Empirical CI.** 95% interval = empirical p2.5 / p97.5 percentiles via
-   `statistics.quantiles(data, n=40)`. No normality assumption.
+5. **Empirical interval.** 95% interval = bounded empirical p2.5 / p97.5
+   percentiles via `statistics.quantiles(data, n=40, method="inclusive")`.
+   This interpolation never extrapolates beyond simulated values, including at
+   the minimum of 10 replicates. No normality assumption.
 6. **Checkpoint/resume.** Each simulated file's computed statistics are
    persisted in `checkpoint.json` so an interrupted run skips already-completed
    files. Useful for large MSAs (>1000 taxa or >50k sites) with many replicates.
@@ -223,6 +225,10 @@ simulated replicates yields `obs`, `mean_pred`, `sd_pred`, `ci_lower`,
 └── result.json                  # standard PhyloAI output
 ```
 
+The three tabular outputs above use `.csv`; with `--table-format tsv` the same
+three tables are tab-delimited with `.tsv` suffixes, and the matching paths are
+declared in `result.json:data.output_files`.
+
 ### 5.1 `adequacy_summary.csv`
 
 One row per scalar statistic. Columns:
@@ -335,6 +341,11 @@ Standard PhyloAI schema. Key fields:
 Characters matching `EFILPQWYZ` unambiguously indicate AA. Otherwise NT is
 assumed. This matches the existing convention in `phyloai.core.formats`.
 
+`--seq-type` is accepted case-insensitively and normalized with `str.upper()`
+at the entry point. Only the normalized `AA` or `NT` value is ever passed to a
+statistic worker; the literal `auto` is resolved before dispatch and is never
+used as a state set selector.
+
 **Format detection:** The command intentionally does not expose a single
 `--input-format`: the observed MSA and individual simulated MSAs may use
 different supported formats. `FormatConverter` therefore detects each file
@@ -370,12 +381,60 @@ One `CheckpointTask` is created per simulated file with:
   Implementations must not assume numeric types from the checkpoint.
 - `status`: `pending | success | failed`.
 
+**Resume fingerprint and membership handling:**
+
+- The checkpoint also stores an `original_msa` fingerprint
+  (`"<abs_path>|<size>|<mtime_ns>"`) captured at run start. On resume the
+  observed MSA is fingerprinted again and must match, otherwise the resume is
+  rejected with a clean input error: the persisted simulated distributions
+  would no longer correspond to the observed data, so reusing them is unsafe.
+
+  This fingerprint is stored as a dedicated `Checkpoint.original_msa_fingerprint`
+  field — a metadata attribute **outside `checkpoint.params`**. It therefore
+  never enters `validate_resume_params`' `canonical_params_hash`, which hashes
+   only the `params` dict (checkpoint.py:154-175), so persisting it cannot
+   invalidate an otherwise-valid resume. The field is optional and read with
+   `data.get("original_msa_fingerprint")` (default `None`) for backward
+   compatibility with existing checkpoints. A missing fingerprint is unsafe to
+   resume and requires a fresh `--overwrite` run.
+- On resume the simulated directory is **rescanned** and reconciled against the
+  checkpoint:
+  - Files present on disk but absent from the checkpoint become new `pending`
+    tasks.
+  - `success` tasks whose file still exists with a matching fingerprint are
+    kept.
+  - A checkpoint task whose file no longer exists on disk is dropped from the
+    run with a warning and excluded from aggregation. A per-file `stat()` must
+    not raise on a missing path; existence is checked before fingerprinting.
+
 On `--resume`:
 1. `validate_resume_params` checks that `original_msa`, `simulated_dir`, and
-   requested `seq_type` match the checkpoint exactly.
-2. Tasks with `status == success` AND matching fingerprint are skipped.
-3. All other tasks are recomputed.
-4. Aggregation always re-runs from all `success` task outputs.
+   requested `seq_type` match the checkpoint.
+2. Require a non-null matching `original_msa` fingerprint; absence or mismatch
+   → `PreflightError`.
+3. Rescan `simulated_dir` and reconcile membership as above.
+4. Tasks with `status == success` AND matching fingerprint are skipped.
+5. All other tasks (added, stale, or invalidated) are recomputed as described.
+6. Aggregation always re-runs from all current `success` task outputs.
+
+**Pre-flight refusals write no `result.json` (scoped exception to the parent
+JSON Output Standard §6.1).** The module must complete output lifecycle
+preflight before parsing inputs or raising ordinary validation errors: reject
+`--overwrite --resume`; reject a non-empty fresh output directory; and, for
+`--resume`, load a present, schema-compatible checkpoint, validate resume
+parameters, and validate a non-null matching observed-MSA fingerprint. Only
+after those checks may the invocation claim the output directory and use the
+standard error-result path. Any earlier failure, including a missing or
+unparseable observed MSA when the directory has not been claimed, exits with
+code 1 after printing the error to stderr and writes no `result.json`.
+
+Preflight failures use a dedicated `PreflightError(ValueError)` subclass; the
+CLI catches it before the general `ValueError` handler and calls `_fail`
+directly. This prevents writing into an unrelated directory or a prior run
+that failed resume validation. A malformed, unsupported-schema, or
+missing-fingerprint checkpoint is also a `PreflightError` and requires
+`--overwrite`. For the unit-test contract, refusals are identified by exception
+type, never by string-matching error messages.
 
 Checkpoint written atomically via `save_checkpoint_atomic` after each
 completed file.
@@ -436,7 +495,8 @@ The generated methods text should describe:
 
 1. Software and approach (pure Python, four statistics, no external tool)
 2. Input: observed MSA (n_taxa × n_sites, seq-type)
-3. Simulated MSAs: source (alisim or ppred), count
+3. Simulated MSAs: count (the command does not record simulation provenance,
+   so the source is intentionally not stated)
 4. Statistics computed: div, siteconvprob, sitecomp, comp — one sentence each
 5. Null distribution: empirical mean ± population SD and 95% CI (p2.5/p97.5)
 6. Comparison: z-score and posterior predictive p-value; significance threshold
@@ -484,6 +544,9 @@ Example output:
 | `test_pp_direction_siteconvprob` | 8/10 sim values > obs | `pp = 0.8` (P(sim > obs) = 8/10) |
 | `test_checkpoint_resume` | Interrupt after 5/10 files | Resume skips first 5, total = 10 |
 | `test_checkpoint_fingerprint` | Replace one simulated file after partial run | Replaced file recomputed on resume |
+| `test_checkpoint_original_fingerprint` | Replace the observed MSA in place after a partial run | Resume rejected with `ValueError` |
+| `test_checkpoint_missing_original_fingerprint` | Resume a legacy adequacy checkpoint without the field | `PreflightError`; user must use `--overwrite` |
+| `test_resume_membership_changes` | Delete one simulated file and add another after a partial run | Deleted task dropped with warning; added file recomputed; aggregation excludes the deleted task |
 | `test_dry_run` | Valid inputs | No files written; prints plan |
 | `test_phylip_relaxed_input` | `.ali` file (phylip-relaxed content) | Auto-detected, read correctly |
 | `test_result_json_schema` | Full run on test data | All required keys present |
@@ -526,6 +589,5 @@ Example output:
   simulations should consider applying `phyloai posttree simulate alisim
   transfergaps` to their simulated MSAs before running adequacy checks if
   missing data is substantial.
-- CI computation (`statistics.quantiles`) requires Python ≥ 3.8 and at least
-  `n=40` interpolation points; with fewer than 40 simulated files, the p2.5 /
-  p97.5 estimates may be imprecise.
+- CI computation uses bounded inclusive quantiles; with fewer than 40 simulated
+  files, the p2.5 / p97.5 estimates may be imprecise.

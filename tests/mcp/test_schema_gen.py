@@ -111,3 +111,14 @@ def test_signal_schemas_expose_required_params() -> None:
     fclm = next(d for d in walk_click_tree(cli) if d["tool_name"] == "posttree_signal_fclm")
     fclm_tool = build_mcp_tool(fclm)
     assert "taxset_csv" in fclm_tool["inputSchema"]["required"]
+
+
+def test_adequacy_mcp_tool_is_generated_from_click() -> None:
+    descriptor = next(
+        item for item in walk_click_tree(cli)
+        if item["tool_name"] == "posttree_simulate_adequacy"
+    )
+    tool = build_mcp_tool(descriptor)
+
+    assert tool["inputSchema"]["required"] == ["original_msa", "simulated_dir"]
+    assert "threads" in tool["inputSchema"]["properties"]

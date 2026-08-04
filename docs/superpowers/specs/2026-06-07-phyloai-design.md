@@ -75,7 +75,8 @@ phyloai/
 │   ├── modelcompare_pb.py     # relative model comparison via PhyloBayes LOO-CV/wAIC (pure Python)
 │   ├── simulate_alisim_params.py     # extract empirical AliSim parameters from .iqtree files
 │   ├── simulate_alisim_iqtree.py     # IQ-TREE3 AliSim MSA simulation (single + batch)
- │   └── simulate_alisim_transfergaps.py # transfer an original MSA gap mask to one or many simulated MSAs
+ │   ├── simulate_alisim_transfergaps.py # transfer an original MSA gap mask to one or many simulated MSAs
+ │   └── simulate_adequacy.py             # pure-Python posterior predictive model adequacy checks
 │
 ├── report/
 │   ├── collector.py    # directory scanning, result.json discovery, step ordering
@@ -140,7 +141,7 @@ phyloai posttree simulate alisim params   --iqtree-dir ./logs --tree-dir ./trees
 phyloai posttree simulate alisim iqtree  --model-params params.tsv --strategy complete --num-simulations 100
 phyloai posttree simulate alisim transfergaps --original-msa orig.fa --simulated-msa sim.fa
 phyloai posttree simulate alisim transfergaps --original-msa orig.fa --simulated-dir MSAs/
-phyloai posttree simulate adequacy ...  # future stub: model-adequacy checks
+phyloai posttree simulate adequacy --original-msa matrix.fa --simulated-dir runs/simulated/
 phyloai posttree simulate phybase ...   # future stub: Phybase R-script generation
 phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk
@@ -272,7 +273,8 @@ runs/
 │       └── alisim/
 │           ├── params/          # utility: no log, no checkpoint
 │           ├── iqtree/          # single or batch; batch has checkpoint + per-task logs
- │           └── transfergaps/    # single-file or directory batch gap-mask transfer + result.json
+  │           ├── transfergaps/    # single-file or directory batch gap-mask transfer + result.json
+  │           └── adequacy/        # pure-Python simulated-MSA batch + checkpoint + result.json
 └── <run-dir>/report/               # written alongside the run being reported
     ├── report.json                 # machine-readable source of truth; AI/MCP entry point
     └── report.html                 # human-readable; embedded PDF figures, sortable tables
@@ -286,7 +288,7 @@ Every non-`doctor` command writes exactly one `result.json` at its output direct
 
 How tool stderr is preserved depends on the command's execution mode:
 
-**Batch mode** (align, trim, filter, fasttree, iqtree — commands that invoke external tools per task): Each batch task writes its tool stderr to `<output-dir>/logs/<locus>.log`. The `result.json` references these files via `data.files[].log_file` but does not inline stderr. This keeps `result.json` compact and lets users `grep` individual locus logs when debugging. Pure-Python batch commands (`metrics`, `filter metrics`, `filter cluster`) invoke no external tools and omit `cmd`/`log_file` per the JSON Output Standard.
+**Batch mode** (align, trim, filter, fasttree, iqtree — commands that invoke external tools per task): Each batch task writes its tool stderr to `<output-dir>/logs/<locus>.log`. The `result.json` references these files via `data.files[].log_file` but does not inline stderr. This keeps `result.json` compact and lets users `grep` individual locus logs when debugging. Pure-Python batch commands (`metrics`, `filter metrics`, `filter cluster`, `posttree simulate adequacy`) invoke no external tools and omit `cmd`/`log_file` per the JSON Output Standard.
 
 **Single mode** (concat, msc, cf): The tool's full stderr is inlined in `result.json` as `data.tool_stderr`. There is no external log file. The single-invocation stderr volume is bounded and benefits from being directly queryable in JSON.
 
@@ -294,7 +296,7 @@ How tool stderr is preserved depends on the command's execution mode:
 
 ### 6.3 Checkpoint files
 
-Batch pipeline commands (`align`, `trim`, `fasttree`, `iqtree`) write `checkpoint.json` alongside `result.json` for resume support. Single-mode and utility commands do not use checkpoints.
+Batch pipeline commands (`align`, `trim`, `fasttree`, `iqtree`, `posttree simulate adequacy`) write `checkpoint.json` alongside `result.json` for resume support. Single-mode and utility commands do not use checkpoints.
 
 ---
 
@@ -551,7 +553,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | Format handling per-module | Different tools need different formats; per-module via core/formats.py |
 | backtrans in align | Direct post-processing of alignment, uses trimAl already a dependency |
 | syserror exposed as atomic ops only | Full diagnosis needs iterative human decisions; CLI atomics + Skill orchestration |
-| simulate starts with AliSim only | Current implementation covers parameter extraction, AliSim alignment simulation, and gap-mask transfer in both single-file and directory-batch modes; adequacy and phybase remain explicit future CLI stubs |
+| simulate supports AliSim and adequacy | Current implementation covers parameter extraction, AliSim alignment simulation, gap-mask transfer, and pure-Python model adequacy checks; phybase remains an explicit future CLI stub |
 | genetree in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
 | JSON result.json for non-doctor commands | One stable machine-readable result path for MCP wrapping |
 | JSON key_results in all pipeline modules | Enables report summary and methods text without post-hoc data extraction |

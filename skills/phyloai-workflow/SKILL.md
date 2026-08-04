@@ -39,7 +39,7 @@ description: >-
 
 - Pretree: `convert -> align -> trim -> metrics / filter -> concat` (supermatrix) or `... -> gene trees` (supertree). `stats` inspects results at any step.
 - Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi pb` for Bayesian MCMC, `tree bi bpcomp`/`tree bi tracecomp` for final convergence diagnostics with user-chosen burn-in, `tree bi readpb` for posterior summaries. For custom CAT-PMSF-style ML, pass an AA exchangeability file with `tree ml iqtree --model`, a profile with `--site-freq-file`, and `--state-freq none`; raw `--tool-args -fs` overrides the structured profile. For PMSF simulation input, use `tree bi readpb --mode ss,rr,r`; it writes `partition.PMSF.nex` from posterior site rates, alpha, Gamma category count, and the co-generated `.exchangeabilities` model. Use `cf` on species trees.
-- Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`, `modelcompare iqtree`, `modelcompare pb`, `simulate alisim`.
+- Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`, `modelcompare iqtree`, `modelcompare pb`, `simulate alisim`, `simulate adequacy`.
 - Report: run `report` only when the user requests a report/methods draft or recovery needs `report.json`.
 
 ### posttree signal
@@ -188,13 +188,19 @@ properties instead of using arbitrary model parameters:
   `--exclude-ambiguity` transfers only `-`/`.` instead of all non-standard
   characters.
 
-`adequacy` and `phybase` are future placeholders (not-implemented message).
+`simulate adequacy` compares observed PPA-DIV, PPA-CONV, PPA-VAR, and
+PPA-COMP statistics with at least 10 simulated MSAs. It independently detects
+the supported alignment format for every input file, writes CSV or TSV tables,
+and can resume from its checkpoint. Recommend `transfergaps` first when
+observed missing data are substantial. A low pp (`< 0.05`) or `|z| > 2`
+indicates potential inadequacy; `div` pp is `P(sim <= obs)`, while the other
+statistics use `P(sim > obs)`. `phybase` remains a future placeholder.
 
 **Approval:** `alisim iqtree` executes IQ-TREE3, so run `doctor`, review the
 full parameter card, and get explicit user approval before invoking it —
-including `--dry-run` to show the sampling plan/command first. `alisim params`
-and `alisim transfergaps` are local-only (no external tool) but still get the
-standard parameter review. `check_status`, `read_result`, `read_report`, and
+including `--dry-run` to show the sampling plan/command first. `alisim params`,
+`alisim transfergaps`, and `simulate adequacy` are local-only (no external tool)
+but still get the standard parameter review. `check_status`, `read_result`, `read_report`, and
 `get_command_schema` remain directly inspectable without approval.
 
 ## Demo Data

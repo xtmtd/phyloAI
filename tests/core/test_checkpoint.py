@@ -6,6 +6,23 @@ from pathlib import Path
 import pytest
 
 
+def _checkpoint():
+    from phyloai.core.checkpoint import Checkpoint
+
+    return Checkpoint(
+        schema_version=1,
+        step="pretree.align",
+        command="phyloai pretree align --seq-dir /data --output-dir /out --method linsi --seq-type AA --threads 4",
+        status="running",
+        params_hash="sha256:abc",
+        params={"method": "linsi"},
+        started_at="2026-06-12T10:00:00+00:00",
+        updated_at="2026-06-12T10:00:00+00:00",
+        completed_at=None,
+        tasks=[],
+    )
+
+
 def test_canonical_params_hash_is_stable() -> None:
     from phyloai.core.checkpoint import canonical_params_hash
 
@@ -181,3 +198,25 @@ def test_validate_resume_params_excludes_control_flags() -> None:
     )
 
     validate_resume_params(cp, params_full, step="pretree.trim")
+
+
+def test_checkpoint_optional_original_msa_fingerprint_round_trip() -> None:
+    from phyloai.core.checkpoint import Checkpoint
+
+    checkpoint = _checkpoint()
+    checkpoint.original_msa_fingerprint = "/tmp/original.fa|12|123"
+
+    restored = Checkpoint.from_dict(checkpoint.to_dict())
+
+    assert restored.original_msa_fingerprint == "/tmp/original.fa|12|123"
+
+
+def test_checkpoint_legacy_payload_has_no_original_msa_fingerprint() -> None:
+    from phyloai.core.checkpoint import Checkpoint
+
+    payload = _checkpoint().to_dict()
+    payload.pop("original_msa_fingerprint", None)
+
+    restored = Checkpoint.from_dict(payload)
+
+    assert restored.original_msa_fingerprint is None

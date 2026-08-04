@@ -75,6 +75,7 @@ class Checkpoint:
     updated_at: str
     completed_at: str | None
     tasks: list[CheckpointTask]
+    original_msa_fingerprint: str | None = None
 
     def touch(self) -> str:
         self.updated_at = _utc_now_iso()
@@ -92,6 +93,7 @@ class Checkpoint:
             "updated_at": self.updated_at,
             "completed_at": self.completed_at,
             "tasks": [task.to_dict() for task in self.tasks],
+            "original_msa_fingerprint": self.original_msa_fingerprint,
         }
 
     @classmethod
@@ -107,6 +109,10 @@ class Checkpoint:
             updated_at=str(data["updated_at"]),
             completed_at=None if data.get("completed_at") is None else str(data.get("completed_at")),
             tasks=[CheckpointTask.from_dict(task) for task in data.get("tasks", [])],
+            original_msa_fingerprint=(
+                None if data.get("original_msa_fingerprint") is None
+                else str(data.get("original_msa_fingerprint"))
+            ),
         )
 
 

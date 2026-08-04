@@ -68,6 +68,19 @@ class TestGenerateAllMethods:
         )
         assert result == ""
 
+    def test_adequacy_methods_text(self):
+        text = generate_all_methods(
+            "posttree.simulate.adequacy",
+            params={"seq_type": "AA"},
+            key_results={"n_simulations": 100, "n_taxa": 6, "n_sites": 235},
+            tool_versions={},
+        )
+        assert "100" in text
+        assert "PPA-DIV" in text
+        assert "PPA-COMP" in text
+        assert "phyloai posttree simulate adequacy" in text
+        assert "pure Python" not in text
+
 
 class TestGenerateMethodsPretreeAlign:
     def test_linsi(self):
