@@ -37,6 +37,11 @@ class TestParseStepId:
     def test_pretree_concat_jackknife(self):
         assert parse_step_id("phyloai pretree concat jackknife --matrix matrix.fa --partitions matrix.partitions") == "pretree.concat.jackknife"
 
+    def test_adequacy_step_id(self):
+        assert parse_step_id(
+            "phyloai posttree simulate adequacy --original-msa real.fa --simulated-dir sims"
+        ) == "posttree.simulate.adequacy"
+
     def test_empty_command(self):
         assert parse_step_id("") == "unknown"
 
@@ -60,6 +65,9 @@ class TestStepOrder:
     def test_concat_jackknife_order(self):
         assert STEP_ORDER.index("pretree.concat") < STEP_ORDER.index("pretree.concat.jackknife")
         assert STEP_ORDER.index("pretree.concat.jackknife") < STEP_ORDER.index("tree.ml.fasttree")
+
+    def test_adequacy_is_ordered(self):
+        assert "posttree.simulate.adequacy" in STEP_ORDER
 
 
 class TestDiscoverStepsModule:

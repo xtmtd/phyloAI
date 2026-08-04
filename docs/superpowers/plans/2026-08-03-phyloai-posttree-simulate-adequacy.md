@@ -18,10 +18,13 @@
 - Reuse `CheckpointTask.outputs` string values: scalars as strings and `taxon_dist_j` as a JSON-encoded string; parse explicitly during aggregation.
 - Use exact input validation and conflict policy from the approved design: unique taxa, equal lengths, name-based remapping, resume fingerprints, `--overwrite`/`--resume` mutual exclusion.
 - Do not add a single `--input-format`: original and simulated MSAs may intentionally have mixed formats, so forcing one format would be incorrect. This is the approved scoped exception to the parent shared-flag convention.
-- Resolve `--seq-type auto` from the original MSA before any simulated MSA is dispatched; use and report only the resolved `AA` or `NT` value thereafter.
+- Resolve `--seq-type auto` from the original MSA before any simulated MSA is dispatched; use and report only the resolved `AA` or `NT` value thereafter. Accept `--seq-type` case-insensitively and normalize with `str.upper()` at the entry point, so a literal `aa` can never select the NT state set.
 - Expose `--table-format csv|tsv` (default `csv`) and use it consistently for all three output tables and their `result.json` file-object labels.
 - For a non-dry run, reject a non-empty output directory unless `--overwrite` or `--resume` is set; `--overwrite` removes it, while `--resume` requires its `checkpoint.json`.
 - Every successful payload includes a full resolved top-level `command`, `wall_time`, `tool_versions: {}`, `error: null`, and a nested `key_results.statistics` object with `comp.max` and `comp.mean`.
+- Persist an `original_msa` fingerprint (`<abs_path>|<size>|<mtime_ns>`) in the checkpoint as a dedicated `Checkpoint.original_msa_fingerprint` field — metadata **outside `checkpoint.params`**, optional (`str | None = None`) and read via `data.get(..., None)`, so it never enters `validate_resume_params`' params-hash. Reject resume when it changes or is absent (legacy checkpoint) so a replaced observed MSA never silently mixes with old simulated distributions.
+- On resume, rescan `simulated_dir`: newly discovered files become new pending tasks, and checkpoint tasks whose file is missing are dropped with a warning (excluded from aggregation) without letting a stray `FileNotFoundError` escape.
+- Pre-flight refusals write no `result.json` (documented scoped exception to parent JSON Output Standard §6.1). Before parsing the original MSA, first resolve the output lifecycle: reject `--overwrite --resume`, reject a non-empty fresh directory, or, for resume, load a present schema-compatible checkpoint, validate resume params, and validate a non-null matching original-MSA fingerprint. Any failure before those checks claim the directory, including an unreadable original MSA, is `PreflightError(ValueError)` and the CLI calls `_fail` only. Once the directory is claimed, subsequent validation errors use the standard error-JSON path.
 - Do not hand-register MCP tools. `walk_click_tree()` exposes completed Click leaf commands automatically.
 
 ---
@@ -231,11 +234,43 @@ Do not commit without explicit user approval. Inspect the Task 1 diff and retain
 
 **Files:**
 - Modify: `phyloai/posttree/simulate_adequacy.py`
+- Modify: `phyloai/core/checkpoint.py` — add optional `original_msa_fingerprint: str | None = None` field to `Checkpoint`, serialize in `to_dict`, read via `data.get(..., None)` in `from_dict` (backward compatible); no change to `params` hashing.
 - Modify: `tests/posttree/test_simulate_adequacy.py`
+- Modify: `tests/core/test_checkpoint.py` — test serialization of the optional fingerprint and loading a legacy checkpoint JSON without it.
 
 **Interfaces:**
 - Consumes: Task 1 `_compute_statistics()` and `_summarize_distribution()`; `FormatConverter`, `Checkpoint`, `CheckpointTask`, `save_checkpoint_atomic`, `load_checkpoint`, and `validate_resume_params`.
 - Produces: `run_simulate_adequacy(original_msa: Path, simulated_dir: Path, seq_type: str = "auto", threads: int = 4, table_format: str = "csv", output_dir: Path = ..., overwrite: bool = False, resume: bool = False, dry_run: bool = False, quiet: bool = False, progress_callback: Callable[[int, int], None] | None = None) -> dict[str, Any]`.
+
+- [ ] **Step 0: Extend the shared checkpoint schema with compatibility tests**
+
+Add `original_msa_fingerprint: str | None = None` after `tasks` in the
+`Checkpoint` dataclass, include it in `to_dict()`, and load it with
+`data.get("original_msa_fingerprint")` in `from_dict()`. Keeping the default
+after all required fields preserves every existing `Checkpoint(...)` call.
+
+```python
+def test_checkpoint_optional_original_msa_fingerprint_round_trip() -> None:
+    checkpoint = _checkpoint()
+    checkpoint.original_msa_fingerprint = "/tmp/original.fa|12|123"
+
+    restored = Checkpoint.from_dict(checkpoint.to_dict())
+
+    assert restored.original_msa_fingerprint == "/tmp/original.fa|12|123"
+
+
+def test_checkpoint_legacy_payload_has_no_original_msa_fingerprint() -> None:
+    payload = _checkpoint().to_dict()
+    payload.pop("original_msa_fingerprint", None)
+
+    restored = Checkpoint.from_dict(payload)
+
+    assert restored.original_msa_fingerprint is None
+```
+
+Run: `pytest tests/core/test_checkpoint.py -q`
+
+Expected: PASS after the schema implementation.
 
 - [ ] **Step 1: Write failing batch, validation, and resume tests**
 
@@ -257,6 +292,38 @@ def _write_ten_simulations(directory: Path) -> None:
     directory.mkdir()
     for index in range(10):
         _fasta(directory / f"sim{index}.fa", [("A", "AC"), ("B", "CA")])
+
+
+def test_preflight_refusal_writes_no_result_json(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    simulations = tmp_path / "simulations"
+    _fasta(original, [("A", "AC"), ("B", "CA")])
+    _write_ten_simulations(simulations)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "unrelated.txt").write_text("keep me")
+
+    with pytest.raises(PreflightError):
+        run_simulate_adequacy(original_msa=original, simulated_dir=simulations,
+                              output_dir=out, quiet=True)
+
+    assert not (out / "result.json").exists()
+    assert (out / "unrelated.txt").exists()
+
+
+def test_unreadable_original_does_not_claim_nonempty_output(tmp_path: Path) -> None:
+    simulations = tmp_path / "simulations"
+    _write_ten_simulations(simulations)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "unrelated.txt").write_text("keep me")
+
+    with pytest.raises(PreflightError):
+        run_simulate_adequacy(original_msa=tmp_path / "missing.fa",
+                              simulated_dir=simulations, output_dir=out, quiet=True)
+
+    assert not (out / "result.json").exists()
+    assert (out / "unrelated.txt").exists()
 
 
 def test_run_writes_all_tables_and_json_safe_result(tmp_path: Path) -> None:
@@ -338,7 +405,7 @@ def test_nonempty_output_requires_overwrite_or_resume(tmp_path: Path) -> None:
     output_dir.mkdir()
     (output_dir / "existing.txt").write_text("keep")
 
-    with pytest.raises(ValueError, match="already exists and is non-empty"):
+    with pytest.raises(PreflightError, match="already exists and is non-empty"):
         run_simulate_adequacy(original_msa=original, simulated_dir=simulations, output_dir=output_dir, quiet=True)
 
 
@@ -350,7 +417,7 @@ def test_resume_requires_checkpoint(tmp_path: Path) -> None:
     _write_ten_simulations(simulations)
     output_dir.mkdir()
 
-    with pytest.raises(ValueError, match="No checkpoint found"):
+    with pytest.raises(PreflightError, match="No checkpoint found"):
         run_simulate_adequacy(original_msa=original, simulated_dir=simulations, output_dir=output_dir, resume=True, quiet=True)
 ```
 
@@ -363,6 +430,10 @@ Expected: FAIL because `run_simulate_adequacy` is not defined.
 - [ ] **Step 3: Implement shared-format input validation and one-file processing**
 
 ```python
+class PreflightError(ValueError):
+    """A pre-flight refusal raised before the output directory is claimed."""
+
+
 _FORMAT_CONVERTER = FormatConverter()
 
 
@@ -399,9 +470,12 @@ def _process_simulation(path: Path, original_ids: list[str], original_length: in
 
 
 def _resolved_seq_type(original: MultipleSeqAlignment, requested: str) -> str:
-    if requested == "auto":
+    normalized = requested.upper()
+    if normalized == "AUTO":
         return detect_seq_type([str(record.seq) for record in original])
-    return requested
+    if normalized not in {"AA", "NT"}:
+        raise ValueError(f"invalid seq_type: {requested!r}")
+    return normalized
 ```
 
 - [ ] **Step 4: Implement checkpoint persistence, parallel dispatch, aggregation, and writers**
@@ -441,25 +515,46 @@ params = {
     "simulated_dir": str(simulated_dir.resolve()),
     "seq_type": seq_type,
 }
-# Validate `seq_type in {"AA", "NT", "auto"}`. Read and validate the
-# original MSA first, then assign `resolved_seq_type = _resolved_seq_type(...)`.
+# Normalize and validate `seq_type in {"AA", "NT", "auto"}`. Before reading
+# the original MSA, resolve the output lifecycle: reject overwrite+resume and
+# a non-empty fresh directory; for resume, load a present, schema-compatible
+# checkpoint, validate params, and require a non-null matching original-MSA
+# fingerprint. Raise `PreflightError` for every failure before this point so
+# the CLI never writes into an unclaimed directory. Only then read and validate
+# the original MSA and assign `resolved_seq_type = _resolved_seq_type(...)`.
 # `params` retains requested `seq_type`; payload `key_results["seq_type"]` and
 # all worker calls use `resolved_seq_type`, never the literal value "auto".
 # Build a separate full payload params dict containing every resolved argument:
 # input paths, requested and detected seq types, threads,
 # table_format, output_dir, overwrite, resume, dry_run, and quiet. Construct
-# `full_command` with shlex.join and every CLI option. Start timing before
+# `full_command` with shlex.join following the sibling convention: include
+# required arguments and every explicitly provided non-default option, and omit
+# default-valued and false flags (so default `--table-format csv` and a false
+# `--overwrite` are omitted), matching `test_run_writes_all_tables_and_json_safe_result`.
+# Start timing before
 # validation. The smaller `params` above is only the resume-compatibility dict,
 # so changing threads/table format/output directory does not reject a valid
 # resume.
-# Reject overwrite and resume together. On a non-dry run, overwrite removes an
-# existing output directory; resume loads its checkpoint. Catch FileNotFoundError
-# from load_checkpoint and re-raise ValueError with the same message so the CLI
-# emits a clean input error. Otherwise a non-empty output directory raises
-# ValueError. Create the output directory only after this lifecycle decision.
+# On a non-dry run, overwrite removes an existing output directory only after
+# preflight passes. Convert FileNotFoundError, malformed/unsupported checkpoint
+# errors, missing legacy `original_msa_fingerprint`, and a fingerprint mismatch
+# to `PreflightError`; each requires `--overwrite`. Claim/create the output
+# directory only after this lifecycle decision. Ordinary input failures after
+# claim may write the standard error result.
 # Fresh run creates one CheckpointTask per sorted regular non-empty input.
-# Resume validates params, compares `_fingerprint(Path(task.task_id))` with
-# `task.input`, and changes stale success tasks to pending before dispatch.
+# Store the original-MSA fingerprint (path|size|mtime) in the `original_msa_fingerprint` field
+# of the Checkpoint at run
+# start (a metadata field outside `checkpoint.params`, so it never enters
+# `validate_resume_params`' params-hash and cannot invalidate a valid resume;
+# `Checkpoint.original_msa_fingerprint: str | None = None`, serialized via
+# to_dict / read via data.get(..., None)); on resume, require it to be non-null,
+# recompute it, and raise `PreflightError` on absence or mismatch before any
+# task is reused. Resume validates params, compares `_fingerprint(Path(task.task_id))`
+# with `task.input`, and changes stale success tasks to pending before dispatch.
+# On resume, rescan simulated_dir: create pending tasks for files not in the
+# checkpoint, and drop checkpoint tasks whose file is no longer present (warn,
+# exclude from aggregation), checking existence before any stat call so a
+# missing file cannot raise FileNotFoundError.
 # Submit pending tasks to ProcessPoolExecutor(max_workers=threads).  Every
 # completed future changes exactly one task to success (with `_task_outputs`)
 # or failed (with `reason`), then calls save_checkpoint_atomic().  Aggregate
@@ -549,6 +644,53 @@ def test_progress_callback_counts_only_pending_resume_tasks(tmp_path: Path) -> N
     )
 
     assert updates == [(1, 1)]
+
+
+def test_changed_original_blocks_resume(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    simulations = tmp_path / "simulations"
+    _fasta(original, [("A", "AC"), ("B", "CA")])
+    _write_ten_simulations(simulations)
+    output_dir = tmp_path / "out"
+    run_simulate_adequacy(original_msa=original, simulated_dir=simulations, output_dir=output_dir, quiet=True)
+    _fasta(original, [("A", "AA"), ("B", "CC")])
+
+    with pytest.raises(PreflightError, match="original.*changed"):
+        run_simulate_adequacy(original_msa=original, simulated_dir=simulations, output_dir=output_dir, resume=True, quiet=True)
+
+
+def test_legacy_checkpoint_without_original_fingerprint_is_rejected(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    simulations = tmp_path / "simulations"
+    _fasta(original, [("A", "AC"), ("B", "CA")])
+    _write_ten_simulations(simulations)
+    output_dir = tmp_path / "out"
+    run_simulate_adequacy(original_msa=original, simulated_dir=simulations,
+                          output_dir=output_dir, quiet=True)
+    checkpoint_path = output_dir / "checkpoint.json"
+    checkpoint = json.loads(checkpoint_path.read_text())
+    checkpoint.pop("original_msa_fingerprint")
+    checkpoint_path.write_text(json.dumps(checkpoint))
+
+    with pytest.raises(PreflightError, match="fingerprint.*overwrite"):
+        run_simulate_adequacy(original_msa=original, simulated_dir=simulations,
+                              output_dir=output_dir, resume=True, quiet=True)
+
+
+def test_resume_adds_new_and_drops_deleted_simulations(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    simulations = tmp_path / "simulations"
+    _fasta(original, [("A", "AC"), ("B", "CA")])
+    _write_ten_simulations(simulations)
+    output_dir = tmp_path / "out"
+    run_simulate_adequacy(original_msa=original, simulated_dir=simulations, output_dir=output_dir, quiet=True)
+    (simulations / "sim9.fa").unlink()
+    _fasta(simulations / "sim10.fa", [("A", "AC"), ("B", "CA")])
+
+    result = run_simulate_adequacy(original_msa=original, simulated_dir=simulations, output_dir=output_dir, resume=True, quiet=True)
+
+    assert result["key_results"]["n_simulations"] == 10
+    assert len(json.loads((output_dir / "checkpoint.json").read_text())["tasks"]) == 10
 ```
 
 Add a fixture regression test using `runs/zscore/matrix.XX`,
@@ -643,7 +785,7 @@ Expected: FAIL because adequacy remains a no-options stub and report parsing ret
 @click.option("-q", "--quiet", is_flag=True, default=False)
 def simulate_adequacy_command(original_msa: Path, simulated_dir: Path, seq_type: str, threads: int, table_format: str, output_dir: Path, overwrite: bool, resume: bool, dry_run: bool, quiet: bool) -> None:
     """Assess model adequacy from an observed MSA and simulated replicates."""
-    from phyloai.posttree.simulate_adequacy import run_simulate_adequacy
+    from phyloai.posttree.simulate_adequacy import PreflightError, run_simulate_adequacy
 
     err_parts = [
         "phyloai", "posttree", "simulate", "adequacy",
@@ -663,6 +805,8 @@ def simulate_adequacy_command(original_msa: Path, simulated_dir: Path, seq_type:
     err_cmd = shlex.join(err_parts)
     try:
         run_simulate_adequacy(original_msa=original_msa, simulated_dir=simulated_dir, seq_type=seq_type, threads=threads, table_format=table_format, output_dir=output_dir, overwrite=overwrite, resume=resume, dry_run=dry_run, quiet=quiet)
+    except PreflightError as exc:
+        _fail(str(exc), exit_code=1)
     except ValueError as exc:
         _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
         _fail(str(exc), exit_code=1)
@@ -678,13 +822,12 @@ STEP_ORDER.append("posttree.simulate.adequacy")
 
 # templates.py
 def generate_methods_posttree_simulate_adequacy(params: dict[str, Any], key_results: dict[str, Any], tool_versions: dict[str, Any]) -> str:
-    source = Path(params["simulated_dir"]).name if params.get("simulated_dir") else "simulated MSA directory"
     return (
         f"Model adequacy was assessed in pure Python by comparing four summary statistics "
         f"from the observed {key_results.get('n_taxa', '?')}-taxon "
         f"{key_results.get('seq_type', params.get('seq_type', '?'))} alignment "
         f"({key_results.get('n_sites', '?')} sites) against {key_results.get('n_simulations', 0)} "
-        f"simulated replicates from {source}. Mean diversity per site (PPA-DIV), mean squared "
+        "simulated replicates. Mean diversity per site (PPA-DIV), mean squared "
         "empirical state frequency (PPA-CONV), mean variance of site-specific frequencies "
         "(PPA-VAR), and maximum/mean squared compositional deviation across taxa (PPA-COMP) "
         "were calculated. For each statistic, the null distribution was summarized using its mean, "
@@ -733,6 +876,7 @@ Do not commit without explicit user approval. Run the targeted integration tests
 - Modify: `docs/superpowers/specs/2026-06-07-phyloai-design.md:139-144`
 - Modify: `docs/superpowers/specs/2026-06-07-phyloai-design.md:271-276`
 - Modify: `docs/superpowers/specs/2026-06-07-phyloai-design.md:549`
+- Modify: `docs/superpowers/specs/2026-06-07-phyloai-design.md` §6.2/§6.3: add `posttree simulate adequacy` to the per-execution-mode stderr/log paragraph and to the checkpoint-writing batch list, so the parent's tool-mode classification stays accurate once adequacy lands.
 
 **Interfaces:**
 - Consumes: final CLI interface and output schema from Tasks 2-3.
@@ -759,6 +903,31 @@ phyloai posttree simulate adequacy \
   --table-format csv \
   --output-dir runs/adequacy
 ```
+
+## Inputs
+
+- `--original-msa`: observed alignment (FASTA, PHYLIP-relaxed, PHYLIP-PAML, or NEXUS; auto-detected). Unique taxon names required.
+- `--simulated-dir`: directory of simulated MSAs. Each file is independently auto-detected; taxon set and alignment length must match the observed MSA.
+- `--seq-type` AA | NT | auto (default auto; case-insensitive).
+- `--threads` (default 4), `--table-format` csv | tsv (default csv), `--output-dir`, `--overwrite`, `--resume`, `--dry-run`, `--quiet`.
+
+## Examples
+
+```bash
+# CSV output, 4 workers, all-AA data
+phyloai posttree simulate adequacy --original-msa concat.aa.fa \
+  --simulated-dir runs/sim/MSAs --seq-type AA --threads 4
+
+# Resume an interrupted run writing tab-delimited tables
+phyloai posttree simulate adequacy --original-msa concat.aa.fa \
+  --simulated-dir runs/sim/MSAs --table-format tsv -o runs/adequacy --resume
+```
+
+## Warnings/Errors
+
+- Exit 1 on invalid input: duplicate taxon names in the observed MSA, a taxon with no valid characters, an existing non-empty output directory without `--overwrite`, a `--resume` without a matching `checkpoint.json`, or a changed observed MSA on resume.
+- Simulated files that fail validation (duplicate IDs, taxon/length mismatch, all-missing taxon) are skipped with a warning and counted in the result.
+- A run with fewer than 10 valid simulated replicates ends in an error.
 
 ## Outputs
 
@@ -789,7 +958,9 @@ phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulat
 - `simulate adequacy` is local-only: review all command parameters and get explicit approval, but `doctor` is not required. It independently auto-detects each observed/simulated MSA in the supported formats, writes CSV or TSV through `--table-format`, resumes from a checkpoint, and reports PPA-DIV/CONV/VAR/COMP results. Advise `alisim transfergaps` first when original missing data are substantial. Interpret low pp (<0.05) or |z| > 2 as potential inadequacy; `div` pp measures P(sim <= obs), while the other checks measure P(sim > obs).
 ```
 
-Add parameter-annotation headings for `--original-msa`, `--simulated-dir`, `--seq-type`, `--threads`, `--output-dir`, `--overwrite`, `--resume`, `--dry-run`, and `--quiet`; each annotation must match Click help and state the format support, minimum 10 valid replicates, and resume constraint where applicable.
+Add parameter-annotation headings for `--original-msa`, `--simulated-dir`, `--seq-type`, `--threads`, `--table-format`, `--output-dir`, `--overwrite`, `--resume`, `--dry-run`, and `--quiet`; each annotation must match Click help and state the format support, minimum 10 valid replicates, and resume constraint where applicable.
+
+The Chinese command document (`posttree-simulate-adequacy.zh.md`) must mirror the English structure and content section-for-section; verify both documents render the same options, inputs, outputs, and warnings. Chinese annotations must be added in the same commit as their English equivalents.
 
 - [ ] **Step 3: Run documentation and full regression checks**
 

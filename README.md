@@ -88,14 +88,15 @@ phyloai run --seq-dir ./markers
 phyloai run --seq-dir ./markers --mode supertree --speed fast --threads 16
 ```
 
-Three-command AliSim workflow: extract empirical per-locus parameters from
+Four-command simulation workflow: extract empirical per-locus parameters from
 IQ-TREE reports, simulate a batch of alignments, then re-apply the original
-gap mask:
+gap mask and assess adequacy:
 
 ```bash
 phyloai posttree simulate alisim params --iqtree-dir reports --tree-dir trees -o runs/params
 phyloai posttree simulate alisim iqtree --model-params runs/params/params.tsv --strategy pdf --num-simulations 100 -o runs/sim
 phyloai posttree simulate alisim transfergaps --original-msa markers/concat.aa.fa --simulated-dir runs/sim/MSAs -o runs/transfer
+phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulated-dir runs/transfer -o runs/adequacy
 ```
 
 Show all available commands:
@@ -174,4 +175,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree modelcompare iqtree` | Relative model comparison via IQ-TREE3 ModelFinder (BIC/AIC/AICc), including optional heterogeneous mixture model expansion via `-madd`. | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
 | `phyloai posttree modelcompare pb` | Relative model comparison via PhyloBayes LOO-CV / wAIC from `.sitelogl` site log-likelihood files (Lartillot 2023), pure Python. | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
 | `phyloai posttree simulate alisim` | IQ-TREE3 AliSim simulation preserving empirical dataset properties: `params` extracts per-locus parameters from IQ-TREE reports, `iqtree` simulates single or batch MSAs (complete/mixed/pdf strategies, resumable), `transfergaps` re-introduces the original gap mask onto one or many simulated MSAs. | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.md) |
+| `phyloai posttree simulate adequacy` | Compare observed PPA-DIV, PPA-CONV, PPA-VAR, and PPA-COMP statistics with simulated MSAs using a local pure-Python posterior predictive check. | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.md) |
 | `phyloai report`   | Generate a reproducible analysis report (JSON + self-contained HTML with embedded figures, sortable tables, and a draft Methods paragraph). Auto-generated methods text should be carefully verified before publication use. | [docs/commands/report.md](docs/commands/report.md) |

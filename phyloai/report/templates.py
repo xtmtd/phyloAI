@@ -1509,6 +1509,27 @@ def generate_methods_posttree_simulate_alisim_transfergaps(
     return count_sentence + masking_sentence
 
 
+def generate_methods_posttree_simulate_adequacy(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    return (
+        "Model adequacy was assessed with phyloai posttree simulate adequacy by comparing four summary "
+        f"statistics from the observed {key_results.get('n_taxa', '?')}-taxon "
+        f"{key_results.get('seq_type', params.get('seq_type', '?'))} alignment "
+        f"({key_results.get('n_sites', '?')} sites) against "
+        f"{key_results.get('n_simulations', 0)} simulated replicates. Mean diversity "
+        "per site (PPA-DIV), mean squared empirical state frequency (PPA-CONV), "
+        "mean variance of site-specific frequencies (PPA-VAR), and maximum/mean "
+        "squared compositional deviation across taxa (PPA-COMP) were calculated. "
+        "For each statistic, the null distribution was summarized using its mean, "
+        "population SD, and empirical 95% interval (p2.5-p97.5); observed values "
+        "were assessed using z-scores and posterior predictive p-values. Values with "
+        "|z| > 2 or pp < 0.05 were treated as potential model inadequacy."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Methods generator registry
 # ---------------------------------------------------------------------------
@@ -1548,6 +1569,7 @@ METHODS_GENERATORS: dict[str, Any] = {
     "posttree.simulate.alisim.params": generate_methods_posttree_simulate_alisim_params,
     "posttree.simulate.alisim.iqtree": generate_methods_posttree_simulate_alisim_iqtree,
     "posttree.simulate.alisim.transfergaps": generate_methods_posttree_simulate_alisim_transfergaps,
+    "posttree.simulate.adequacy": generate_methods_posttree_simulate_adequacy,
 }
 
 

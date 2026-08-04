@@ -38,6 +38,40 @@ are self-explanatory and omitted below.
 
 ---
 
+## posttree simulate adequacy
+
+### --original-msa
+观测 MSA。支持 FASTA、PHYLIP-relaxed、PHYLIP-PAML、NEXUS，并逐文件自动检测；分类单元名称必须唯一。
+
+### --simulated-dir
+模拟 MSA 目录。每个非空文件独立检测格式，必须与观测 MSA 的分类单元集合和比对长度相同。至少需要 10 个有效模拟 MSA。
+
+### --seq-type
+可选 `AA`、`NT` 或 `auto`。`auto` 仅根据观测 MSA 判定类型，并将该判定用于全部模拟 MSA。
+
+### --threads
+并行处理模拟 MSA 的工作进程数，默认 4。
+
+### --table-format
+三个结果表的格式：`csv`（默认）或 `tsv`。
+
+### --output-dir
+输出 `adequacy_summary`、`adequacy_taxon_comp`、`per_simulation_stats`、`checkpoint.json` 和 `result.json` 的目录。
+
+### --overwrite
+删除并重建现有输出目录；此操作具有破坏性，且不能与 `--resume` 同时使用。
+
+### --resume
+从 `checkpoint.json` 恢复。观测 MSA 和关键输入参数必须未改变；已替换的模拟文件会重新计算。
+
+### --dry-run
+验证观测 MSA，检测序列类型并统计模拟文件，不写入任何文件。
+
+### --quiet
+仅抑制终端摘要，不影响 `result.json` 和表格输出。
+
+---
+
 ## Doctor
 
 ### --output-format

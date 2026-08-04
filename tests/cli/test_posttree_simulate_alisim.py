@@ -29,11 +29,47 @@ def test_simulate_future_commands_registered() -> None:
     assert {"alisim", "adequacy", "phybase"} <= set(result.output.split())
 
 
-def test_adequacy_and_phybase_report_not_implemented() -> None:
-    for name in ("adequacy", "phybase"):
-        result = CliRunner().invoke(cli, ["posttree", "simulate", name])
-        assert result.exit_code == 0
-        assert "not yet implemented" in result.output
+def test_adequacy_command_has_options_and_dry_run(tmp_path: Path) -> None:
+    original = tmp_path / "original.fa"
+    simulations = tmp_path / "simulations"
+    original.write_text(">A\nAC\n>B\nCA\n")
+    simulations.mkdir()
+    (simulations / "sim1.fa").write_text(">A\nAC\n>B\nCA\n")
+
+    help_result = CliRunner().invoke(cli, ["posttree", "simulate", "adequacy", "--help"])
+    assert help_result.exit_code == 0
+    assert "--original-msa" in help_result.output
+    assert "--simulated-dir" in help_result.output
+    assert "[AA|NT|auto]" in help_result.output
+    for option in ("--overwrite", "--resume", "--dry-run", "--quiet"):
+        assert option in help_result.output
+    assert "Delete and recreate" in help_result.output
+    assert "Resume from checkpoint.json" in help_result.output
+    assert "Validate inputs without writing" in help_result.output
+    assert "Suppress terminal output" in help_result.output
+    assert "Examples:" in help_result.output
+    assert "--original-msa matrix.fa" in help_result.output
+
+    result = CliRunner().invoke(cli, [
+        "posttree", "simulate", "adequacy", "--original-msa", str(original),
+        "--simulated-dir", str(simulations), "--dry-run", "--quiet",
+    ])
+    assert result.exit_code == 0
+
+
+def test_phybase_reports_not_implemented() -> None:
+    result = CliRunner().invoke(cli, ["posttree", "simulate", "phybase"])
+    assert result.exit_code == 0
+    assert "not yet implemented" in result.output
+
+
+def test_simulate_help_lists_subcommands_without_alisim_workflow_steps() -> None:
+    result = CliRunner().invoke(cli, ["posttree", "simulate", "--help"])
+
+    assert result.exit_code == 0
+    assert "alisim" in result.output
+    assert "adequacy" in result.output
+    assert "1. phyloai" not in result.output
 
 
 def test_alisim_params_dry_run_writes_nothing(tmp_path: Path) -> None:

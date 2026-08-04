@@ -218,8 +218,9 @@ any files.
 
 ## Notes
 
-- `adequacy` and `phybase` subcommands are reserved for future work and
-  currently return a not-implemented message.
+- Run [posttree simulate adequacy](posttree-simulate-adequacy.md) after
+  `transfergaps` to compare observed and simulated PPA-DIV, PPA-CONV, PPA-VAR,
+  and PPA-COMP statistics. `phybase` remains a future placeholder.
 - `--tool-args` on `alisim iqtree` passes extra IQ-TREE flags; only
   PhyloAI-managed I/O flags (`--alisim`, `-t`, `--prefix`, `--out-format`,
   `-af`, in either `--flag` or `--flag=value` form) are blocked. Other flags

@@ -42,6 +42,7 @@ STEP_ORDER: list[str] = [
     "posttree.simulate.alisim.params",
     "posttree.simulate.alisim.iqtree",
     "posttree.simulate.alisim.transfergaps",
+    "posttree.simulate.adequacy",
 ]
 
 _EXCLUDE_DIRS = {"report", "logs"}
@@ -77,7 +78,7 @@ def parse_step_id(command: str) -> str:
         "bi": {"pb", "bpcomp", "tracecomp", "readpb"},
         "signal": {"lnl", "consistent", "fclm"},
         "modelcompare": {"iqtree", "pb"},
-        "simulate": {"alisim"},
+        "simulate": {"alisim", "adequacy"},
     }
     _FOURTH_LEVEL: dict[str, set[str]] = {
         "alisim": {"params", "iqtree", "transfergaps"},
