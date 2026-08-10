@@ -100,6 +100,7 @@ phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--mode` | `normal\|fast` | `normal` | `fast` → `--fast` |
+| `--constraint` | Path | — | 约束树（NEWICK），映射到 IQ-TREE `-g` |
 
 ### Branch Support
 
@@ -115,7 +116,6 @@ phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 |------|------|---------|-------------|
 | `--rate` | flag | `False` | 将位点速率写入 `.rate` 文件 |
 | `--wslr` | flag | `False` | 将位点对数似然写入 `.sitelh` 文件 |
-| `--constraint` | Path | — | 约束树（NEWICK） |
 | `--outgroup` | str | — | 外类群分类单元（逗号分隔） |
 | `--prefix` | str | — | 输出前缀（仅 `--matrix`） |
 

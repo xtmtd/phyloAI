@@ -273,6 +273,7 @@ class _IQTreeCommand(_GroupedHelpCommand):
                 "--mode  normal | fast",
                 "",
                 "fast maps to IQ-TREE --fast.",
+                "--constraint  Topological constraint tree (NEWICK). Maps to IQ-TREE -g.",
             ],
         ),
         (
@@ -291,7 +292,6 @@ class _IQTreeCommand(_GroupedHelpCommand):
             [
                 "--rate        Write empirical Bayesian site rates to .rate file",
                 "--wslr        Write site log-likelihoods per rate category to .sitelh file",
-                "--constraint  Topological constraint tree (NEWICK). Maps to IQ-TREE -g.",
                 "--outgroup    Comma-separated outgroup taxa. Maps to IQ-TREE -o.",
                 "--prefix      Output prefix (--matrix only; ignored in batch).",
                 "",
@@ -302,7 +302,7 @@ class _IQTreeCommand(_GroupedHelpCommand):
             "Execution",
             [
                 "-o, --output-dir  Output directory (default: runs/tree/ml/iqtree)",
-                "--threads         Batch: parallel IQ-TREE jobs (default: 4); Single: NUM or auto (default: auto)",
+                "-t, --threads     Batch: parallel IQ-TREE jobs (default: 4); Single: NUM or auto (default: auto)",
                 "--overwrite       Remove existing output directory before running",
                 "--resume          Resume incomplete run",
                 "--dry-run         Print commands without executing",

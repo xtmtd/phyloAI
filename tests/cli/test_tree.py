@@ -259,6 +259,8 @@ def test_tree_ml_iqtree_help() -> None:
     assert "--partitions is only valid with --matrix" in normalized_grouped
     assert "--bnni requires --boot > 0" in normalized_grouped
     assert "--qmax is only valid with --model MIX+MF" in normalized_grouped
+    assert grouped.index("fast maps to IQ-TREE --fast.") < grouped.index("--constraint")
+    assert "-t, --threads" in grouped
     assert "--matrix   Single concatenated matrix for supermatrix inference\n\n  --msa-dir and --matrix are mutually exclusive." in grouped
     assert "--qmax             MIX+MF rate categories (default: 10)\n\n  Heterogeneous workflows require --matrix." in grouped
     assert "Homogeneous batch fixed model:\n    phyloai tree ml iqtree --msa-dir msas/ --seq-type AA --model LG" in grouped

@@ -606,9 +606,9 @@ Click options (in functional blocks matching spec Section 2):
 - ModelFinder: `--modelfinder` (MF|MFP|none), `--mset`, `--msub`
 - Partitions: `--partitions`, `--rclusterf`, `--rcluster-max`
 - Heterogeneous: `--pmsf-base-model`, `--guide-tree`, `--qmax`
-- Tree Search: `--mode` (normal|fast)
+- Tree Search: `--mode` (normal|fast), `--constraint`
 - Branch Support: `--boot`, `--alrt`, `--bnni`
-- Output: `--rate`, `--wslr`, `--constraint`, `--outgroup`, `--prefix`
+- Output: `--rate`, `--wslr`, `--outgroup`, `--prefix`
 - Execution: `-o/--output-dir`, `--threads` (type=str, default=None), `--overwrite`, `--resume`, `--dry-run`, `-q/--quiet`, `--iqtree-path`, `--tool-args`
 
 CLI body logic:

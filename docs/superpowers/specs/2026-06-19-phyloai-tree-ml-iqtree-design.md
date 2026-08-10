@@ -103,6 +103,7 @@ Reference: <http://www.iqtree.org/doc/Complex-Models/> (section: Mixture models)
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--mode` | `normal\|fast` | `normal` | `fast` maps to IQ-TREE `--fast` (fast search resembling FastTree) |
+| `--constraint` | Path | — | Topological constraint tree in NEWICK format (multifurcating allowed). Maps to IQ-TREE `-g` |
 
 Note: The `--mode` domain is backend-specific. FastTree uses `normal|fastest|slow`; IQ-TREE uses `normal|fast`.
 
@@ -125,7 +126,6 @@ If neither `--boot` (>0) nor `--alrt` is provided, no branch support is computed
 |------|------|---------|-------------|
 | `--rate` | flag | `False` | Write empirical Bayesian site rates to `.rate` file |
 | `--wslr` | flag | `False` | Write site log-likelihoods per rate category to `.sitelh` file |
-| `--constraint` | Path | — | Topological constraint tree in NEWICK format (multifurcating allowed). Maps to `-g` |
 | `--outgroup` | str | — | Outgroup taxa, comma-separated. Maps to `-o` |
 | `--prefix` | str | — | Prefix for output files. **Only valid with `--matrix`**; ignored (with warning) in `--msa-dir` batch mode where gene names are used as prefix |
 

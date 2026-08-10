@@ -101,6 +101,7 @@ These combine to form `-m` (e.g., `LG+F+R4`). Ignored when `--modelfinder` is `M
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--mode` | `normal\|fast` | `normal` | `fast` → `--fast` |
+| `--constraint` | Path | — | Constraint tree (NEWICK); maps to IQ-TREE `-g` |
 
 ### Branch Support
 
@@ -116,7 +117,6 @@ These combine to form `-m` (e.g., `LG+F+R4`). Ignored when `--modelfinder` is `M
 |------|------|---------|-------------|
 | `--rate` | flag | `False` | Write site rates to `.rate` |
 | `--wslr` | flag | `False` | Write site log-likelihoods to `.sitelh` |
-| `--constraint` | Path | — | Constraint tree (NEWICK) |
 | `--outgroup` | str | — | Outgroup taxa (comma-separated) |
 | `--prefix` | str | — | Output prefix (`--matrix` only) |
 
