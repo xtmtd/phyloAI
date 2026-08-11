@@ -4,14 +4,12 @@ from __future__ import annotations
 
 STUB_TOOL_NAMES: frozenset[str] = frozenset(
     {
-        "posttree_syserror_brlen",
         "posttree_syserror_cca",
         "posttree_syserror_sites",
     }
 )
 
 _DESCRIPTIONS = {
-    "posttree_syserror_brlen": "Systematic error diagnosis: branch-length screen (not yet available).",
     "posttree_syserror_cca": "Systematic error diagnosis: composition analysis (not yet available).",
     "posttree_syserror_sites": "Systematic error diagnosis: site-wise analysis (not yet available).",
 }

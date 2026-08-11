@@ -37,6 +37,7 @@ STEP_ORDER: list[str] = [
     "posttree.modelcompare.iqtree",
     "posttree.modelcompare.pb",
     "posttree.syserror.brlen",
+    "posttree.syserror.brlen.label-nodes",
     "posttree.syserror.cca",
     "posttree.syserror.sites",
     "posttree.simulate.alisim.params",
@@ -82,6 +83,7 @@ def parse_step_id(command: str) -> str:
     }
     _FOURTH_LEVEL: dict[str, set[str]] = {
         "alisim": {"params", "iqtree", "transfergaps"},
+        "brlen": {"label-nodes"},
     }
 
     try:
@@ -204,10 +206,15 @@ def _detect_run_mode(run_dir: Path) -> tuple[str, list[Path], dict[str, Any] | N
     """Detect run_mode by filesystem structure only (Spec Section 5 priority rules).
 
     Priority:
-    1. Top-level result.json + subdirs with result.json → pipeline
-    2. Top-level result.json only → module (single command)
+    1. Top-level result.json from ``phyloai run`` + subdirs with result.json → pipeline
+    2. Top-level result.json (any other command), with or without aux subdirs → module
     3. No top-level, but subdirs → module (multi-step)
     4. Nothing found → error
+
+    A pipeline is recognized only when the top-level result.json is produced by
+    ``phyloai run``. A module whose main result.json sits at the top level and
+    also has auxiliary sub-results (e.g. ``posttree syserror brlen`` plus its
+    ``label_nodes`` helper) stays a module so the top-level step is not dropped.
 
     Pipeline step paths come purely from filesystem scan — NOT from
     top-level result.json:data.steps[], which is an implementation detail
@@ -219,25 +226,25 @@ def _detect_run_mode(run_dir: Path) -> tuple[str, list[Path], dict[str, Any] | N
 
     has_top = top_result.exists()
 
-    if has_top and sub_results:
+    if has_top:
         top_data = _load_result_json(top_result)
-        pipeline_summary = {
-            "mode": top_data.get("data", {}).get("mode", "unknown"),
-            "speed": top_data.get("data", {}).get("speed", "normal"),
-        }
-        # Enrich with top-level key_results (input_genes, final_tree, etc.)
-        top_kr = top_data.get("key_results", {})
-        for k in ("n_input_genes", "n_genes_after_filter", "final_tree",
-                  "matrix_length", "matrix_taxa", "input_genes",
-                  "genes_after_filter"):
-            if k in top_kr:
-                pipeline_summary[k] = top_kr[k]
-        return ("pipeline", sub_results, pipeline_summary)
+        top_step = parse_step_id(top_data.get("command", ""))
+        if top_step == "run" and sub_results:
+            pipeline_summary = {
+                "mode": top_data.get("data", {}).get("mode", "unknown"),
+                "speed": top_data.get("data", {}).get("speed", "normal"),
+            }
+            # Enrich with top-level key_results (input_genes, final_tree, etc.)
+            top_kr = top_data.get("key_results", {})
+            for k in ("n_input_genes", "n_genes_after_filter", "final_tree",
+                      "matrix_length", "matrix_taxa", "input_genes",
+                      "genes_after_filter"):
+                if k in top_kr:
+                    pipeline_summary[k] = top_kr[k]
+            return ("pipeline", sub_results, pipeline_summary)
+        return ("module", [top_result] + sub_results, None)
 
-    if has_top and not sub_results:
-        return ("module", [top_result], None)
-
-    if not has_top and sub_results:
+    if sub_results:
         return ("module", sub_results, None)
 
     raise ValueError(

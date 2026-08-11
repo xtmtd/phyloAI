@@ -1345,12 +1345,65 @@ def generate_methods_posttree_modelcompare_pb(
     return text
 
 
+_MODE_MEAN_PHRASES = {
+    "total": "Mean total branch length per tree",
+    "terminal": "Mean terminal branch length",
+    "internal": "Mean internal branch length",
+    "patristic": "Mean pairwise tip-to-tip distance",
+    "tip-to-tip": "Mean tip-to-tip distance",
+    "node-to-node": "Mean node-to-node distance",
+    "node-to-tip": "Mean node-to-tip distance",
+}
+
+
 def generate_methods_posttree_syserror_brlen(
     params: dict[str, Any],
     key_results: dict[str, Any],
     tool_versions: dict[str, Any],
 ) -> str:
-    return "Branch length heterogeneity and potential systematic biases were assessed."
+    n_trees = key_results.get("n_trees", 0)
+    modes = key_results.get("modes", [])
+    modes_str = ", ".join(modes)
+    has_map = bool(params.get("map"))
+
+    text = (
+        f"Branch length heterogeneity was assessed by extracting "
+        f"{modes_str} branch lengths from "
+        f"{_describe_n(n_trees, 'phylogenetic tree', 'phylogenetic trees')}"
+    )
+    if has_map:
+        text += " with internal nodes identified via a monophyletic group map file"
+    text += " using PhyloAI (Bio.Phylo)."
+
+    summary = key_results.get("summary", {})
+    for mode in modes:
+        phrase = _MODE_MEAN_PHRASES.get(mode)
+        if phrase is None or mode not in summary:
+            continue
+        s = summary[mode]
+        if s.get("mean") is None:
+            continue
+        text += (
+            f" {phrase} was {_safe_fmt(s.get('mean'), '.4f')}"
+            f" (SD = {_safe_fmt(s.get('sd'), '.4f')})."
+        )
+
+    n_skipped = key_results.get("n_trees_skipped", 0)
+    if n_skipped > 0:
+        text += (
+            f" {_describe_n(n_skipped, 'tree', 'trees')} were skipped due to "
+            f"parsing or monophyly validation failures."
+        )
+
+    return text
+
+
+def generate_methods_posttree_syserror_brlen_label_nodes(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    return ""
 
 
 def generate_methods_posttree_syserror_cca(
@@ -1564,6 +1617,7 @@ METHODS_GENERATORS: dict[str, Any] = {
     "posttree.modelcompare.iqtree": generate_methods_posttree_modelcompare_iqtree,
     "posttree.modelcompare.pb": generate_methods_posttree_modelcompare_pb,
     "posttree.syserror.brlen": generate_methods_posttree_syserror_brlen,
+    "posttree.syserror.brlen.label-nodes": generate_methods_posttree_syserror_brlen_label_nodes,
     "posttree.syserror.cca": generate_methods_posttree_syserror_cca,
     "posttree.syserror.sites": generate_methods_posttree_syserror_sites,
     "posttree.simulate.alisim.params": generate_methods_posttree_simulate_alisim_params,

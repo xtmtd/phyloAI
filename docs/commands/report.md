@@ -48,8 +48,8 @@ phyloai report --run-dir ./runs/pretree -o ./my-report
 
 | Structure | Detection | Typical use |
 |-----------|-----------|-------------|
-| **pipeline** | `run-dir/result.json` exists AND subdirectories also contain `result.json` | `phyloai run` output |
-| **module** | No top-level `result.json`, but subdirectories contain `result.json` | `phyloai pretree`, `phyloai tree`, etc. |
+| **pipeline** | top-level `run-dir/result.json` was produced by `phyloai run` AND subdirectories also contain `result.json` | `phyloai run` output |
+| **module** | No top-level `result.json` (subdirectories contain `result.json`), OR a top-level `result.json` from a non-`run` command (with or without auxiliary sub-results such as `brlen label_nodes`) | `phyloai pretree`, `phyloai tree`, `phyloai posttree syserror brlen`, etc. |
 
 Step discovery is purely filesystem-based — directory scanning with `report/`, `logs/`, and hidden directories excluded.
 

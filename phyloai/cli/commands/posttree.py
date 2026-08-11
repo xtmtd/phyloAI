@@ -23,7 +23,7 @@ console = Console()
 
 class _PosttreeGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["topology", "dating", "signal", "modelcompare", "simulate"]
+        return ["topology", "dating", "signal", "modelcompare", "simulate", "syserror"]
 
 
 class _SignalGroup(click.Group):
@@ -2070,4 +2070,295 @@ def transfergaps_command(
         )
     except ValueError as exc:
         _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
+        _fail(str(exc), exit_code=1)
+
+
+class _SyserrorGroup(click.Group):
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        return ["brlen"]
+
+
+@posttree.group("syserror", cls=_SyserrorGroup)
+def syserror() -> None:
+    """Atomic systematic-error diagnostic operations.
+
+    \b
+    Subcommands:
+      brlen        branch-length heterogeneity statistics
+    """
+
+
+def _build_brlen_error_command(
+    tree: Path | None,
+    tree_dir: Path | None,
+    mode: str | None,
+    map_file: Path | None,
+    node1: str | None,
+    node2: str | None,
+    tip1: str | None,
+    tip2: str | None,
+    output_dir: Path,
+    table_format: str,
+    threads: int,
+    max_rows: int,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> str:
+    parts = ["phyloai", "posttree", "syserror", "brlen"]
+    if tree:
+        parts += ["--tree", str(tree)]
+    if tree_dir:
+        parts += ["--tree-dir", str(tree_dir)]
+    if mode:
+        parts += ["--mode", mode]
+    if map_file:
+        parts += ["--map", str(map_file)]
+    if node1:
+        parts += ["--node1", node1]
+    if node2:
+        parts += ["--node2", node2]
+    if tip1:
+        parts += ["--tip1", tip1]
+    if tip2:
+        parts += ["--tip2", tip2]
+    parts += ["-o", str(output_dir)]
+    if table_format != "csv":
+        parts += ["--table-format", table_format]
+    if threads != 4:
+        parts += ["-t", str(threads)]
+    if max_rows != 5_000_000:
+        parts += ["--max-rows", str(max_rows)]
+    if overwrite:
+        parts.append("--overwrite")
+    if dry_run:
+        parts.append("--dry-run")
+    if quiet:
+        parts.append("-q")
+    return shlex.join(parts)
+
+
+def _output_dir_writable(output_dir: Path) -> bool:
+    return not output_dir.exists() or not any(output_dir.iterdir())
+
+
+def _run_brlen_command(
+    *,
+    tree: Path | None,
+    tree_dir: Path | None,
+    mode: str | None,
+    map_file: Path | None,
+    node1: str | None,
+    node2: str | None,
+    tip1: str | None,
+    tip2: str | None,
+    output_dir: Path,
+    table_format: str,
+    threads: int,
+    max_rows: int,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    from phyloai.posttree.syserror_brlen import run_brlen
+
+    err_cmd = _build_brlen_error_command(
+        tree=tree, tree_dir=tree_dir, mode=mode, map_file=map_file,
+        node1=node1, node2=node2, tip1=tip1, tip2=tip2,
+        output_dir=output_dir, table_format=table_format, threads=threads,
+        max_rows=max_rows, overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+    )
+    resolved = output_dir.resolve()
+    pre_existing = resolved.exists() and any(resolved.iterdir())
+    try:
+        payload = run_brlen(
+            tree=tree, tree_dir=tree_dir, mode=mode or "",
+            map_file=map_file, node1=node1, node2=node2, tip1=tip1, tip2=tip2,
+            table_format=table_format, threads=threads, max_rows=max_rows,
+            output_dir=output_dir, overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+        )
+    except ValueError as exc:
+        if not dry_run and not (pre_existing and not overwrite):
+            _write_error_result_json(resolved, err_cmd, str(exc), "input")
+        _fail(str(exc), exit_code=1)
+    if dry_run:
+        click.echo(json.dumps(payload, indent=2))
+
+
+@syserror.group("brlen", invoke_without_command=True)
+@click.option("--tree", type=click.Path(path_type=Path), default=None,
+              help="Single tree file (Newick). Mutually exclusive with --tree-dir.")
+@click.option("--tree-dir", type=click.Path(path_type=Path), default=None,
+              help="Directory of tree files (non-recursive, any suffix). Mutually exclusive with --tree.")
+@click.option("--mode", type=str, default=None,
+              help=(
+                  "Comma-separated mode list. Batch modes (combinable): "
+                  "total, terminal, internal, patristic, all. Endpoint modes "
+                  "(one at a time, not combinable with batch modes): "
+                  "tip-to-tip, node-to-node, node-to-tip."
+              ))
+@click.option("--map", type=click.Path(path_type=Path), default=None,
+              help=(
+                  "Node-species map file for node identification. Format: "
+                  "NodeName:sp1,sp2,sp3. Overrides internal node labels when "
+                  "both are present."
+              ))
+@click.option("--node1", type=str, default=None,
+              help="First node name (node-to-node / node-to-tip modes).")
+@click.option("--node2", type=str, default=None,
+              help="Second node name (node-to-node mode).")
+@click.option("--tip1", type=str, default=None,
+              help="First tip taxon name (tip-to-tip mode; optional for node-to-tip).")
+@click.option("--tip2", type=str, default=None,
+              help="Second tip taxon name (tip-to-tip mode).")
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/syserror/brlen"), show_default=True,
+              help="Output directory.")
+@click.option("--table-format", type=click.Choice(["csv", "tsv"]), default="csv", show_default=True,
+              help="Output table delimiter.")
+@click.option("-t", "--threads", type=click.IntRange(1), default=4, show_default=True,
+              help="Parallel workers for batch mode.")
+@click.option("--max-rows", type=click.IntRange(0), default=5_000_000, show_default=True,
+              help="Safety limit for patristic output rows. 0 = unlimited.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate output directory.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Validate inputs (including endpoint resolution) without writing files.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+@click.pass_context
+def brlen(
+    ctx: click.Context,
+    tree: Path | None,
+    tree_dir: Path | None,
+    mode: str | None,
+    map: Path | None,
+    node1: str | None,
+    node2: str | None,
+    tip1: str | None,
+    tip2: str | None,
+    output_dir: Path,
+    table_format: str,
+    threads: int,
+    max_rows: int,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Extract branch-length statistics for systematic-error diagnosis.
+
+    Computes total, terminal, internal, and patristic (all pairwise tip-to-tip)
+    branch lengths from one tree, a directory of trees, or Newick multi-tree
+    files, plus tip-to-tip / node-to-node / node-to-tip endpoint distances.
+
+    Modes:
+
+    \b
+      Batch (combinable via commas, e.g. --mode terminal,internal,total):
+        total       sum of all branch lengths per tree
+        terminal    each terminal (tip) branch per tree
+        internal    each non-root internal branch per tree
+        patristic   all pairwise tip-to-tip distances (O(n²) per tree)
+        all         = total + terminal + internal + patristic
+      Endpoint (one at a time, exclusive with batch modes):
+        tip-to-tip    --tip1 --tip2 required
+        node-to-node  --node1 --node2 required (plus --map or a labeled tree)
+        node-to-tip   --node1 required (--map or a labeled tree; --tip1 optional)
+
+    Node identification uses a --map file first (it overrides labels), then
+    internal node labels. Map format: NodeName:sp1,sp2,sp3. For rooted trees a
+    map group must be an exact clade; for unrooted trees it must equal one side
+    of an internal split (canonical side = smaller leaf set, ties by lexical
+    order). A single-taxon map entry resolves to that tip.
+
+    Rootedness is detected structurally from the Newick representation: a root
+    with exactly 2 children is treated as rooted, 3+ as unrooted. This is a
+    structural heuristic, not a proof of biological rooting; a unary root or
+    rooted multifurcation is treated as unrooted. Users needing rooted
+    semantics must provide a bifurcating rooted Newick representation.
+
+    Multi-tree files (e.g. PhyloBayes posterior treelists) are supported and
+    are identified as filename:index (zero-based); a one-tree file keeps the
+    bare filename. Directory scans are non-recursive, alphabetical, with no
+    suffix filter.
+
+    Patristic output is O(n^2) per tree; --max-rows (default 5,000,000, 0 =
+    unlimited) aborts before writing if the estimated row count is exceeded.
+
+    Examples:
+
+    \b
+      # Batch: all branch lengths from a directory of posterior trees
+      phyloai posttree syserror brlen --tree-dir ./posterior_trees --mode all --max-rows 0
+
+      # Single: terminal and internal branch lengths
+      phyloai posttree syserror brlen --tree LG.tre --mode terminal,internal
+
+      # Single: tip-to-tip distance between two taxa
+      phyloai posttree syserror brlen --tree LG.tre --mode tip-to-tip --tip1 Neelus_murinus --tip2 Folsomia_candida
+
+      # Batch: node-to-node distance across model trees using map
+      phyloai posttree syserror brlen --tree-dir ./model_trees --mode node-to-node --map nodes.map.txt --node1 Collembola --node2 Outgroup
+
+      # Batch: node-to-tip (map-defined taxa) across posterior trees
+      phyloai posttree syserror brlen --tree-dir ./posterior_trees --mode node-to-tip --map nodes.map.txt --node1 Collembola
+
+      # Node-to-tip with specific tip on a rooted labeled tree (no map needed)
+      phyloai posttree syserror brlen --tree species.labeled.nwk --mode node-to-tip --node1 N5 --tip1 Folsomia_candida
+
+      # Node-to-tip all descendants on a rooted labeled tree (no map needed)
+      phyloai posttree syserror brlen --tree species.labeled.nwk --mode node-to-tip --node1 N5
+
+      # Generate labeled tree and map template for a reference tree
+      phyloai posttree syserror brlen label-nodes --tree species.nwk
+    """
+    if ctx.invoked_subcommand is None:
+        _run_brlen_command(
+            tree=tree, tree_dir=tree_dir, mode=mode, map_file=map,
+            node1=node1, node2=node2, tip1=tip1, tip2=tip2,
+            output_dir=output_dir, table_format=table_format, threads=threads,
+            max_rows=max_rows, overwrite=overwrite, dry_run=dry_run, quiet=quiet,
+        )
+
+
+@brlen.command("label-nodes")
+@click.option("--tree", type=click.Path(path_type=Path), required=True,
+              help="Single Newick tree file.")
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/syserror/brlen/label_nodes"), show_default=True,
+              help="Output directory.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Overwrite output.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress output.")
+def label_nodes_command(
+    tree: Path,
+    output_dir: Path,
+    overwrite: bool,
+    quiet: bool,
+) -> None:
+    """Label internal nodes N1..Nxx and write a tree, map template, and PDF.
+
+    Single tree only. Rooted trees label every internal node including the
+    root; unrooted trees exclude the artificial root (3+ children). Nxx labels
+    are topology-specific and should not be reused across trees — use --map on
+    the main command for batches with differing topologies.
+
+    \b
+    Examples:
+      phyloai posttree syserror brlen label-nodes --tree species.nwk
+    """
+    from phyloai.posttree.syserror_brlen import run_label_nodes
+
+    err_cmd = shlex.join(
+        ["phyloai", "posttree", "syserror", "brlen", "label-nodes",
+         "--tree", str(tree), "-o", str(output_dir)]
+        + (["--overwrite"] if overwrite else [])
+        + (["-q"] if quiet else [])
+    )
+    try:
+        run_label_nodes(tree, output_dir=output_dir, overwrite=overwrite, quiet=quiet)
+    except ValueError as exc:
+        if _output_dir_writable(output_dir.resolve()):
+            _write_error_result_json(output_dir.resolve(), err_cmd, str(exc), "input")
         _fail(str(exc), exit_code=1)
