@@ -181,10 +181,12 @@ The MCP server registers one tool per CLI subcommand plus four utility tools. Al
 | `posttree_topology` | `phyloai posttree topology` | fire-and-forget |
 | `posttree_dating_hessian` | `phyloai posttree dating hessian` | fire-and-forget |
 | `posttree_dating_mcmc` | `phyloai posttree dating mcmc` | fire-and-forget |
+| `posttree_syserror_brlen` | `phyloai posttree syserror brlen` | fire-and-forget |
+| `posttree_syserror_brlen_label_nodes` | `phyloai posttree syserror brlen label-nodes` | fire-and-forget |
 | `report` | `phyloai report` | synchronous |
 | `run` | `phyloai run` | fire-and-forget |
 
-Stub tools (return "not yet available"): `posttree_simulate`, `posttree_syserror_brlen`, `posttree_syserror_cca`, `posttree_syserror_sites`.
+Stub tools (return "not yet available"): `posttree_simulate`, `posttree_syserror_cca`, `posttree_syserror_sites`.
 
 ### Utility tools (read-only, synchronous)
 

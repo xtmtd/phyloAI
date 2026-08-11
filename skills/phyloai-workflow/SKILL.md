@@ -196,12 +196,45 @@ observed missing data are substantial. A low pp (`< 0.05`) or `|z| > 2`
 indicates potential inadequacy; `div` pp is `P(sim <= obs)`, while the other
 statistics use `P(sim > obs)`. `phybase` remains a future placeholder.
 
+### posttree syserror brlen
+
+Branch-length extraction for rate-heterogeneity / LBA diagnosis, pure Python
+(no external tool, so no `doctor` needed — but still review parameters and get
+explicit user approval before running).
+
+- Batch modes (`total`, `terminal`, `internal`, `patristic`, `all`) extract
+  per-tree branch-length statistics. Endpoint modes (`tip-to-tip`,
+  `node-to-node`, `node-to-tip`) compute distances between specified
+  tips/nodes; endpoint modes are mutually exclusive with batch modes.
+- **Node identification:** for batches whose topology or taxon set differs
+  across trees (posterior/model tree batches), always use a `--map` file —
+  rooted maps require an exact monophyletic clade, unrooted maps an exact split
+  side. Use `label-nodes` only on an inspected, stable reference topology; `Nxx`
+  labels are not portable across topologies.
+- `patristic` is O(n²) per tree; review the `--max-rows` estimate (default
+  5,000,000, `0` disables) for large posterior batches.
+- Rootedness is structural (root children: 2 = rooted, 3+ = unrooted); state
+  this caveat when interpreting `internal`/`label-nodes`/`node-to-tip` results.
+- In batch endpoint mode, a tree whose tip/node/map endpoint cannot be resolved
+  is skipped with a warning and counted in `n_trees_skipped`. `--dry-run` runs
+  the same endpoint resolution, so it rejects single-tree unresolved endpoints
+  before any real run. Batch processing shows a transient progress bar (visible
+  on large posterior batches; `--threads` parallelizes `--tree-dir`).
+- **Results interpretation:** distinguish terminal vs internal vs patristic
+  measurements, and node-to-node vs node-to-tip distances. Compare these
+  distributions across model runs (e.g. LG vs CAT-PMSF posterior trees). Do not
+  declare model superiority from branch lengths alone; combine with `cca` and
+  `sites` diagnostics.
+
 **Approval:** `alisim iqtree` executes IQ-TREE3, so run `doctor`, review the
 full parameter card, and get explicit user approval before invoking it —
 including `--dry-run` to show the sampling plan/command first. `alisim params`,
 `alisim transfergaps`, and `simulate adequacy` are local-only (no external tool)
-but still get the standard parameter review. `check_status`, `read_result`, `read_report`, and
-`get_command_schema` remain directly inspectable without approval.
+but still get the standard parameter review. `posttree syserror brlen` and
+`label-nodes` are likewise local-only: run `get_command_schema`, render a
+parameter card, and get explicit user approval before running. `check_status`,
+`read_result`, `read_report`, and `get_command_schema` remain directly
+inspectable without approval.
 
 ## Demo Data
 

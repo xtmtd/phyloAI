@@ -99,6 +99,14 @@ phyloai posttree simulate alisim transfergaps --original-msa markers/concat.aa.f
 phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulated-dir runs/transfer -o runs/adequacy
 ```
 
+Systematic-error branch-length screen across posterior/model trees (node map
+identifies the same biological node across differing topologies):
+
+```bash
+phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
+  --map nodes.map.txt --node1 Collembola -o runs/posttree/syserror/brlen
+```
+
 Show all available commands:
 
 ```bash
@@ -176,4 +184,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree modelcompare pb` | Relative model comparison via PhyloBayes LOO-CV / wAIC from `.sitelogl` site log-likelihood files (Lartillot 2023), pure Python. | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
 | `phyloai posttree simulate alisim` | IQ-TREE3 AliSim simulation preserving empirical dataset properties: `params` extracts per-locus parameters from IQ-TREE reports, `iqtree` simulates single or batch MSAs (complete/mixed/pdf strategies, resumable), `transfergaps` re-introduces the original gap mask onto one or many simulated MSAs. | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.md) |
 | `phyloai posttree simulate adequacy` | Compare observed PPA-DIV, PPA-CONV, PPA-VAR, and PPA-COMP statistics with simulated MSAs using a local pure-Python posterior predictive check. | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.md) |
+| `phyloai posttree syserror brlen` | Extract branch-length statistics (total, terminal, internal, patristic, tip-to-tip, node-to-node, node-to-tip) from one tree, a directory, or Newick multi-tree files to diagnose rate heterogeneity across taxa; `label-nodes` generates labeled reference trees and map templates. | [docs/commands/posttree-syserror-brlen.md](docs/commands/posttree-syserror-brlen.md) |
 | `phyloai report`   | Generate a reproducible analysis report (JSON + self-contained HTML with embedded figures, sortable tables, and a draft Methods paragraph). Auto-generated methods text should be carefully verified before publication use. | [docs/commands/report.md](docs/commands/report.md) |

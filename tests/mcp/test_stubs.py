@@ -13,3 +13,8 @@ def test_stub_tools_are_valid_and_do_not_overlap_real_cli() -> None:
     assert {t["name"] for t in STUB_TOOLS} == STUB_TOOL_NAMES
     assert handle_stub(next(iter(STUB_TOOL_NAMES)))["status"] == "not_implemented"
     assert handle_stub("pretree_align") is None
+
+
+def test_brlen_is_no_longer_a_stub() -> None:
+    assert "posttree_syserror_brlen" not in STUB_TOOL_NAMES
+    assert "posttree_syserror_brlen" in {d["tool_name"] for d in walk_click_tree(cli)}

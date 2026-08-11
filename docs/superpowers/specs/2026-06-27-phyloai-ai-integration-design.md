@@ -56,7 +56,7 @@ One MCP tool per CLI subcommand. Example mapping:
 | `posttree_dating_mcmc`       | `phyloai posttree dating mcmc`      |
 | `posttree_signal`           | `phyloai posttree signal`           *(stub until CLI implemented)* |
 | `posttree_simulate`         | `phyloai posttree simulate`         *(stub until CLI implemented)* |
-| `posttree_syserror_brlen`   | `phyloai posttree syserror brlen`   *(stub until CLI implemented)* |
+| `posttree_syserror_brlen`   | `phyloai posttree syserror brlen`   |
 | `posttree_syserror_cca`     | `phyloai posttree syserror cca`     *(stub until CLI implemented)* |
 | `posttree_syserror_sites`   | `phyloai posttree syserror sites`   *(stub until CLI implemented)* |
 | `doctor`                    | `phyloai doctor --output-format json` |

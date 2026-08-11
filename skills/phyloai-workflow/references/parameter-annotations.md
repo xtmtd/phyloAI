@@ -770,6 +770,66 @@ MCMC 保留样本数。默认 10,000。总迭代 = burnin + (sample_freq × nsam
 
 ---
 
+### posttree syserror brlen
+
+纯 Python 枝长提取（Bio.Phylo），不调用外部可执行程序，无需 `doctor`。
+
+#### --tree / --tree-dir
+输入互斥：`--tree` 为单个 Newick 树文件；`--tree-dir` 为树文件目录
+（非递归、按文件名排序、不按后缀过滤、支持多树文件）。二者必须且只能提供一个。
+
+#### --mode
+逗号分隔的模式列表。批量模式（可组合）：`total`、`terminal`、`internal`、
+`patristic`、`all`（= 前四者）。端点模式（一次一个，不可与批量模式组合）：
+`tip-to-tip`（需 `--tip1` `--tip2`）、`node-to-node`（需 `--node1` `--node2`
+及 map 或带标签树）、`node-to-tip`（需 `--node1` 及 map 或带标签树，`--tip1`
+可选）。`--mode all` 与其他模式互斥。
+
+#### --map
+节点-物种映射文件（`NodeName:sp1,sp2`，每行一个节点），用于跨树识别同一
+生物学节点，优先于树内标签。有根树要求映射组为该树上的精确单系支序（MRCA
+后代集合完全等于映射组）；无根树要求映射组恰好等于某内部分割的一侧。空交集
+或不兼容组：批量模式告警并跳过该树（计入 `n_trees_skipped`），单树模式报错退出。单物种条目解析为该末梢。
+
+#### --node1 / --node2 / --tip1 / --tip2
+端点模式参数。`node-to-node` 计算两节点间距离；`node-to-tip` 计算节点到
+末梢距离（省略 `--tip1` 时：有 map 则对映射组内每个类群各一行；无 map 且
+有根带标签树则对标签节点全部后代各一行；无 map 且无根树则报错）。`tip-to-tip`
+计算两末梢间距离（注意与批量 `patristic`（全部两两距离）不同）。
+
+#### -o / --output-dir
+输出目录。默认 `runs/posttree/syserror/brlen`；`label-nodes` 默认
+`runs/posttree/syserror/brlen/label_nodes`。非空目录需 `--overwrite` 才能写入。
+
+#### --table-format
+表格分隔符：`csv`（默认）或 `tsv`。输出写入 `<output-dir>/tables/`。
+
+#### -t / --threads
+批处理并行工作进程数（默认 4），仅用于非 patristic 计算；patristic 始终串行
+流式写出以保证内存有界。
+
+#### --max-rows
+patristic 输出行数安全上限（默认 5,000,000；`0` 禁用）。写入前按
+`n_tips*(n_tips-1)/2` 估计所有树的距离行数，超限即报错并提示
+`--max-rows 0`。大型后验批（如 100 类群 × 1000 树）务必先估算。
+
+#### --overwrite
+删除并重建输出目录（默认 False）。
+
+#### --dry-run
+仅校验输入（模式、参数、树读取、行数估计、端点解析），返回校验载荷，不写任何文件。
+
+#### -q / --quiet
+抑制终端输出，仅保留错误。
+
+#### label-nodes 子命令
+单树专用（不接受目录）。把内部节点编号为 `N1..Nxx`（前序）；有根树含根，
+无根树排除人为根。输出 `<stem>.labeled.nwk`、`<stem>.map.txt`、
+`<stem>.labeled.pdf` 和 `result.json` 到输出目录。`Nxx` 标签只适用于生成
+它的参考拓扑，跨树复用请改用 `--map`。
+
+---
+
 ## Report
 
 ### --run-dir

@@ -82,6 +82,79 @@ class TestGenerateAllMethods:
         assert "pure Python" not in text
 
 
+class TestBrlenMethods:
+    def test_quantitative(self):
+        text = generate_all_methods(
+            "posttree.syserror.brlen",
+            params={"map": "nodes.map.txt"},
+            key_results={
+                "n_trees": 20,
+                "modes": ["terminal", "internal"],
+                "summary": {
+                    "terminal": {"mean": 0.1, "sd": 0.02},
+                    "internal": {"mean": 0.05, "sd": 0.01},
+                },
+            },
+            tool_versions={},
+        )
+        assert "20" in text
+        assert "terminal, internal" in text
+        assert "map" in text.lower()
+        assert "0.1000" in text
+        assert "0.0500" in text
+
+    def test_skipped_clause(self):
+        text = generate_all_methods(
+            "posttree.syserror.brlen",
+            params={},
+            key_results={"n_trees": 50, "modes": ["total"], "n_trees_skipped": 2, "summary": {}},
+            tool_versions={},
+        )
+        assert "2 trees were skipped" in text
+
+    def test_all_batch_modes_described(self):
+        text = generate_all_methods(
+            "posttree.syserror.brlen",
+            params={"map": "nodes.map.txt"},
+            key_results={
+                "n_trees": 10,
+                "modes": ["total", "terminal", "internal", "patristic"],
+                "summary": {
+                    "total": {"mean": 3.0, "sd": 0.5},
+                    "terminal": {"mean": 0.1, "sd": 0.02},
+                    "internal": {"mean": 0.05, "sd": 0.01},
+                    "patristic": {"mean": 2.5, "sd": 0.3},
+                },
+            },
+            tool_versions={},
+        )
+        assert "Mean total branch length per tree was 3.0000 (SD = 0.5000)" in text
+        assert "Mean terminal branch length was 0.1000 (SD = 0.0200)" in text
+        assert "Mean internal branch length was 0.0500 (SD = 0.0100)" in text
+        assert "Mean pairwise tip-to-tip distance was 2.5000 (SD = 0.3000)" in text
+
+    def test_endpoint_modes_described(self):
+        text = generate_all_methods(
+            "posttree.syserror.brlen",
+            params={},
+            key_results={
+                "n_trees": 5,
+                "modes": ["node-to-tip", "node-to-node"],
+                "summary": {
+                    "node-to-tip": {"mean": 1.2, "sd": 0.4},
+                    "node-to-node": {"mean": 0.8, "sd": 0.2},
+                },
+            },
+            tool_versions={},
+        )
+        assert "Mean node-to-tip distance was 1.2000 (SD = 0.4000)" in text
+        assert "Mean node-to-node distance was 0.8000 (SD = 0.2000)" in text
+
+    def test_label_nodes_has_no_methods_text(self):
+        assert generate_all_methods("posttree.syserror.brlen.label-nodes", {}, {}, {}) == ""
+        assert "posttree.syserror.brlen.label-nodes" in METHODS_GENERATORS
+
+
 class TestGenerateMethodsPretreeAlign:
     def test_linsi(self):
         text = generate_methods_pretree_align(

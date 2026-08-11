@@ -47,6 +47,7 @@ def test_walk_click_tree_excludes_non_analysis_commands() -> None:
     tool_names = {d["tool_name"] for d in walk_click_tree(cli)}
 
     assert "mcp-server" not in tool_names
+    assert "mcp_server" not in tool_names
     assert "completion_bash" not in tool_names
     assert "completion_zsh" not in tool_names
     assert "completion_fish" not in tool_names
@@ -122,3 +123,22 @@ def test_adequacy_mcp_tool_is_generated_from_click() -> None:
 
     assert tool["inputSchema"]["required"] == ["original_msa", "simulated_dir"]
     assert "threads" in tool["inputSchema"]["properties"]
+
+
+def test_brlen_main_and_label_nodes_schemas_are_generated() -> None:
+    tool_names = {d["tool_name"] for d in walk_click_tree(cli)}
+    assert "posttree_syserror_brlen" in tool_names
+    assert "posttree_syserror_brlen_label_nodes" in tool_names
+
+    brlen = next(d for d in walk_click_tree(cli) if d["tool_name"] == "posttree_syserror_brlen")
+    props = build_mcp_tool(brlen)["inputSchema"]["properties"]
+    for key in ("tree", "tree_dir", "mode", "map", "node1", "node2", "tip1", "tip2",
+                "table_format", "threads", "max_rows", "overwrite", "dry_run", "quiet"):
+        assert key in props
+    assert props["table_format"]["enum"] == ["csv", "tsv"]
+    assert props["max_rows"]["default"] == 5000000
+
+    label = next(d for d in walk_click_tree(cli) if d["tool_name"] == "posttree_syserror_brlen_label_nodes")
+    label_props = build_mcp_tool(label)["inputSchema"]
+    assert label_props["required"] == ["tree"]
+    assert set(label_props["properties"]) == {"tree", "output_dir", "overwrite", "quiet"}

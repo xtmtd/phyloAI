@@ -139,6 +139,39 @@ class TestDiscoverStepsModule:
         assert len(result["steps"]) == 1
         assert result["steps"][0]["step_id"] == "pretree.align"
 
+    def test_module_top_result_with_aux_subdir_keeps_both(self, tmp_path):
+        """A module's top-level result.json plus an auxiliary subdir result.json
+        (e.g. brlen main + label_nodes) must stay module mode with both steps."""
+        (tmp_path / "result.json").write_text(json.dumps({
+            "status": "success",
+            "command": "phyloai posttree syserror brlen --tree FT.tre --mode all -o runs",
+            "wall_time": 1.0,
+            "tool_versions": {},
+            "params": {},
+            "key_results": {"n_trees": 1, "modes": ["terminal", "patristic"]},
+            "error": None,
+            "data": {"output_files": {}},
+        }))
+        aux = tmp_path / "label_nodes"
+        aux.mkdir()
+        (aux / "result.json").write_text(json.dumps({
+            "status": "success",
+            "command": "phyloai posttree syserror brlen label-nodes --tree FT.tre",
+            "wall_time": 1.0,
+            "tool_versions": {},
+            "params": {},
+            "key_results": {},
+            "error": None,
+            "data": {"output_files": {}},
+        }))
+
+        result = discover_steps(tmp_path)
+        assert result["run_mode"] == "module"
+        step_ids = [s["step_id"] for s in result["steps"]]
+        assert "posttree.syserror.brlen" in step_ids
+        assert "posttree.syserror.brlen.label-nodes" in step_ids
+        assert result["steps"][0]["key_results"]["modes"] == ["terminal", "patristic"]
+
 
 class TestDiscoverStepsPipeline:
     def test_pipeline_detection(self, tmp_path):
@@ -216,3 +249,19 @@ class TestParseStepIdBi:
 
     def test_tree_bi_pb(self):
         assert parse_step_id("phyloai tree bi pb --matrix m.phy --chains 2") == "tree.bi.pb"
+
+
+class TestParseStepIdSyserror:
+    def test_brlen_step_id(self):
+        assert parse_step_id(
+            "phyloai posttree syserror brlen --tree-dir trees --mode terminal,internal"
+        ) == "posttree.syserror.brlen"
+
+    def test_label_nodes_step_id(self):
+        assert parse_step_id(
+            "phyloai posttree syserror brlen label-nodes --tree species.nwk"
+        ) == "posttree.syserror.brlen.label-nodes"
+
+    def test_brlen_and_label_nodes_ordering(self):
+        assert STEP_ORDER.index("posttree.syserror.brlen") < STEP_ORDER.index("posttree.syserror.brlen.label-nodes")
+        assert STEP_ORDER.index("posttree.syserror.brlen.label-nodes") < STEP_ORDER.index("posttree.syserror.cca")

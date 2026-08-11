@@ -53,8 +53,8 @@ phyloai report --run-dir ./runs/pretree -o ./my-report
 
 | 结构 | 检测 | 典型用途 |
 |------|------|----------|
-| **pipeline** | `run-dir/result.json` 存在且子目录也包含 `result.json` | `phyloai run` 的输出 |
-| **module** | 无顶层 `result.json`，但子目录包含 `result.json` | `phyloai pretree`、`phyloai tree` 等 |
+| **pipeline** | 顶层 `run-dir/result.json` 由 `phyloai run` 产生，且子目录也包含 `result.json` | `phyloai run` 的输出 |
+| **module** | 无顶层 `result.json`（子目录包含 `result.json`），或顶层 `result.json` 来自非 `run` 命令（可带或不带辅助子结果，如 `brlen label_nodes`） | `phyloai pretree`、`phyloai tree`、`phyloai posttree syserror brlen` 等 |
 
 步骤发现完全基于文件系统 —— 目录扫描会排除 `report/`、`logs/` 与隐藏目录。
 

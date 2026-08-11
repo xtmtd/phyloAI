@@ -51,7 +51,7 @@ PhyloAI 不捆绑第三方系统发育学可执行文件。安装工作流所需
 phyloai doctor
 ```
 
-参见 [docs/commands/installation.md](docs/commands/installation.md) 了解 Python 环境选项、外部工具组与操作系统相关说明。
+参见 [docs/commands/installation.md](docs/commands/installation.zh.md) 了解 Python 环境选项、外部工具组与操作系统相关说明。
 
 ## 快速开始
 
@@ -76,6 +76,13 @@ phyloai posttree simulate alisim transfergaps --original-msa markers/concat.aa.f
 phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulated-dir runs/transfer -o runs/adequacy
 ```
 
+系统误差枝长筛查：跨后验/模型树提取枝长（节点映射在不同拓扑间识别同一生物学节点）：
+
+```bash
+phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
+  --map nodes.map.txt --node1 Collembola -o runs/posttree/syserror/brlen
+```
+
 显示所有可用命令：
 
 ```bash
@@ -92,17 +99,17 @@ phyloai completion zsh
 phyloai completion fish
 ```
 
-生成脚本一次并配置你的 shell 加载保存的文件。参见 [docs/commands/completion.md](docs/commands/completion.md) 了解 Bash、Zsh、Fish 的配置示例。
+生成脚本一次并配置你的 shell 加载保存的文件。参见 [docs/commands/completion.md](docs/commands/completion.zh.md) 了解 Bash、Zsh、Fish 的配置示例。
 
 ## AI 集成
 
-PhyloAI 包含一个 MCP server 与一个引导式工作流 Skill 以支持对话式分析。参见 [docs/commands/ai-integration.md](docs/commands/ai-integration.md) 了解与 OpenCode、Claude Code 或 Codex 的配置与使用。
+PhyloAI 包含一个 MCP server 与一个引导式工作流 Skill 以支持对话式分析。参见 [docs/commands/ai-integration.md](docs/commands/ai-integration.zh.md) 了解与 OpenCode、Claude Code 或 Codex 的配置与使用。
 
 ## 许可证
 
 PhyloAI 作者编写的代码在学术、教育、非商业研究目的下可自由使用、复制、修改与分发。商业用途、商业再分发、再许可、销售或集成到商业产品或服务需要版权所有者的事先书面许可。详见 [LICENSE](LICENSE)。
 
-本仓库同时与第三方软件互操作，每个第三方组件保留自己的许可证。[docs/commands/installation.md](docs/commands/installation.md) 列出的工具是外部依赖，必须在其上游许可证下安装与使用。本节是项目级许可证声明，不能替代那些第三方许可证。
+本仓库同时与第三方软件互操作，每个第三方组件保留自己的许可证。[docs/commands/installation.md](docs/commands/installation.zh.md) 列出的工具是外部依赖，必须在其上游许可证下安装与使用。本节是项目级许可证声明，不能替代那些第三方许可证。
 
 ## 作者与联系方式
 
@@ -116,30 +123,31 @@ Email: <xtmtd.zf@gmail.com>
 
 | 命令 | 用途 | 文档 |
 |---------|---------|---------------|
-| `phyloai doctor` | 检查外部工具可用性。 | [docs/commands/doctor.md](docs/commands/doctor.md) |
-| 安装 | 设置 Python 环境与外部工具，然后用 `phyloai doctor` 验证。 | [docs/commands/installation.md](docs/commands/installation.md) |
-| `phyloai completion` | 生成静态的 Bash、Zsh 或 Fish shell 补全脚本。 | [docs/commands/completion.md](docs/commands/completion.md) |
-| `phyloai run`     | 从原始序列到物种树的一键式系统发育流水线。 | [docs/commands/run.md](docs/commands/run.md) |
-| `phyloai pretree convert` | 在下游分析前归一化与转换序列文件。 | [docs/commands/pretree-convert.md](docs/commands/pretree-convert.md) |
-| `phyloai pretree stats`   | 检查一个序列/比对文件，或汇总一个目录的文件。 | [docs/commands/pretree-stats.md](docs/commands/pretree-stats.md)     |
-| `phyloai pretree align`   | 使用 MAFFT 或 MAGUS 比对序列。 | [docs/commands/pretree-align.md](docs/commands/pretree-align.md)     |
-| `phyloai pretree trim`    | 使用 trimAl、BMGE 或 ClipKIT 后端批量修剪已比对 MSA。 | [docs/commands/pretree-trim.md](docs/commands/pretree-trim.md)       |
-| `phyloai pretree metrics` | 计算 MSA/树度量、生成分布图与紧凑的相关性热图，用于标记评估。 | [docs/commands/pretree-metrics.md](docs/commands/pretree-metrics.md) |
-| `phyloai pretree filter`  | 标记级过滤：TAPER 错误位点屏蔽、TreeShrink 分类单元剪枝、度量规则过滤、对称性检验过滤、基于聚类的探索。 | [docs/commands/pretree-filter.md](docs/commands/pretree-filter.md) |
-| `phyloai pretree concat`  | 将多个 MSA 拼接为带占用率过滤、重编码、密码子变体与外类群重排的超矩阵。 | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.md) |
-| `phyloai tree ml fasttree` | 使用 FastTree 推断 ML 基因树或超矩阵树。 | [docs/commands/tree-ml-fasttree.md](docs/commands/tree-ml-fasttree.md) |
-| `phyloai tree ml iqtree`   | 使用 IQ-TREE3 推断 ML 树：同质、异质、分区、ModelFinder，以及自定义交换率/位点频率 profile 工作流。 | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
-| `phyloai tree bi pb`    | 使用 PhyloBayes-MPI 进行 MCMC 链推断：多链并行、实时收敛监控、轨迹图与 resume。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
-| `phyloai tree bi bpcomp` | 使用 bpcomp 进行最终拓扑收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
-| `phyloai tree bi tracecomp` | 使用 tracecomp 进行最终参数收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
-| `phyloai tree bi readpb` | 使用 readpb_mpi 进行后验分析与预测检验；`--mode ss,rr,r` 还会生成使用后验参数的 PMSF 模拟分区。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
-| `phyloai tree msc`   | 使用 wASTRAL 进行多物种溯祖物种树推断。 | [docs/commands/tree-msc.md](docs/commands/tree-msc.md) |
-| `phyloai tree cf`    | 一致性因子计算：gCF、sCF、sCFl（IQ-TREE3）和 qCF（wASTRAL）。 | [docs/commands/tree-cf.md](docs/commands/tree-cf.md) |
-| `phyloai posttree topology` | 树拓扑检验（AU / KH / SH / WKH / WSH / c-ELW），将候选树与超矩阵进行比较。 | [docs/commands/posttree-topology.md](docs/commands/posttree-topology.md) |
-| `phyloai posttree dating`  | 使用 MCMCtree 进行贝叶斯分子定年：IQ-TREE Hessian 计算 + 带诊断的 MCMC 分歧时间估计。 | [docs/commands/posttree-dating.md](docs/commands/posttree-dating.md) |
-| `phyloai posttree signal` | 系统发育信号分布分析：位点/基因 lnL 打分、一致基因识别、四簇似然映射。命令：`signal lnl`、`signal consistent`、`signal fclm`。 | [docs/commands/posttree-signal.md](docs/commands/posttree-signal.md) |
-| `phyloai posttree modelcompare iqtree` | 使用 IQ-TREE3 ModelFinder 进行相对模型比较（BIC/AIC/AICc），支持通过 `-madd` 展开异质混合模型。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
-| `phyloai posttree modelcompare pb` | 使用 PhyloBayes `.sitelogl` 位点对数似然文件进行 LOO-CV / wAIC 相对模型比较（Lartillot 2023），纯 Python 实现。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.md) |
-| `phyloai posttree simulate alisim` | 基于 IQ-TREE3 AliSim 的序列模拟，保留数据集实证特征：`params` 从 IQ-TREE 报告中提取逐位点参数，`iqtree` 模拟单个或批量 MSA（complete/mixed/pdf 策略，可恢复），`transfergaps` 将原始 gap 掩码重新引入一条或多条模拟比对。 | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.md) |
-| `phyloai posttree simulate adequacy` | 使用本地纯 Python 后验预测检验，将观测 PPA-DIV、PPA-CONV、PPA-VAR 和 PPA-COMP 与模拟 MSA 比较。 | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.md) |
-| `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.md) |
+| `phyloai doctor` | 检查外部工具可用性。 | [docs/commands/doctor.md](docs/commands/doctor.zh.md) |
+| 安装 | 设置 Python 环境与外部工具，然后用 `phyloai doctor` 验证。 | [docs/commands/installation.md](docs/commands/installation.zh.md) |
+| `phyloai completion` | 生成静态的 Bash、Zsh 或 Fish shell 补全脚本。 | [docs/commands/completion.md](docs/commands/completion.zh.md) |
+| `phyloai run`     | 从原始序列到物种树的一键式系统发育流水线。 | [docs/commands/run.md](docs/commands/run.zh.md) |
+| `phyloai pretree convert` | 在下游分析前归一化与转换序列文件。 | [docs/commands/pretree-convert.md](docs/commands/pretree-convert.zh.md) |
+| `phyloai pretree stats`   | 检查一个序列/比对文件，或汇总一个目录的文件。 | [docs/commands/pretree-stats.md](docs/commands/pretree-stats.zh.md)     |
+| `phyloai pretree align`   | 使用 MAFFT 或 MAGUS 比对序列。 | [docs/commands/pretree-align.md](docs/commands/pretree-align.zh.md)     |
+| `phyloai pretree trim`    | 使用 trimAl、BMGE 或 ClipKIT 后端批量修剪已比对 MSA。 | [docs/commands/pretree-trim.md](docs/commands/pretree-trim.zh.md)       |
+| `phyloai pretree metrics` | 计算 MSA/树度量、生成分布图与紧凑的相关性热图，用于标记评估。 | [docs/commands/pretree-metrics.md](docs/commands/pretree-metrics.zh.md) |
+| `phyloai pretree filter`  | 标记级过滤：TAPER 错误位点屏蔽、TreeShrink 分类单元剪枝、度量规则过滤、对称性检验过滤、基于聚类的探索。 | [docs/commands/pretree-filter.md](docs/commands/pretree-filter.zh.md) |
+| `phyloai pretree concat`  | 将多个 MSA 拼接为带占用率过滤、重编码、密码子变体与外类群重排的超矩阵。 | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.zh.md) |
+| `phyloai tree ml fasttree` | 使用 FastTree 推断 ML 基因树或超矩阵树。 | [docs/commands/tree-ml-fasttree.md](docs/commands/tree-ml-fasttree.zh.md) |
+| `phyloai tree ml iqtree`   | 使用 IQ-TREE3 推断 ML 树：同质、异质、分区与 ModelFinder 工作流。 | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.zh.md) |
+| `phyloai tree bi pb`    | 使用 PhyloBayes-MPI 进行 MCMC 链推断：多链并行、实时收敛监控、轨迹图与 resume。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.zh.md) |
+| `phyloai tree bi bpcomp` | 使用 bpcomp 进行最终拓扑收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.zh.md) |
+| `phyloai tree bi tracecomp` | 使用 tracecomp 进行最终参数收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.zh.md) |
+| `phyloai tree bi readpb` | 使用 readpb_mpi 进行后验分析与预测检验；`--mode ss,rr,r` 还会生成使用后验参数的 PMSF 模拟分区。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.zh.md) |
+| `phyloai tree msc`   | 使用 wASTRAL 进行多物种溯祖物种树推断。 | [docs/commands/tree-msc.md](docs/commands/tree-msc.zh.md) |
+| `phyloai tree cf`    | 一致性因子计算：gCF、sCF、sCFl（IQ-TREE3）和 qCF（wASTRAL）。 | [docs/commands/tree-cf.md](docs/commands/tree-cf.zh.md) |
+| `phyloai posttree topology` | 树拓扑检验（AU / KH / SH / WKH / WSH / c-ELW），将候选树与超矩阵进行比较。 | [docs/commands/posttree-topology.md](docs/commands/posttree-topology.zh.md) |
+| `phyloai posttree dating`  | 使用 MCMCtree 进行贝叶斯分子定年：IQ-TREE Hessian 计算 + 带诊断的 MCMC 分歧时间估计。 | [docs/commands/posttree-dating.md](docs/commands/posttree-dating.zh.md) |
+| `phyloai posttree signal` | 系统发育信号分布分析：位点/基因 lnL 打分、一致基因识别、四簇似然映射。命令：`signal lnl`、`signal consistent`、`signal fclm`。 | [docs/commands/posttree-signal.md](docs/commands/posttree-signal.zh.md) |
+| `phyloai posttree modelcompare iqtree` | 使用 IQ-TREE3 ModelFinder 进行相对模型比较（BIC/AIC/AICc），支持通过 `-madd` 展开异质混合模型。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.zh.md) |
+| `phyloai posttree modelcompare pb` | 使用 PhyloBayes `.sitelogl` 位点对数似然文件进行 LOO-CV / wAIC 相对模型比较（Lartillot 2023），纯 Python 实现。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.zh.md) |
+| `phyloai posttree simulate alisim` | 基于 IQ-TREE3 AliSim 的序列模拟，保留数据集实证特征：`params` 从 IQ-TREE 报告中提取逐位点参数，`iqtree` 模拟单个或批量 MSA（complete/mixed/pdf 策略，可恢复），`transfergaps` 将原始 gap 掩码重新引入一条或多条模拟比对。 | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.zh.md) |
+| `phyloai posttree simulate adequacy` | 使用本地纯 Python 后验预测检验，将观测 PPA-DIV、PPA-CONV、PPA-VAR 和 PPA-COMP 与模拟 MSA 比较。 | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.zh.md) |
+| `phyloai posttree syserror brlen` | 从单个树、目录或多树 Newick 文件提取枝长统计（total、terminal、internal、patristic、tip-to-tip、node-to-node、node-to-tip），诊断跨类群速率异质性；`label-nodes` 生成带标签参考树与映射模板。 | [docs/commands/posttree-syserror-brlen.md](docs/commands/posttree-syserror-brlen.zh.md) |
+| `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.zh.md) |
