@@ -144,6 +144,7 @@ phyloai posttree simulate alisim transfergaps --original-msa orig.fa --simulated
 phyloai posttree simulate adequacy --original-msa matrix.fa --simulated-dir runs/simulated/
 phyloai posttree simulate phybase ...   # future stub: Phybase R-script generation
 phyloai posttree syserror brlen  --tree ./tree.nwk
+phyloai posttree syserror rate --iqtree-rate ./matrix.rate --matrix ./matrix.fa --fraction 0.25,0.5,0.75
 phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk
 phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
 
@@ -521,7 +522,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 6 | `report/` module | collector, templates, schema, renderer; outputs report.json + report.html | Phases 2–4 |
 | 7 | MCP Server | All CLI tools wrapped (fine-grained, one tool per subcommand); check_status / read_result / read_report / get_command_schema utilities; stub tools for future commands; stdio transport | Phases 1–6 |
 | 8 | `phyloai-workflow` Skill | Full guided workflow; parameter cards with runtime schema; result interpretation; session recovery via report.json; demo mode; error handling (catalog + AI) | Phase 7 |
-| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (brlen → cca → sites) | syserror CLI (Phase 4) + Phase 7 |
+| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (brlen → rate → cca → sites) | syserror CLI (Phase 4) + Phase 7 |
 | 10 | Report AI review | `polish_methods` MCP tool + Skill integration; scientific accuracy verification of methods text | Separate spec required |
 
 **Spec granularity:** Phase 1 has one spec+plan. Phases 2–4 have one spec+plan per subcommand under `docs/superpowers/specs/` and `docs/superpowers/plans/`. Phases 5–8 have one spec+plan each. Every subcommand spec must be consistent with Section 9 conventions.

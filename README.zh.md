@@ -81,6 +81,10 @@ phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulat
 ```bash
 phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
   --map nodes.map.txt --node1 Collembola -o runs/posttree/syserror/brlen
+
+# 位点速率排序/提取敏感性分析
+phyloai posttree syserror rate --iqtree-rate matrix.rate --matrix raw.fa \
+  --subset slow --fraction 0.25,0.5,0.75 -o runs/posttree/syserror/rate
 ```
 
 显示所有可用命令：
@@ -150,4 +154,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree simulate alisim` | 基于 IQ-TREE3 AliSim 的序列模拟，保留数据集实证特征：`params` 从 IQ-TREE 报告中提取逐位点参数，`iqtree` 模拟单个或批量 MSA（complete/mixed/pdf 策略，可恢复），`transfergaps` 将原始 gap 掩码重新引入一条或多条模拟比对。 | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.zh.md) |
 | `phyloai posttree simulate adequacy` | 使用本地纯 Python 后验预测检验，将观测 PPA-DIV、PPA-CONV、PPA-VAR 和 PPA-COMP 与模拟 MSA 比较。 | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.zh.md) |
 | `phyloai posttree syserror brlen` | 从单个树、目录或多树 Newick 文件提取枝长统计（total、terminal、internal、patristic、tip-to-tip、node-to-node、node-to-tip），诊断跨类群速率异质性；`label-nodes` 生成带标签参考树与映射模板。 | [docs/commands/posttree-syserror-brlen.md](docs/commands/posttree-syserror-brlen.zh.md) |
+| `phyloai posttree syserror rate` | 面向 IQ-TREE 或 PhyloBayes 速率的位点速率排序/提取敏感性工具；可写出慢/快位点的比对子集。 | [docs/commands/posttree-syserror-rate.md](docs/commands/posttree-syserror-rate.zh.md) |
 | `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.zh.md) |

@@ -214,6 +214,35 @@ class TestBuildTablesIndex:
         assert "/tmp/metrics.csv" in paths
         assert "/tmp/results.tsv" in paths
 
+    def test_rate_output_indexes_only_rates_csv(self, tmp_path):
+        discovered = {
+            "run_mode": "module",
+            "steps": [
+                {
+                    "step_id": "posttree.syserror.rate",
+                    "command": "phyloai posttree syserror rate --iqtree-rate matrix.rate",
+                    "status": "success",
+                    "wall_time": 0.0,
+                    "tool_versions": {},
+                    "params": {},
+                    "key_results": {},
+                    "error": None,
+                    "data": {"output_files": {
+                        "rates": {"path": "/tmp/rates.csv"},
+                        "slow25_positions": {"path": "/tmp/slow25/positions.txt"},
+                        "slow25_matrix": {"path": "/tmp/slow25/matrix.fa"},
+                    }},
+                },
+            ],
+            "pipeline_summary": None,
+        }
+
+        assert [table["label"] for table in build_tables_index(discovered["steps"])] == ["rates"]
+        report = assemble_report(discovered, tmp_path)
+        assert set(report["steps"][0]["output_files"]) == {
+            "rates", "slow25_positions", "slow25_matrix",
+        }
+
 
 class TestAssembleReport:
     def test_complete_run(self, tmp_path):
@@ -346,5 +375,3 @@ class TestAssembleReport:
         report = assemble_report(discovered, tmp_path)
         assert "NT files" in report["methods_paragraph"]
         assert "AA files" in report["methods_paragraph"]
-
-

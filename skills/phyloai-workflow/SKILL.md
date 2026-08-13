@@ -226,12 +226,33 @@ explicit user approval before running).
   declare model superiority from branch lengths alone; combine with `cca` and
   `sites` diagnostics.
 
+### posttree syserror rate
+
+Local pure-Python site-rate ranking/extraction sensitivity utility. No
+`doctor` check is needed, but before execution still call
+`get_command_schema`, render the full parameter card, and obtain explicit user
+approval.
+
+- **Input selection:** require exactly one rate source: IQ-TREE3 `--rate`
+  output via `--iqtree-rate`, or PhyloBayes `readpb -r` `.meansiterates` via
+  `--pb-rate`. IQ-TREE indices are 1-based; PhyloBayes indices are normalized
+  from 0-based to 1-based. Both sources must be consecutive, producing exactly
+  `1..N` sites.
+- **Extraction:** `--matrix` is optional for ranking only. With a matrix,
+  `--fraction` is required and `--subset slow|fast` selects the direction
+  (`slow` is the extraction default). Recommend a sensitivity series such as
+  `0.25,0.5,0.75`, not an asserted optimal threshold.
+- **Interpretation:** slow subsets reduce rapidly evolving-site contribution;
+  fast subsets isolate it. Neither establishes a topology or an automatic
+  systematic-error correction. Downstream tree inference/comparison is always
+  a separate user-approved action.
+
 **Approval:** `alisim iqtree` executes IQ-TREE3, so run `doctor`, review the
 full parameter card, and get explicit user approval before invoking it —
 including `--dry-run` to show the sampling plan/command first. `alisim params`,
 `alisim transfergaps`, and `simulate adequacy` are local-only (no external tool)
 but still get the standard parameter review. `posttree syserror brlen` and
-`label-nodes` are likewise local-only: run `get_command_schema`, render a
+`label-nodes` and `posttree syserror rate` are likewise local-only: run `get_command_schema`, render a
 parameter card, and get explicit user approval before running. `check_status`,
 `read_result`, `read_report`, and `get_command_schema` remain directly
 inspectable without approval.

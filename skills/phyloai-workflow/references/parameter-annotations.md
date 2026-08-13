@@ -830,6 +830,46 @@ patristic 输出行数安全上限（默认 5,000,000；`0` 禁用）。写入�
 
 ---
 
+### posttree syserror rate
+
+#### --iqtree-rate
+IQ-TREE3 `--rate` 输出文件，必须含 `Site` 与 `Rate` 列。与 `--pb-rate` 二选一；
+位点索引必须为严格连续的 1 基 `1..N`。
+
+#### --pb-rate
+PhyloBayes `readpb -r` 生成的 `.meansiterates` 文件，每行 `<site> <rate>`。与
+`--iqtree-rate` 二选一；输入索引必须为严格连续的 0 基 `0..N-1`，读取后归一化为
+1 基。
+
+#### --matrix
+可选原始 MSA。支持 FASTA、relaxed PHYLIP、PAML PHYLIP、NEXUS。提供后启用位点
+提取，长度必须与归一化速率数相同；此时必须同时提供 `--fraction`。
+
+#### --subset
+提取方向：`slow` 或 `fast`。仅与 `--matrix` 一起有效；提供 matrix 时默认 `slow`。
+`slow` 降低快速演化位点的贡献，`fast` 用于单独检查其影响，均不能判定正确拓扑。
+
+#### --fraction
+逗号分隔的一个或多个保留比例，范围 `(0, 1]`；仅与 `--matrix` 一起有效且此时必填。
+建议以 `0.25,0.5,0.75` 进行敏感性分析，不自动选择科学上“最佳”的比例。每个比例
+保留 `ceil(N * fraction)` 个位点，边界并列不扩展。
+
+#### --output-dir
+输出目录，默认 `runs/posttree/syserror/rate`。仅排序时写 `rates.csv` 与
+`result.json`；提取时另写 `slow25/` 或 `fast25/` 等子目录，其中包含
+`positions.txt` 和 `matrix.fa`。
+
+#### --overwrite
+删除并重建非空输出目录，具有破坏性；需要对目标目录单独确认。
+
+#### --dry-run
+校验速率来源、索引、比例和可选 MSA 的长度，但不写文件。
+
+#### --quiet
+除错误外抑制终端输出，不影响 `rates.csv` 或 `result.json`。
+
+---
+
 ## Report
 
 ### --run-dir

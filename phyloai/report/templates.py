@@ -1406,6 +1406,34 @@ def generate_methods_posttree_syserror_brlen_label_nodes(
     return ""
 
 
+def generate_methods_posttree_syserror_rate(
+    params: dict[str, Any],
+    key_results: dict[str, Any],
+    tool_versions: dict[str, Any],
+) -> str:
+    source = (
+        "IQ-TREE empirical-Bayes site-rate estimates"
+        if params.get("iqtree_rate") else "PhyloBayes posterior mean site rates"
+    )
+    text = (
+        f"Site-rate heterogeneity was summarized from {source} across "
+        f"{_describe_n(key_results.get('n_sites', 0), 'alignment site', 'alignment sites')} using PhyloAI."
+    )
+    subsets = key_results.get("subsets", [])
+    if isinstance(subsets, list):
+        details = []
+        for item in subsets:
+            if not isinstance(item, dict) or not {"subset", "requested_fraction", "selected_sites"} <= item.keys():
+                continue
+            details.append(
+                f"{item['subset']} sites: {_safe_fmt(item['requested_fraction'], '.1%')} "
+                f"({item['selected_sites']} sites)"
+            )
+        if details:
+            text += f" Rate-ranked subsets retained {'; '.join(details)}."
+    return text
+
+
 def generate_methods_posttree_syserror_cca(
     params: dict[str, Any],
     key_results: dict[str, Any],
@@ -1618,6 +1646,7 @@ METHODS_GENERATORS: dict[str, Any] = {
     "posttree.modelcompare.pb": generate_methods_posttree_modelcompare_pb,
     "posttree.syserror.brlen": generate_methods_posttree_syserror_brlen,
     "posttree.syserror.brlen.label-nodes": generate_methods_posttree_syserror_brlen_label_nodes,
+    "posttree.syserror.rate": generate_methods_posttree_syserror_rate,
     "posttree.syserror.cca": generate_methods_posttree_syserror_cca,
     "posttree.syserror.sites": generate_methods_posttree_syserror_sites,
     "posttree.simulate.alisim.params": generate_methods_posttree_simulate_alisim_params,
