@@ -30,7 +30,7 @@ phyloai posttree syserror rate \
 | `--fraction` | 有 matrix 时 | -- | 一个或多个 `(0, 1]` 的逗号分隔比例；有 matrix 时必填，无 matrix 时无效。 |
 | `-o`, `--output-dir` | 否 | `runs/posttree/syserror/rate` | 输出目录。 |
 | `--overwrite` | 否 | false | 删除并重建非空输出目录。 |
-| `--dry-run` | 否 | false | 校验输入但不写文件。 |
+| `--dry-run` | 否 | false | 校验输入、打印已校验的 payload，但不写文件。 |
 | `-q`, `--quiet` | 否 | false | 除错误外抑制终端输出。 |
 
 两个速率来源必须且只能提供一个。只有提供 `--matrix` 时，未指定的选择方向才默认
@@ -95,8 +95,9 @@ phyloai posttree syserror rate --pb-rate chain.meansiterates --matrix raw.phy \
 ## 警告 / 错误
 
 - `--iqtree-rate` 与 `--pb-rate` 必须且只能提供一个。
+- 速率来源路径必须存在，且为可读取的普通文件。
 - `--subset`、`--fraction` 需要 `--matrix`；`--matrix` 需要 `--fraction`。
-- MSA 长度必须等于归一化后的速率数。
+- MSA 必须可解析，包含非空且 ID 唯一的记录，并且所有序列长度相同；其长度必须等于归一化后的速率数。
 - 比例必须有效、唯一，并产生唯一的目录标签。
 - 非空输出目录需要 `--overwrite`；不提供 resume/checkpoint。
 
