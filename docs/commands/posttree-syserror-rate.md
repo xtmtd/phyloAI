@@ -32,7 +32,7 @@ phyloai posttree syserror rate \
 | `--fraction` | with matrix | -- | One or more comma-separated fractions in `(0, 1]`. Required with `--matrix`; invalid without it. |
 | `-o`, `--output-dir` | no | `runs/posttree/syserror/rate` | Output directory. |
 | `--overwrite` | no | false | Delete and recreate a non-empty output directory. |
-| `--dry-run` | no | false | Validate inputs without writing files. |
+| `--dry-run` | no | false | Validate inputs and print the validated payload without writing files. |
 | `-q`, `--quiet` | no | false | Suppress terminal output except errors. |
 
 Exactly one rate source is required. A matrix must have `--fraction`; selection
@@ -102,9 +102,12 @@ phyloai posttree syserror rate --pb-rate chain.meansiterates --matrix raw.phy \
 ## Warnings / Errors
 
 - Exactly one of `--iqtree-rate` and `--pb-rate` is required.
+- Rate-source paths must exist and be regular, readable files.
 - `--subset` and `--fraction` require `--matrix`; `--matrix` requires
   `--fraction`.
-- Matrix length must equal the normalized rate count.
+- The matrix must be parseable, contain non-empty uniquely identified records,
+  and have equal sequence lengths; its length must equal the normalized rate
+  count.
 - Fractions must be valid, unique, and produce unique directory labels.
 - A non-empty output directory requires `--overwrite`; no resume/checkpoint is
   available.
