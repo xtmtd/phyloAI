@@ -191,6 +191,23 @@ class TestGenerateMethodsPretreeAlign:
         assert "10" in text
 
 
+class TestSyserrorRate:
+    def test_methods_describe_source_and_subsets(self):
+        text = generate_all_methods(
+            "posttree.syserror.rate",
+            {"pb_rate": "chain.meansiterates", "subset": "slow", "fraction": "0.25"},
+            {"n_sites": 100, "subsets": [{"subset": "slow", "requested_fraction": 0.25, "selected_sites": 25}]},
+            {},
+        )
+
+        assert "PhyloBayes" in text and "slow" in text and "25" in text
+
+    def test_methods_ignore_malformed_subsets(self):
+        text = generate_all_methods("posttree.syserror.rate", {}, {"n_sites": 0, "subsets": [None, {}]}, {})
+
+        assert "0 alignment sites" in text
+
+
 class TestTaper:
     def test_basic(self):
         text = generate_all_methods(

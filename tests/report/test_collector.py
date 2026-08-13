@@ -42,6 +42,9 @@ class TestParseStepId:
             "phyloai posttree simulate adequacy --original-msa real.fa --simulated-dir sims"
         ) == "posttree.simulate.adequacy"
 
+    def test_syserror_rate_step_id(self):
+        assert parse_step_id("phyloai posttree syserror rate --pb-rate x") == "posttree.syserror.rate"
+
     def test_empty_command(self):
         assert parse_step_id("") == "unknown"
 
@@ -68,6 +71,9 @@ class TestStepOrder:
 
     def test_adequacy_is_ordered(self):
         assert "posttree.simulate.adequacy" in STEP_ORDER
+
+    def test_syserror_rate_follows_brlen(self):
+        assert STEP_ORDER.index("posttree.syserror.brlen") < STEP_ORDER.index("posttree.syserror.rate")
 
 
 class TestDiscoverStepsModule:

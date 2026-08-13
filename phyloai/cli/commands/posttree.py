@@ -2075,7 +2075,7 @@ def transfergaps_command(
 
 class _SyserrorGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["brlen"]
+        return ["brlen", "rate"]
 
 
 @posttree.group("syserror", cls=_SyserrorGroup)
@@ -2085,6 +2085,7 @@ def syserror() -> None:
     \b
     Subcommands:
       brlen        branch-length heterogeneity statistics
+      rate         site-rate heterogeneity statistics
     """
 
 
@@ -2140,6 +2141,72 @@ def _build_brlen_error_command(
 
 def _output_dir_writable(output_dir: Path) -> bool:
     return not output_dir.exists() or not any(output_dir.iterdir())
+
+
+@syserror.command("rate")
+@click.option("--iqtree-rate", type=click.Path(path_type=Path), default=None,
+              help="IQ-TREE empirical-Bayes site-rate file. Mutually exclusive with --pb-rate.")
+@click.option("--pb-rate", type=click.Path(path_type=Path), default=None,
+              help="PhyloBayes posterior mean site-rate file. Mutually exclusive with --iqtree-rate.")
+@click.option("--matrix", type=click.Path(path_type=Path), default=None,
+              help="Alignment used to extract rate-ranked subsets; requires --fraction.")
+@click.option("--subset", type=click.Choice(["slow", "fast"]), default=None,
+              help="Rate-ranked subset to extract. Default with --matrix: slow.")
+@click.option("--fraction", type=str, default=None,
+              help="Comma-separated fractions to retain; each uses ceil(fraction * sites). Requires --matrix.")
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/syserror/rate"), show_default=True,
+              help="Output directory containing rates.csv and optional <subset><percent>/ subsets.")
+@click.option("--overwrite", is_flag=True, default=False, help="Overwrite existing output directory.")
+@click.option("--dry-run", is_flag=True, default=False, help="Validate inputs without writing files.")
+@click.option("-q", "--quiet", is_flag=True, default=False, help="Suppress terminal output except errors.")
+def rate(
+    iqtree_rate: Path | None,
+    pb_rate: Path | None,
+    matrix: Path | None,
+    subset: str | None,
+    fraction: str | None,
+    output_dir: Path,
+    overwrite: bool,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Rank empirical site rates and optionally extract alignment subsets.
+
+    Exactly one rate source is required. IQ-TREE sites are already one-based;
+    PhyloBayes source indices are normalized from zero-based to one-based.
+    With a matrix, choose slow or fast sites (slow is the extraction default)
+    and provide one or more comma-separated fractions. Each subset selects
+    ceil(fraction * number of sites). No external tools are used.
+
+    \b
+    Examples:
+      phyloai posttree syserror rate --iqtree-rate matrix.rate
+      phyloai posttree syserror rate --iqtree-rate matrix.rate --matrix raw.fa --fraction 0.25,0.5,0.75
+      phyloai posttree syserror rate --pb-rate chain1.meansiterates --matrix raw.phy --subset fast --fraction 0.1
+    """
+    from phyloai.posttree.syserror_rate import build_rate_command, run_rate
+
+    resolved = output_dir.resolve()
+    command = build_rate_command(
+        iqtree_rate, pb_rate, matrix, subset, fraction, resolved,
+        overwrite, dry_run, quiet,
+    )
+    if resolved.exists() and not resolved.is_dir():
+        _fail(f"output path is not a directory: {resolved}", exit_code=1)
+    pre_existing = resolved.is_dir() and any(resolved.iterdir())
+    try:
+        payload = run_rate(
+            iqtree_rate=iqtree_rate, pb_rate=pb_rate, matrix=matrix, subset=subset,
+            fraction=fraction, output_dir=output_dir, overwrite=overwrite,
+            dry_run=dry_run, quiet=quiet,
+        )
+    except ValueError as exc:
+        if not dry_run and (not pre_existing or overwrite):
+            _write_error_result_json(resolved, command, str(exc), "input")
+        _fail(str(exc), exit_code=1)
+    if dry_run:
+        click.echo(json.dumps(payload, indent=2))
 
 
 def _run_brlen_command(

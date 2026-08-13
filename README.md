@@ -105,6 +105,10 @@ identifies the same biological node across differing topologies):
 ```bash
 phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
   --map nodes.map.txt --node1 Collembola -o runs/posttree/syserror/brlen
+
+# Site-rate ranking/extraction sensitivity analysis
+phyloai posttree syserror rate --iqtree-rate matrix.rate --matrix raw.fa \
+  --subset slow --fraction 0.25,0.5,0.75 -o runs/posttree/syserror/rate
 ```
 
 Show all available commands:
@@ -185,4 +189,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree simulate alisim` | IQ-TREE3 AliSim simulation preserving empirical dataset properties: `params` extracts per-locus parameters from IQ-TREE reports, `iqtree` simulates single or batch MSAs (complete/mixed/pdf strategies, resumable), `transfergaps` re-introduces the original gap mask onto one or many simulated MSAs. | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.md) |
 | `phyloai posttree simulate adequacy` | Compare observed PPA-DIV, PPA-CONV, PPA-VAR, and PPA-COMP statistics with simulated MSAs using a local pure-Python posterior predictive check. | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.md) |
 | `phyloai posttree syserror brlen` | Extract branch-length statistics (total, terminal, internal, patristic, tip-to-tip, node-to-node, node-to-tip) from one tree, a directory, or Newick multi-tree files to diagnose rate heterogeneity across taxa; `label-nodes` generates labeled reference trees and map templates. | [docs/commands/posttree-syserror-brlen.md](docs/commands/posttree-syserror-brlen.md) |
+| `phyloai posttree syserror rate` | Site-rate ranking/extraction sensitivity utility for IQ-TREE or PhyloBayes rates; optionally writes slow/fast alignment subsets. | [docs/commands/posttree-syserror-rate.md](docs/commands/posttree-syserror-rate.md) |
 | `phyloai report`   | Generate a reproducible analysis report (JSON + self-contained HTML with embedded figures, sortable tables, and a draft Methods paragraph). Auto-generated methods text should be carefully verified before publication use. | [docs/commands/report.md](docs/commands/report.md) |
