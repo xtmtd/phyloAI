@@ -208,7 +208,41 @@ class TestSyserrorRate:
         assert "0 alignment sites" in text
 
 
-class TestTaper:
+class TestSyserrorCca:
+    def test_methods_describe_calculation_without_preference_claim(self):
+        text = generate_all_methods(
+            "posttree.syserror.cca",
+            {"model1_name": "LG", "model2_name": "C20"},
+            {"n_sites": 100, "models": ["LG", "C20"]},
+            {},
+        )
+
+        assert "Keff" in text and "floor(Keff)" in text
+        assert "Szánthó et al. 2023" in text and "T1 and T2" in text
+        assert "consistent across the Keff distribution" in text
+        assert "LG" in text and "C20" in text and "100" in text
+        assert "preferred" not in text.lower()
+
+    def test_methods_fall_back_from_malformed_model_labels(self):
+        text = generate_all_methods(
+            "posttree.syserror.cca",
+            {"model1_name": None, "model2_name": "   "},
+            {"n_sites": 1, "models": [None, ""]},
+            {},
+        )
+
+        assert "model1 and model2" in text
+
+    def test_methods_fall_back_from_whitespace_wrapped_duplicate_models(self):
+        text = generate_all_methods(
+            "posttree.syserror.cca",
+            {"model1_name": "LG", "model2_name": "C20"},
+            {"n_sites": 1, "models": [" LG", "LG "]},
+            {},
+        )
+
+        assert "LG and C20" in text
+
     def test_basic(self):
         text = generate_all_methods(
             "pretree.filter.taper",

@@ -1,10 +1,9 @@
 # Parameter Annotations
 
 Runtime schema from `get_command_schema` is authoritative for names, types, defaults, and choices.
-These notes add Chinese scientific context and recommended values.
-Parameters that are purely operational (`--output-dir`, `--threads`, `--overwrite`, `--resume`,
-`--dry-run`, `--quiet`, `-h/--help`) or visual rendering (`--dpi`, `--fig-width`, `--color`, etc.)
-are self-explanatory and omitted below.
+These notes add Chinese scientific context and recommended values. The runtime
+schema remains authoritative, and parameter cards must still show every
+parameter, including operational and visual-rendering options.
 
 ## Common Parameters
 
@@ -867,6 +866,49 @@ PhyloBayes `readpb -r` 生成的 `.meansiterates` 文件，每行 `<site> <rate>
 
 #### --quiet
 除错误外抑制终端输出，不影响 `rates.csv` 或 `result.json`。
+
+---
+
+### posttree syserror cca
+
+纯 Python 的组成约束诊断，不调用外部可执行程序，无需 `doctor`。它使用一个
+`.sitefreq` 与两个独立模型分析的 `site_lnl.csv`；只作诊断，不自动判定正确模型或拓扑。
+
+#### --site-freq
+IQ-TREE PMSF 或 `phyloai tree bi readpb --mode ss` 生成/转换的 `.sitefreq` 文件。
+每个非注释行必须为 1 基 site ID 加 20 个有限、非负、和为 1（容差 `1e-6`）的氨基酸频率；
+ID 必须严格连续为 `1..N`。不接受原始 PhyloBayes `.siteprofiles`。
+
+#### --site-lnl1 / --site-lnl2
+两个模型分析各自的 `site_lnl.csv`。均要求字面量列名 `site`、`lnL_Tree1`、
+`lnL_Tree2`，可忽略 `ΔSLS`、`support` 等额外列。三个输入的完整 1 基连续位点集合
+必须一致；不可把自定义拓扑标签作为列名。
+
+#### --model1-name / --model2-name
+第一个/第二个 LNL 表的模型标签，默认分别为 `model1`、`model2`。标签必须非空且不同，
+会同时写入 `cca.csv`、图例、`result.json` 和报告方法文本；不从输入路径自动猜测模型名。
+
+#### --title / --xlabel / --ylabel
+可选 PDF 标题和坐标轴文字。默认标题为空；x 轴为 `Effective number of amino acids`；
+y 轴为 `Log-likelihood difference`。
+
+#### --fig-width / --fig-height / --dpi / --font-size
+PDF 宽度/高度（英寸，默认 10/6）、DPI（默认 300）与图例字号（pt，默认 16），均必须为正。
+其余文字遵循约 11 pt 的 `theme_bw()` 基线；默认只写 `cca.pdf`，不写 PNG。
+
+#### --output-dir
+输出目录，默认 `runs/posttree/syserror/cca`，包含 `cca.csv`、`cca.pdf` 与 `result.json`。
+CSV 按 site 升序并在每个位点先写模型 1、再写模型 2；Keff 以 `1/sum(p_i^2)` 计算，
+CCA 差值为 `lnL_Tree2 - lnL_Tree1`（正值支持 Tree2），不会使用符号相反的 `ΔSLS`。
+
+#### --overwrite
+删除并重建非空输出目录，具有破坏性；需要对目标目录单独确认。
+
+#### --dry-run
+校验三个输入、模型标签和绘图参数，计算结果载荷但不写任何文件。
+
+#### --quiet
+除错误外抑制终端输出，不影响输出文件。
 
 ---
 

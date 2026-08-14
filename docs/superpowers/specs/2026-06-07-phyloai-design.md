@@ -145,7 +145,7 @@ phyloai posttree simulate adequacy --original-msa matrix.fa --simulated-dir runs
 phyloai posttree simulate phybase ...   # future stub: Phybase R-script generation
 phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror rate --iqtree-rate ./matrix.rate --matrix ./matrix.fa --fraction 0.25,0.5,0.75
-phyloai posttree syserror cca    --matrix ./matrix.fa --t1 lg.nwk --t2 pmsf.nwk
+phyloai posttree syserror cca    --site-freq ./chain1.sitefreq --site-lnl1 ./lnl_LG/site_lnl.csv --site-lnl2 ./lnl_C20/site_lnl.csv --model1-name LG --model2-name C20
 phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
 
 # Report (see 2026-06-26-phyloai-report-design.md)
@@ -431,7 +431,7 @@ Detailed field semantics, batch/single structural patterns, per-module requireme
 Directory-producing commands use this policy:
 
 - Default: if output directory exists and is non-empty, exit with code 1
-- `--overwrite`: delete and recreate the output directory
+- `--overwrite`: after successful validation, delete and recreate the output directory. If validation fails, preserve existing files; when `--overwrite` was explicitly requested, replace only root `result.json` with the current error record.
 - `--resume`: for long-running pipeline commands, load `checkpoint.json`, require exact parameter match, skip verified successful tasks
 - `--overwrite` and `--resume` are mutually exclusive
 
@@ -522,7 +522,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 6 | `report/` module | collector, templates, schema, renderer; outputs report.json + report.html | Phases 2–4 |
 | 7 | MCP Server | All CLI tools wrapped (fine-grained, one tool per subcommand); check_status / read_result / read_report / get_command_schema utilities; stub tools for future commands; stdio transport | Phases 1–6 |
 | 8 | `phyloai-workflow` Skill | Full guided workflow; parameter cards with runtime schema; result interpretation; session recovery via report.json; demo mode; error handling (catalog + AI) | Phase 7 |
-| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (brlen → rate → cca → sites) | syserror CLI (Phase 4) + Phase 7 |
+| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (brlen → rate → cca → sites); CCA consumes a prepared `.sitefreq` plus two `site_lnl.csv` likelihood tables after site-frequency and site-likelihood generation. | syserror CLI (Phase 4) + Phase 7 |
 | 10 | Report AI review | `polish_methods` MCP tool + Skill integration; scientific accuracy verification of methods text | Separate spec required |
 
 **Spec granularity:** Phase 1 has one spec+plan. Phases 2–4 have one spec+plan per subcommand under `docs/superpowers/specs/` and `docs/superpowers/plans/`. Phases 5–8 have one spec+plan each. Every subcommand spec must be consistent with Section 9 conventions.

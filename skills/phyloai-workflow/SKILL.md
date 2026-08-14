@@ -247,13 +247,36 @@ approval.
   systematic-error correction. Downstream tree inference/comparison is always
   a separate user-approved action.
 
+### posttree syserror cca
+
+Local pure-Python compositional-constraint diagnostic. No `doctor` check is
+needed, but before execution call `get_command_schema`, render every runtime
+parameter in the parameter card, and obtain explicit user approval.
+
+- **Prepared inputs:** require one IQ-TREE PMSF or `readpb --mode ss`
+  `.sitefreq` input and two independent model-specific `site_lnl.csv` files.
+  The frequency table is one-based `1..N` with 20 frequencies per site; each
+  LNL table must use literal `site`, `lnL_Tree1`, and `lnL_Tree2` headers. The
+  three site sets must exactly match. Raw `.siteprofiles` and custom LNL-header
+  labels are not accepted.
+- **Model comparison:** `--model1-name` and `--model2-name` label the two LNL
+  analyses; they are non-empty and distinct. CCA calculates Keff as inverse
+  homozygosity and independently calculates Tree2-minus-Tree1 likelihood
+  differences, rather than using signal LNL's reverse-sign `ΔSLS` column.
+- **Interpretation:** positive bars support Tree2 and negative bars support
+  Tree1 within a model; the plot can diagnose composition-associated changes
+  in preference but must not be used alone to declare a preferred topology or
+  model. Tree/model inference and follow-up analyses remain separate,
+  user-approved actions.
+
 **Approval:** `alisim iqtree` executes IQ-TREE3, so run `doctor`, review the
 full parameter card, and get explicit user approval before invoking it —
 including `--dry-run` to show the sampling plan/command first. `alisim params`,
 `alisim transfergaps`, and `simulate adequacy` are local-only (no external tool)
-but still get the standard parameter review. `posttree syserror brlen` and
-`label-nodes` and `posttree syserror rate` are likewise local-only: run `get_command_schema`, render a
-parameter card, and get explicit user approval before running. `check_status`,
+but still get the standard parameter review. `posttree syserror brlen`,
+`label-nodes`, `posttree syserror rate`, and `posttree syserror cca` are
+likewise local-only: run `get_command_schema`, render a parameter card, and
+get explicit user approval before running. `check_status`,
 `read_result`, `read_report`, and `get_command_schema` remain directly
 inspectable without approval.
 

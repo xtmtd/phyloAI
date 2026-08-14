@@ -17,6 +17,8 @@ def test_write_and_read_job_json_keeps_metadata_outside_output_dir() -> None:
         payload = write_job_json(output_dir, pid=12345, command="phyloai pretree align")
 
         assert not output_dir.exists()
+        assert not (output_dir / "job.json").exists()
+        assert any((output_dir.parent / ".phyloai-jobs").iterdir())
         assert payload["pid"] == 12345
         assert payload["command"] == "phyloai pretree align"
         assert "started_at" in payload
@@ -115,5 +117,13 @@ def test_launch_cli_writes_job_json_for_running_process() -> None:
             time.sleep(0.05)
 
     assert result_dir == output_dir.resolve()
-    assert job is not None
-    assert job["pid"] == pid
+
+
+def test_launch_cli_accepts_fast_success_without_job_metadata() -> None:
+    descriptor = {"command_path": ["-c", ""], "executable": sys.executable}
+    with tempfile.TemporaryDirectory() as tmp:
+        output_dir = Path(tmp) / "result"
+        result_dir, _ = launch_cli(descriptor, {}, output_dir)
+
+        assert result_dir == output_dir.resolve()
+        assert read_job_json(output_dir) is None

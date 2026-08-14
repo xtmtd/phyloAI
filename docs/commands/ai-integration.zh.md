@@ -182,10 +182,11 @@ MCP server 为每个 CLI 子命令注册一个工具，外加四个工具型工�
 | `posttree_dating_mcmc` | `phyloai posttree dating mcmc` | fire-and-forget |
 | `posttree_syserror_brlen` | `phyloai posttree syserror brlen` | fire-and-forget |
 | `posttree_syserror_brlen_label_nodes` | `phyloai posttree syserror brlen label-nodes` | fire-and-forget |
+| `posttree_syserror_cca` | `phyloai posttree syserror cca` | fire-and-forget |
 | `report` | `phyloai report` | synchronous |
 | `run` | `phyloai run` | fire-and-forget |
 
-占位工具（返回"not yet available"）：`posttree_simulate`、`posttree_syserror_cca`、`posttree_syserror_sites`。
+占位工具（返回"not yet available"）：`posttree_simulate`、`posttree_syserror_sites`。
 
 ### 工具型工具（只读、同步）
 

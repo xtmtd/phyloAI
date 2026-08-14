@@ -105,6 +105,24 @@ class _GroupedIqtreeCommand(_GroupedCommand):
     }
 
 
+class _GroupedCcaCommand(_GroupedCommand):
+    option_sections = {
+        "site_freq": "Required Inputs",
+        "site_lnl1": "Required Inputs",
+        "site_lnl2": "Required Inputs",
+        "model1_name": "Model Labels",
+        "model2_name": "Model Labels",
+        "title": "Figure Options",
+        "xlabel": "Figure Options",
+        "ylabel": "Figure Options",
+        "fig_width": "Figure Options",
+        "fig_height": "Figure Options",
+        "dpi": "Figure Options",
+        "font_size": "Figure Options",
+    }
+    section_order = ("Required Inputs", "Model Labels", "Figure Options", "Common Options")
+
+
 @click.group(cls=_PosttreeGroup)
 def posttree() -> None:
     """Post-tree analysis commands."""
@@ -2075,7 +2093,7 @@ def transfergaps_command(
 
 class _SyserrorGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["brlen", "rate"]
+        return ["brlen", "rate", "cca"]
 
 
 @posttree.group("syserror", cls=_SyserrorGroup)
@@ -2085,6 +2103,7 @@ def syserror() -> None:
     \b
     Subcommands:
       brlen        branch-length heterogeneity statistics
+      cca          compositional constraint analysis
       rate         site-rate heterogeneity statistics
     """
 
@@ -2141,6 +2160,62 @@ def _build_brlen_error_command(
 
 def _output_dir_writable(output_dir: Path) -> bool:
     return not output_dir.exists() or not any(output_dir.iterdir())
+
+
+
+
+@syserror.command("cca", cls=_GroupedCcaCommand)
+@click.option("--site-freq", type=click.Path(path_type=Path), required=True,
+              help="One-based IQ-TREE PMSF or readpb --mode ss .sitefreq file.")
+@click.option("--site-lnl1", type=click.Path(path_type=Path), required=True,
+              help="First model site_lnl.csv; requires site, lnL_Tree1, lnL_Tree2 columns.")
+@click.option("--site-lnl2", type=click.Path(path_type=Path), required=True,
+              help="Second model site_lnl.csv; requires site, lnL_Tree1, lnL_Tree2 columns.")
+@click.option("--model1-name", default="model1", show_default=True, help="Label for the first likelihood table.")
+@click.option("--model2-name", default="model2", show_default=True, help="Label for the second likelihood table.")
+@click.option("--title", default="", help="Optional figure title.")
+@click.option("--xlabel", default="Effective number of amino acids", show_default=True, help="Figure x-axis label.")
+@click.option("--ylabel", default="Log-likelihood difference", show_default=True, help="Figure y-axis label.")
+@click.option("--fig-width", type=float, default=10, show_default=True, help="Figure width in inches.")
+@click.option("--fig-height", type=float, default=6, show_default=True, help="Figure height in inches.")
+@click.option("--dpi", type=int, default=300, show_default=True, help="PDF rasterization DPI metadata.")
+@click.option("--font-size", type=float, default=16, show_default=True, help="Legend text size in points.")
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path), default=Path("runs/posttree/syserror/cca"), show_default=True, help="Output directory containing cca.csv and cca.pdf.")
+@click.option("--overwrite", is_flag=True, default=False, help="Delete and recreate a non-empty output directory.")
+@click.option("--dry-run", is_flag=True, default=False, help="Validate inputs and calculate summaries without writing files.")
+@click.option("-q", "--quiet", is_flag=True, default=False, help="Suppress terminal output except errors.")
+def cca(
+    site_freq: Path, site_lnl1: Path, site_lnl2: Path, model1_name: str, model2_name: str,
+    title: str, xlabel: str, ylabel: str, fig_width: float, fig_height: float, dpi: int,
+    font_size: float, output_dir: Path, overwrite: bool, dry_run: bool, quiet: bool,
+) -> None:
+    """Compare composition-constrained site likelihoods under two models.
+
+    Uses a 20-state, one-based .sitefreq file and two site_lnl.csv tables.
+    Required likelihood columns are exactly site, lnL_Tree1, and lnL_Tree2;
+    the existing ΔSLS column is ignored because CCA computes Tree2 minus Tree1.
+    No external tools are used.
+
+    \b
+    Examples:
+      phyloai posttree syserror cca --site-freq chain1.sitefreq --site-lnl1 lnl_LG/site_lnl.csv --site-lnl2 lnl_C20/site_lnl.csv --model1-name LG --model2-name C20
+      phyloai posttree syserror cca --site-freq chain1.sitefreq --site-lnl1 lnl1/site_lnl.csv --site-lnl2 lnl2/site_lnl.csv --dry-run
+    """
+    from phyloai.posttree.syserror_cca import build_cca_command, run_cca
+
+    resolved = output_dir.resolve()
+    command = build_cca_command(site_freq, site_lnl1, site_lnl2, model1_name, model2_name, title, xlabel, ylabel, fig_width, fig_height, dpi, font_size, resolved, overwrite, dry_run, quiet)
+    if resolved.exists() and not resolved.is_dir():
+        _fail(f"output path is not a directory: {resolved}", exit_code=1)
+    pre_existing = resolved.is_dir() and any(resolved.iterdir())
+    try:
+        payload = run_cca(site_freq, site_lnl1, site_lnl2, model1_name, model2_name, title, xlabel, ylabel, fig_width, fig_height, dpi, font_size, output_dir, overwrite, dry_run, quiet)
+    except ValueError as exc:
+        if not dry_run and (not pre_existing or overwrite):
+            _write_error_result_json(resolved, command, str(exc), "input")
+        _fail(str(exc), exit_code=1)
+    if dry_run:
+        click.echo(json.dumps(payload, indent=2))
 
 
 @syserror.command("rate")
