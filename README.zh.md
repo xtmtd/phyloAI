@@ -85,6 +85,11 @@ phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
 # 位点速率排序/提取敏感性分析
 phyloai posttree syserror rate --iqtree-rate matrix.rate --matrix raw.fa \
   --subset slow --fraction 0.25,0.5,0.75 -o runs/posttree/syserror/rate
+
+# 两个模型分析之间的组成约束诊断
+phyloai posttree syserror cca --site-freq chain1.sitefreq \
+  --site-lnl1 lnl_LG/site_lnl.csv --site-lnl2 lnl_C20/site_lnl.csv \
+  --model1-name LG --model2-name C20 -o runs/posttree/syserror/cca
 ```
 
 显示所有可用命令：
@@ -155,4 +160,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree simulate adequacy` | 使用本地纯 Python 后验预测检验，将观测 PPA-DIV、PPA-CONV、PPA-VAR 和 PPA-COMP 与模拟 MSA 比较。 | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.zh.md) |
 | `phyloai posttree syserror brlen` | 从单个树、目录或多树 Newick 文件提取枝长统计（total、terminal、internal、patristic、tip-to-tip、node-to-node、node-to-tip），诊断跨类群速率异质性；`label-nodes` 生成带标签参考树与映射模板。 | [docs/commands/posttree-syserror-brlen.md](docs/commands/posttree-syserror-brlen.zh.md) |
 | `phyloai posttree syserror rate` | 面向 IQ-TREE 或 PhyloBayes 速率的位点速率排序/提取敏感性工具；可写出慢/快位点的比对子集。 | [docs/commands/posttree-syserror-rate.md](docs/commands/posttree-syserror-rate.zh.md) |
+| `phyloai posttree syserror cca` | 比较两个模型分析中逐位点拓扑偏好的组成约束诊断。 | [docs/commands/posttree-syserror-cca.md](docs/commands/posttree-syserror-cca.zh.md) |
 | `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.zh.md) |

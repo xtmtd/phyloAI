@@ -109,6 +109,11 @@ phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
 # Site-rate ranking/extraction sensitivity analysis
 phyloai posttree syserror rate --iqtree-rate matrix.rate --matrix raw.fa \
   --subset slow --fraction 0.25,0.5,0.75 -o runs/posttree/syserror/rate
+
+# Compositional-constraint diagnostic across two model analyses
+phyloai posttree syserror cca --site-freq chain1.sitefreq \
+  --site-lnl1 lnl_LG/site_lnl.csv --site-lnl2 lnl_C20/site_lnl.csv \
+  --model1-name LG --model2-name C20 -o runs/posttree/syserror/cca
 ```
 
 Show all available commands:
@@ -190,4 +195,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree simulate adequacy` | Compare observed PPA-DIV, PPA-CONV, PPA-VAR, and PPA-COMP statistics with simulated MSAs using a local pure-Python posterior predictive check. | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.md) |
 | `phyloai posttree syserror brlen` | Extract branch-length statistics (total, terminal, internal, patristic, tip-to-tip, node-to-node, node-to-tip) from one tree, a directory, or Newick multi-tree files to diagnose rate heterogeneity across taxa; `label-nodes` generates labeled reference trees and map templates. | [docs/commands/posttree-syserror-brlen.md](docs/commands/posttree-syserror-brlen.md) |
 | `phyloai posttree syserror rate` | Site-rate ranking/extraction sensitivity utility for IQ-TREE or PhyloBayes rates; optionally writes slow/fast alignment subsets. | [docs/commands/posttree-syserror-rate.md](docs/commands/posttree-syserror-rate.md) |
+| `phyloai posttree syserror cca` | Composition-constraint diagnostic comparing site-wise topology preference across two model analyses. | [docs/commands/posttree-syserror-cca.md](docs/commands/posttree-syserror-cca.md) |
 | `phyloai report`   | Generate a reproducible analysis report (JSON + self-contained HTML with embedded figures, sortable tables, and a draft Methods paragraph). Auto-generated methods text should be carefully verified before publication use. | [docs/commands/report.md](docs/commands/report.md) |

@@ -1439,9 +1439,25 @@ def generate_methods_posttree_syserror_cca(
     key_results: dict[str, Any],
     tool_versions: dict[str, Any],
 ) -> str:
+    models = key_results.get("models")
+    if isinstance(models, list) and len(models) == 2 and all(isinstance(model, str) for model in models):
+        bins = [model.strip() for model in models]
+    else:
+        bins = []
+    if not all(bins) or len(set(bins)) != 2:
+        bins = [str(params.get("model1_name") or "").strip(), str(params.get("model2_name") or "").strip()]
+    if not all(bins) or len(set(bins)) != 2:
+        bins = ["model1", "model2"]
     return (
-        "Cross-comparative analysis (CCA) of systematic error was performed "
-        "by comparing tree topologies under different substitution models."
+        "Compositional constraint analysis (CCA; Szánthó et al. 2023) was performed "
+        f"using PhyloAI across {_describe_n(key_results.get('n_sites', 0), 'alignment site', 'alignment sites')}. "
+        "For each fixed model analysis, site-specific log-likelihood differences "
+        "between the supplied T1 and T2 topologies were calculated, then evaluated "
+        "against compositional heterogeneity using the effective number of amino acids "
+        "(Keff), calculated as the inverse homozygosity of 20 site-specific amino-acid "
+        "frequencies. Tree2-minus-Tree1 differences were summed within floor(Keff) bins "
+        f"for the {bins[0]} and {bins[1]} model analyses to assess whether the "
+        "site-wise likelihood contrast was consistent across the Keff distribution."
     )
 
 

@@ -130,7 +130,7 @@ def launch_cli(
 
 
 def _write_job_when_ready(output_dir: Path, pid: int, command: str) -> None:
-    """Write lifecycle metadata once *output_dir* exists (CLI passed its conflict check)."""
+    """Write lifecycle metadata once *output_dir* exists without polluting it."""
     deadline = time.time() + 30
     while time.time() < deadline:
         if output_dir.is_dir():
