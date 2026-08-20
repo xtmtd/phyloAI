@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -14,9 +15,15 @@ from typing import Any
 import click
 
 
+def _job_path(output_dir: Path) -> Path:
+    key = hashlib.sha256(str(output_dir.resolve()).encode()).hexdigest()
+    return output_dir.parent / ".phyloai-jobs" / f"{key}.json"
+
+
 def write_job_json(output_dir: Path, pid: int, command: str, *, early_exit_stderr: str = "") -> dict[str, Any]:
-    """Write ``job.json`` and return its payload."""
-    output_dir.mkdir(parents=True, exist_ok=True)
+    """Write MCP lifecycle metadata outside the command output directory."""
+    path = _job_path(output_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, Any] = {
         "pid": pid,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -24,16 +31,16 @@ def write_job_json(output_dir: Path, pid: int, command: str, *, early_exit_stder
     }
     if early_exit_stderr:
         payload["early_exit_stderr"] = early_exit_stderr
-    with open(output_dir / "job.json", "w") as fh:
+    with open(path, "w") as fh:
         json.dump(payload, fh, indent=2)
     return payload
 
 
 def read_job_json(output_dir: Path) -> dict[str, Any] | None:
     """Read ``job.json``; return None when missing or invalid."""
-    path = output_dir / "job.json"
+    path = _job_path(output_dir)
     if not path.exists():
-        return None
+        path = output_dir / "job.json"
     try:
         with open(path) as fh:
             return json.load(fh)
@@ -83,7 +90,7 @@ def launch_cli(
     *,
     env: dict[str, str] | None = None,
 ) -> tuple[Path, int]:
-    """Launch a detached CLI command and write ``job.json``."""
+    """Launch a detached CLI command and track only processes still running."""
     output_dir = output_dir.resolve()
     if not output_dir.parent.exists():
         raise ValueError(f"Parent directory does not exist: {output_dir.parent}")
@@ -109,19 +116,21 @@ def launch_cli(
     try:
         _, stderr = proc.communicate(timeout=0.2)
     except subprocess.TimeoutExpired:
-        # 等 CLI 自己创建 output_dir 后再写 job.json，避免污染目录触发冲突检查
+        # Keep consuming stderr so a verbose child cannot block on the pipe.
+        threading.Thread(target=proc.stderr.read, daemon=True).start()
+        # Wait until CLI passes its conflict check; metadata stays outside output_dir.
         _thread = threading.Thread(target=_write_job_when_ready, args=(output_dir, proc.pid, shlex.join(argv)), daemon=True)
         _thread.start()
         return output_dir, proc.pid
-        return output_dir, proc.pid
 
     early = stderr.decode("utf-8", errors="replace")[:1000] if stderr else ""
-    write_job_json(output_dir, proc.pid, shlex.join(argv), early_exit_stderr=early)
+    if proc.returncode == 0:
+        return output_dir, proc.pid
     raise ValueError(f"Process exited immediately with code {proc.returncode}. stderr: {early}")
 
 
 def _write_job_when_ready(output_dir: Path, pid: int, command: str) -> None:
-    """Write ``job.json`` once *output_dir* exists (CLI has passed its conflict check)."""
+    """Write lifecycle metadata once *output_dir* exists (CLI passed its conflict check)."""
     deadline = time.time() + 30
     while time.time() < deadline:
         if output_dir.is_dir():

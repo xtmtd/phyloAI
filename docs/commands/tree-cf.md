@@ -15,6 +15,14 @@ Concordance factors measure the proportion of gene trees, sites, or quartets sup
 phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 ```
 
+## Inputs
+
+The command consumes a species tree and the matching gene-tree or quartet inputs required by the selected mode.
+
+## Inputs
+
+The command consumes a species tree and matching gene-tree or quartet inputs required by the selected mode.
+
 ## Modes
 
 | `--cf`    | Index  | Tool    | Description | Origin |
@@ -64,6 +72,14 @@ phyloai tree cf --cf MODE --ref-tree REF_TREE [INPUTS...] [OPTIONS]
 | `--overwrite` | off | Remove existing output directory |
 | `--dry-run` | off | Show command without executing |
 | `-q, --quiet` | off | Suppress non-error output |
+
+## Outputs
+
+The command writes CF result tables, figures when requested, and `result.json` in the output directory.
+
+## Outputs
+
+The command writes CF result tables, figures when requested, and `result.json` in the output directory.
 
 ## Examples
 
@@ -132,6 +148,11 @@ to existing support values, the format is:
 - With `--lpp`: `<support>/<q1>/<pp1>`  (e.g., `100/0.4221/0.95`)
 
 If no existing support exists, the qCF value becomes the sole label: `0.75`.
+
+## Warnings and Errors
+
+- Input taxa and gene-tree files must match the selected mode.
+- A non-empty output directory requires `--overwrite`.
 
 ## Notes
 

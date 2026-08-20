@@ -407,11 +407,16 @@ Detailed field semantics, batch/single structural patterns, per-module requireme
 
 ### 9.5 Output Directory Conflict and Resume Policy
 
+Directory-producing commands use this policy:
+
 - Default: if output directory exists and is non-empty, exit with code 1
 - `--overwrite`: delete and recreate the output directory
 - `--resume`: for long-running pipeline commands, load `checkpoint.json`, require exact parameter match, skip verified successful tasks
 - `--overwrite` and `--resume` are mutually exclusive
-- Short utility commands (`pretree convert`, `pretree stats`) do not need resume support
+
+Artifact-producing commands (for example `report` and metrics plotting commands) apply the same conflict check to each declared output artifact. Their `--overwrite` option replaces only those declared artifacts and does not delete unrelated files in the output directory.
+
+Short utility commands (`pretree convert`, `pretree stats`) do not need resume support. A dry run never deletes an existing output directory, even when `--overwrite` is present.
 
 Detailed checkpoint schema: `docs/superpowers/specs/2026-06-12-checkpoint-resume-design.md`.
 

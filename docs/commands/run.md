@@ -7,6 +7,20 @@
 
 One-click phylogenomics pipeline from raw sequence files to a species tree. Orchestrates all preprocessing and inference steps using sensible defaults. For fine-grained control over any individual step, use the constituent subcommands directly.
 
+## Usage
+
+```bash
+phyloai run --seq-dir <dir> [OPTIONS]
+```
+
+## Inputs
+
+`--seq-dir` is the required input directory containing raw sequence files.
+
+## Outputs
+
+The command writes step outputs and a top-level `result.json` under `--output-dir`.
+
 ## Quick Start
 
 ```bash

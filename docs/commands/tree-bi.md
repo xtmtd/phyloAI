@@ -5,6 +5,10 @@
 
 Bayesian phylogenetic inference with [PhyloBayes-MPI](https://github.com/bayesiancook/pbmpi).
 
+## Purpose
+
+Run PhyloBayes-MPI Bayesian inference and convergence diagnostics.
+
 ## Overview
 
 `phyloai tree bi` is a Click Group with four subcommands:
@@ -17,6 +21,10 @@ Bayesian phylogenetic inference with [PhyloBayes-MPI](https://github.com/bayesia
 | `tree bi readpb` | Posterior analysis and predictive checks with `readpb_mpi` |
 
 The default output root is `runs/tree/bi/`.
+
+## Inputs
+
+Each subcommand documents its required matrix, chain, tree, or convergence inputs below.
 
 ## Requirements
 
@@ -451,3 +459,11 @@ runs/tree/bi/readpb/
 | 1 | Input validation error |
 | 2 | readpb_mpi non-zero exit |
 | 3 | `readpb_mpi` or `mpirun` not found |
+
+## Warnings and Errors
+
+Missing external tools or invalid inputs produce a non-zero exit. `--overwrite` and `--resume` are mutually exclusive where both are supported.
+
+## Notes
+
+Subcommands use separate output directories under `runs/tree/bi/`.

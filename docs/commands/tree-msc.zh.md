@@ -35,6 +35,12 @@ phyloai tree msc --tree input.trees --tool-args "-r 32 -s 32"
 phyloai tree msc --tree-dir ./genetrees/ --outgroup Oryza_sativa
 ```
 
+## 示例
+
+```bash
+phyloai tree msc --tree-dir ./genetrees -o runs/tree/msc
+```
+
 ## 输入
 
 | Option | Description |
@@ -63,6 +69,15 @@ runs/tree/msc/
 ├── merged.trees           # 合并后的输入（仅 `--tree-dir` 模式）
 └── freqQuad.csv           # 四分体频率数据（仅 `--boot 3`）
 ```
+
+## 警告与错误
+
+- 缺少外部工具或输入文件无效时返回非零退出码。
+- 输出目录非空时必须使用 `--overwrite`。
+
+## 备注
+
+wASTRAL 推断不支持 `--resume`。
 
 ## 退出码
 

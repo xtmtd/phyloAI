@@ -45,6 +45,10 @@ phyloai tree ml iqtree --matrix matrix.fa --model C20 --guide-tree guide.nwk
 phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 ```
 
+## Inputs
+
+Provide exactly one of `--msa-dir` or `--matrix`. Batch mode accepts homogeneous workflows; single-matrix mode supports the full IQ-TREE workflow.
+
 ## Parameters
 
 ### Input (mutually exclusive)
@@ -134,7 +138,7 @@ These combine to form `-m` (e.g., `LG+F+R4`). Ignored when `--modelfinder` is `M
 | `--iqtree-path` | Path | — | Custom path to `iqtree3` |
 | `--tool-args` | str | — | Extra IQ-TREE flags |
 
-## Output
+## Outputs
 
 ### Single mode (`--matrix`)
 
@@ -171,7 +175,7 @@ runs/tree/ml/iqtree/
 | `2` | All IQ-TREE runs failed |
 | `3` | `iqtree3` not found |
 
-## Warnings & Errors
+## Warnings and Errors
 
 | Condition | Behavior |
 |-----------|----------|

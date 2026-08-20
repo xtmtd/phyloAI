@@ -28,6 +28,12 @@ phyloai posttree topology --matrix matrix.fa --candidate-trees trees --model-exp
 phyloai posttree topology --matrix matrix.fa --candidate-trees trees --model-expr C20+F+R4
 ```
 
+## 示例
+
+```bash
+phyloai posttree topology --matrix matrix.fa --candidate-trees candidates.trees --model-expr LG+F+R4
+```
+
 ## 输入
 
 | Input | Description |
@@ -98,6 +104,11 @@ PhyloAI 文件：
 | 1 | 用户输入错误（文件缺失、参数无效、输出冲突） |
 | 2 | IQ-TREE 执行失败 |
 | 3 | 未找到 IQ-TREE 可执行文件 |
+
+## 警告与错误
+
+- `--overwrite` 与 `--resume` 互斥。
+- 输出目录非空时必须使用 `--overwrite` 或 `--resume`。
 
 ## 备注
 

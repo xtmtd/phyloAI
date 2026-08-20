@@ -27,6 +27,16 @@ phyloai tree ml fasttree --msa-dir ./trimmed --boot 0
 phyloai tree ml fasttree --msa-dir ./trimmed --mode fastest --model jtt
 ```
 
+## Inputs
+
+Provide exactly one of `--msa-dir` or `--matrix`.
+
+## Examples
+
+```bash
+phyloai tree ml fasttree --msa-dir ./aligned --seq-type AA
+```
+
 ## Parameters
 
 | Parameter | Default | Description |

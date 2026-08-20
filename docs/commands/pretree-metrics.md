@@ -69,6 +69,12 @@ phyloai pretree metrics correlate \
   --cluster-rectangles 5
 ```
 
+## Examples
+
+```bash
+phyloai pretree metrics --msa-dir ./aligned --output-dir ./runs/pretree/metrics
+```
+
 ## Parameters
 
 ### `phyloai pretree metrics`

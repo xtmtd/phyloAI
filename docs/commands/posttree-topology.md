@@ -32,6 +32,13 @@ phyloai posttree topology --matrix matrix.fa --candidate-trees trees --model-exp
 phyloai posttree topology --matrix matrix.fa --candidate-trees trees --model-expr C20+F+R4
 ```
 
+## Examples
+
+```bash
+phyloai posttree topology --matrix matrix.fa --candidate-trees candidates.trees --model-expr LG+F+R4
+phyloai posttree topology --matrix matrix.fa --candidate-trees candidates.trees --partitions matrix.best_model.nex
+```
+
 ## Inputs
 
 | Input | Description |
@@ -108,6 +115,12 @@ PhyloAI files:
 | 1 | User input error (missing files, invalid parameters, output conflict) |
 | 2 | IQ-TREE execution failed |
 | 3 | IQ-TREE executable not found |
+
+## Warnings and Errors
+
+- `--overwrite` and `--resume` are mutually exclusive.
+- A non-empty output directory requires `--overwrite` or `--resume`.
+- Exactly one of `--model-expr` and `--partitions` is required.
 
 ## Notes
 

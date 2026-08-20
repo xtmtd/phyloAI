@@ -4,6 +4,10 @@
 
 使用 [PhyloBayes-MPI](https://github.com/bayesiancook/pbmpi) 进行贝叶斯系统发育推断。
 
+## 目的
+
+运行 PhyloBayes-MPI 贝叶斯推断和收敛诊断。
+
 ## 概述
 
 `phyloai tree bi` 是一个包含四个子命令的 Click 组：
@@ -16,6 +20,10 @@
 | `tree bi readpb` | 使用 `readpb_mpi` 进行后验分析和预测检验 |
 
 默认输出根目录为 `runs/tree/bi/`。
+
+## 输入
+
+各子命令所需的矩阵、链、树或收敛诊断输入在下文分别说明。
 
 ## 要求
 
@@ -367,3 +375,11 @@ iqtree3 --alisim simulated.phy -t tree.nwk -p runs/tree/bi/readpb/partition.PMSF
 | 1 | 输入验证错误 |
 | 2 | readpb_mpi 非零退出 |
 | 3 | `readpb_mpi` 或 `mpirun` 未找到 |
+
+## 警告与错误
+
+缺少外部工具或输入文件无效时返回非零退出码。支持恢复的子命令中，`--overwrite` 与 `--resume` 互斥。
+
+## 备注
+
+各子命令在 `runs/tree/bi/` 下使用独立输出目录。

@@ -55,6 +55,12 @@ phyloai tree msc --tree-dir ./genetrees/ --outgroup Oryza_sativa
 | `--tree-boot-max` | -- | Max support value (wastral -x). Overrides preset default. |
 | `--outgroup` | -- | Outgroup species name for rooting (wastral --root). |
 
+## Examples
+
+```bash
+phyloai tree msc --gene-trees ./gene_trees --species-tree ./species_tree.nwk
+```
+
 ## Outputs
 
 ```
@@ -73,6 +79,11 @@ runs/tree/msc/
 | 1 | User input error |
 | 2 | wastral execution failed |
 | 3 | wastral not found |
+
+## Warnings and Errors
+
+- Missing external tools or invalid input files cause a non-zero exit.
+- A non-empty output directory requires `--overwrite`.
 
 ## Notes
 

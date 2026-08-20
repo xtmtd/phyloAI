@@ -12,6 +12,20 @@ Generate a reproducible, auditable analysis report from a PhyloAI run directory.
 
 A single invocation covers the entire run directory; no sub-commands are needed.
 
+## Usage
+
+```bash
+phyloai report --run-dir <run-dir> [OPTIONS]
+```
+
+## Inputs
+
+`--run-dir` must contain one or more PhyloAI `result.json` files.
+
+## Outputs
+
+The command writes `report.json` and `report.html` under the report output directory.
+
 ## Quick Start
 
 ```bash
@@ -172,7 +186,7 @@ This ensures templates always have complete data regardless of which module prod
 | `0` | Report generated successfully (even if run had failed steps). |
 | `1` | User input error — invalid `--run-dir`, no `result.json` found, or report files exist without `--overwrite`. |
 
-## Warnings / Errors
+## Warnings and Errors
 
 | Condition | Behaviour |
 |-----------|-----------|

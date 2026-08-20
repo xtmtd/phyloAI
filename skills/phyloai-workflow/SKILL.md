@@ -1,6 +1,13 @@
-# PhyloAI Workflow
+---
+name: phyloai-workflow
+description: >-
+  Guide users through PhyloAI CLI analyses through the local MCP server.
+  Use for PhyloAI analysis, command execution, run recovery, `doctor`,
+  environment checks, missing external tools, installation, and
+  external-tool failures.
+---
 
-Guide users through PhyloAI CLI analyses through the local MCP server.
+# PhyloAI Workflow
 
 ## Core Rules
 

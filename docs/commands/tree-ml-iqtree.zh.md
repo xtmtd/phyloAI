@@ -44,6 +44,10 @@ phyloai tree ml iqtree --matrix matrix.fa --model C20 --guide-tree guide.nwk
 phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 ```
 
+## 输入
+
+必须提供 `--msa-dir` 或 `--matrix` 之一。批量模式用于同质工作流，单矩阵模式支持完整 IQ-TREE 工作流。
+
 ## 参数
 
 ### Input (mutually exclusive)
