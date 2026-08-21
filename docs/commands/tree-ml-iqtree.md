@@ -41,6 +41,15 @@ phyloai tree ml iqtree --matrix matrix.fa --model C20
 # PMSF AA mixture
 phyloai tree ml iqtree --matrix matrix.fa --model C20 --guide-tree guide.nwk
 
+# Custom exchangeability matrix plus per-site frequency profiles (CAT-PMSF-style)
+phyloai tree ml iqtree \
+  --matrix runs/test/matrix.fa \
+  --seq-type AA \
+  --model runs/test/chain1.exchangeabilities \
+  --site-freq-file runs/test/chain1.sitefreq \
+  --state-freq none --rate-heterogeneity +R4 \
+  --boot 0 --threads 1 --output-dir runs/test/cat-pmsf
+
 # NT heterogeneous
 phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 ```
@@ -70,7 +79,7 @@ Supported formats: `.fa`, `.fas`, `.fasta`, `.faa`, `.fna`, `.phy`, `.phylip`, `
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--model` | str | `LG` (AA) / `GTR` (NT) | Substitution model |
+| `--model` | str | `LG` (AA) / `GTR` (NT) | Substitution model, or an existing IQ-TREE custom exchangeability-model file |
 | `--state-freq` | `+F\|+FO\|+FQ\|+FU\|none` | `+F` | State frequency type |
 | `--rate-heterogeneity` | `+I\|+G4\|+I+G4\|+R4\|+I+R4\|none` | `+R4` | Rate heterogeneity |
 
@@ -96,8 +105,9 @@ These combine to form `-m` (e.g., `LG+F+R4`). Ignored when `--modelfinder` is `M
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pmsf-base-model` | str | `LG` | Base AA model for PMSF (C10–C60 only) |
-| `--guide-tree` | Path | — | Guide tree for PMSF (NEWICK) |
+| `--pmsf-base-model` | str | `LG` | Base AA model for built-in C10–C60 PMSF only |
+| `--guide-tree` | Path | — | Guide tree for built-in PMSF (NEWICK) |
+| `--site-freq-file` | Path | — | Per-site AA frequency profile for a custom `--model`; maps to IQ-TREE `-fs` and requires `--state-freq none` |
 | `--qmax` | int | `10` | Rate categories for MIX+MF |
 
 ### Tree Search
@@ -188,6 +198,7 @@ runs/tree/ml/iqtree/
 | `--partitions` with `--msa-dir` | Error: `--partitions` requires `--matrix` |
 | `--overwrite` and `--resume` together | Error: mutually exclusive |
 | Non-empty output dir without `--overwrite` | Error: directory already exists |
+| `--site-freq-file` without an AA custom `--model`, `--matrix`, `--modelfinder none`, or `--state-freq none` | Error: invalid custom profile combination |
 
 ## Notes
 
@@ -196,5 +207,6 @@ runs/tree/ml/iqtree/
 - Single `--matrix` mode streams IQ-TREE stdout to the terminal for progress visibility.
 - Batch `--msa-dir` mode keeps only `.iqtree` and `.log` files in `logs/` by default. Use `--keep-extra` to preserve all IQ-TREE output files.
 - When `--modelfinder` is `MF` or `MFP`, `--model`, `--state-freq`, and `--rate-heterogeneity` are not passed to IQ-TREE and are recorded as `null` in `result.json`.
-- IQ-TREE input and user-provided path arguments (`--partitions`, `--guide-tree`, `--constraint`) are resolved to absolute paths internally.
+- IQ-TREE input and user-provided path arguments (`--partitions`, `--guide-tree`, `--constraint`, custom `--model`, and `--site-freq-file`) are resolved to absolute paths internally.
+- A custom model/profile file is read directly; PhyloAI does not copy or alter either file. `--tool-args "-fs /absolute/profile"` overrides `--site-freq-file`, remains raw in `tool_args`, and also requires `--state-freq none`.
 - `--resume` in `--matrix` mode re-runs the IQ-TREE command; IQ-TREE natively handles checkpoint/resume via its own mechanism (`--redo`). In `--msa-dir` batch mode, PhyloAI manages checkpoint state to skip completed gene trees.

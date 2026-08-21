@@ -53,6 +53,7 @@ When ModelFinder is not used, the substitution model is specified directly. `--m
 | NT | Homogeneous | `GTR` (default), `HKY`, `JC`, `F81`, `K2P`, `K3P`, `K81uf`, `TN`, `TNef`, `TIM`, `TIMef`, `TVM`, `TVMef`, `SYM` |
 | AA | Homogeneous | `LG` (default), `Poisson`, `cpREV`, `mtREV`, `Dayhoff`, `mtMAM`, `JTT`, `WAG`, `mtART`, `mtZOA`, `VT`, `rtREV`, `DCMut`, `PMB`, `HIVb`, `HIVw`, `JTTDCMut`, `FLU`, `Blosum62`, `GTR20`, `mtMet`, `mtVer`, `mtInv`, `FLAVI`, `Q.LG`, `Q.pfam`, `Q.pfam_gb`, `Q.bird`, `Q.mammal`, `Q.insect`, `Q.plant`, `Q.yeast` |
 | AA | Heterogeneous (mixture) | `C10`–`C60`, `EX2`, `EX3`, `EHO`, `UL2`, `UL3`, `EX_EHO`, `LG4M`, `LG4X` |
+| AA | Custom exchangeability matrix | A path to an existing regular IQ-TREE model file. PhyloAI resolves it to an absolute path and appends permitted rate heterogeneity, e.g. `/abs/chain1.exchangeabilities+R4` |
 | NT | Heterogeneous | `MIX+MF` |
 
 ### ModelFinder
@@ -83,12 +84,15 @@ IQ-TREE3 uses the `--merge` flag for partition merging (not the older `-m MF+MER
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pmsf-base-model` | str | `LG` | Base AA homogeneous model for PMSF. Only valid when `--model` is C10–C60 |
-| `--guide-tree` | Path | — | Guide tree for PMSF in NEWICK format. Required for PMSF mode. Maps to IQ-TREE `-ft` |
+| `--pmsf-base-model` | str | `LG` | Base AA homogeneous model for built-in C10–C60 PMSF. Only valid when `--model` is C10–C60 |
+| `--guide-tree` | Path | — | Guide tree for built-in C10–C60 PMSF in NEWICK format. Required for that PMSF mode. Maps to IQ-TREE `-ft` |
+| `--site-freq-file` | Path | — | IQ-TREE per-site state-frequency profile. Maps to `-fs`; only valid for AA single-matrix, non-ModelFinder custom-model analyses and requires `--state-freq none` |
 
-When `--model` is C10–C60 and `--guide-tree` is provided, PMSF mode is triggered: the base model is prepended to the mixture (e.g., `LG+C20+F+R4 -ft guide.nwk`). Without `--guide-tree`, direct mixture mode is used (e.g., `C20+F+R4`).
+When `--model` is C10–C60 and `--guide-tree` is provided, built-in PMSF mode is triggered: the base model is prepended to the mixture (e.g., `LG+C20+F+R4 -ft guide.nwk`). Without `--guide-tree`, direct mixture mode is used (e.g., `C20+F+R4`). `--pmsf-base-model` is not a custom-model-file option and its meaning is unchanged.
 
-Heterogeneous workflows only support `--matrix` mode (single supermatrix). They produce an error if combined with `--msa-dir`.
+For a custom AA exchangeability matrix, pass its path via `--model`; PhyloAI resolves the path to absolute form and IQ-TREE reads it directly. To additionally provide per-site frequency profiles, use `--site-freq-file` with `--state-freq none`; PhyloAI emits `-m /abs/model.exchangeabilities+R4 -fs /abs/model.sitefreq`. It neither copies nor modifies either input. This supports CAT-PMSF-style analyses with user-provided exchangeabilities and profiles, without claiming that all such inputs are standard PMSF.
+
+Heterogeneous and custom-model workflows only support `--matrix` mode (single supermatrix). They produce an error if combined with `--msa-dir`.
 
 ### Heterogeneous Models (NT; --matrix only)
 
@@ -192,6 +196,7 @@ The workflow is determined by `--modelfinder` and `--model`:
 | 同质-有分区-MFP | matrix | `--modelfinder MFP --partitions p.txt --mset LG,WAG --rcluster-max 50` | `iqtree3 -s msa.fa -p p.txt -m MFP --mset LG,WAG --merge --rcluster-max 50` |
 | AA异质-直接 | matrix | `--model C20 --state-freq +F --rate-heterogeneity +R4` | `iqtree3 -s msa.fa -m C20+F+R4` |
 | AA异质-PMSF | matrix | `--model C20 --guide-tree g.nwk --pmsf-base-model LG --state-freq +F --rate-heterogeneity +R4` | `iqtree3 -s msa.fa -m LG+C20+F+R4 -ft g.nwk` |
+| Custom CAT-PMSF-style | matrix | `--model chain1.exchangeabilities --site-freq-file chain1.sitefreq --state-freq none --rate-heterogeneity +R4` | `iqtree3 -s msa.fa -m /abs/chain1.exchangeabilities+R4 -fs /abs/chain1.sitefreq` |
 | NT异质 | matrix | `--model MIX+MF --mset GTR,HKY --qmax 10` | `iqtree3 -s msa.fa -m MIX+MF --mset GTR,HKY -qmax 10` |
 
 ---
@@ -216,53 +221,61 @@ The workflow is determined by `--modelfinder` and `--model`:
    - Homogeneous AA: only Protein standard models (not `MIX+MF`)
    - AA data + `--model` in mixture set → AA heterogeneous workflow
    - NT data + `--model MIX+MF` → NT heterogeneous workflow
+   - AA single-matrix data + `--model` naming an existing regular file → custom exchangeability workflow. The path is resolved to absolute form; the file content is validated by IQ-TREE, not re-parsed by PhyloAI
 
 6. `--pmsf-base-model` and `--guide-tree`:
    - Only valid when AA data + `--model` is C10–C60
-   - If `--guide-tree` is present → PMSF; otherwise → direct mixture
+   - If `--guide-tree` is present → built-in PMSF; otherwise → direct mixture
    - `--pmsf-base-model` accepts only AA standard (homogeneous) models
 
-7. `--mset`:
+7. `--site-freq-file`:
+   - Only valid with AA `--matrix`, `--modelfinder none`, and a custom `--model` file
+   - Must name an existing regular file; PhyloAI resolves it to an absolute path and appends `-fs <path>` without copying it
+   - Requires `--state-freq none`; this prevents an IQ-TREE `+F`-style global state-frequency modifier from conflicting with `-fs`
+   - `--tool-args -fs PATH` is overrideable: it suppresses the generated `-fs` from `--site-freq-file`, remains verbatim in `tool_args`, and still requires `--state-freq none`. Absolute paths are recommended because IQ-TREE runs in the output directory
+
+8. `--mset`:
    - AA + `--msub nuclear` → default `LG,WAG`
    - AA + `--msub` other → default `all` (no `--mset` passed to IQ-TREE)
    - NT → default `GTR,HKY`
    - Value `all` → no `--mset` passed to IQ-TREE
 
-8. `--rclusterf` / `--rcluster-max`:
+9. `--rclusterf` / `--rcluster-max`:
    - Only take effect when `--partitions` present AND `--modelfinder` is `MF` or `MFP`
    - Mutually exclusive
    - If neither supplied, default `--rclusterf 10`
 
-9. `--partitions`:
+10. `--partitions`:
    - Only valid with `--matrix`
    - With `--msa-dir`: exit with error
 
-10. Heterogeneous workflows (`--model` mixture or `MIX+MF`): only valid with `--matrix`. With `--msa-dir`: exit with error
+11. Heterogeneous workflows (`--model` mixture or `MIX+MF`): only valid with `--matrix`. With `--msa-dir`: exit with error
 
-11. `--threads` / `-t`:
+12. `--threads` / `-t`:
     - Batch mode (`--msa-dir`) default `4`: number of parallel IQ-TREE jobs, each with `-T 1`
     - Single mode (`--matrix`) default `auto`: maps to IQ-TREE `-T AUTO`
     - Must be int >= 1 or `"auto"`
 
-12. `--boot` / `--alrt`:
+13. `--boot` / `--alrt`:
     - `--boot` default `1000` (enabled, matching fasttree behavior); `--boot 0` skips UFBoot (no `-B` passed to IQ-TREE)
     - `--alrt` is optional; omit to skip SH-aLRT
     - `--alrt 0` is valid (parametric aLRT) and passed to IQ-TREE
     - `--bnni` only when `--boot > 0`; warn and ignore otherwise
 
-13. `--keep-extra`:
+14. `--keep-extra`:
     - Batch mode only; when enabled, preserves all IQ-TREE-generated files in `logs/`
     - By default only `.iqtree` and `.log` are kept per gene
 
-13. `--overwrite` / `--resume` mutually exclusive
+15. `--overwrite` / `--resume` mutually exclusive
 
-14. `--prefix`:
+16. `--prefix`:
     - Only valid with `--matrix`
     - In `--msa-dir` batch mode: ignored with warning; gene names used as prefix internally
 
-15. `--tool-args` two-tier handling per Section 9.9 of main design spec:
+17. `--tool-args` two-tier handling per Section 9.9 of main design spec:
     - BLOCKED (hard-rejected): `-s` (input file), shell I/O redirects
-    - OVERRIDEABLE (suppress-if-present in `--tool-args`): all flags PhyloAI generates (`-m`, `-p`, `-T`, `-B`/`--ufboot`, `--alrt`, `--bnni`, `--fast`, `--merge`, `--rclusterf`, `--rcluster-max`, `--mset`, `--msub`, `-ft`, `-g`, `-o`, `--rate`, `-wslr`, `-qmax`, `--seqtype`, `-q`, `-Q`, `-S`, `--redo`, `--redo-tree`, `--undo`; plus `--prefix` in single mode only)
+    - OVERRIDEABLE (suppress-if-present in `--tool-args`): all flags PhyloAI generates (`-m`, `-p`, `-fs`, `-T`, `-B`/`--ufboot`, `--alrt`, `--bnni`, `--fast`, `--merge`, `--rclusterf`, `--rcluster-max`, `--mset`, `--msub`, `-ft`, `-g`, `-o`, `--rate`, `-wslr`, `-qmax`, `--seqtype`, `-q`, `-Q`, `-S`, `--redo`, `--redo-tree`, `--undo`; plus `--prefix` in single mode only)
+    - `-fs` supplied through `--tool-args` remains raw strategy input rather than a structured `site_freq_file` value; it must use `--state-freq none`.
     - Note: IQ-TREE `-q` (partition model) and PhyloAI `-q` (quiet) share a short flag but are orthogonal. `--tool-args "-q file"` is passed to IQ-TREE unchanged; PhyloAI's `-q` is handled at the CLI layer and never reaches the tool command.
 
 ---
@@ -272,7 +285,7 @@ The workflow is determined by `--modelfinder` and `--model`:
 - **Single MSA mode** (`--matrix`): repeat the identical IQ-TREE command. IQ-TREE natively handles resume via its own checkpoint mechanism (`--redo` handled by IQ-TREE).
 - **Batch mode** (`--msa-dir`): use PhyloAI checkpoint system. Load `checkpoint.json`, skip completed gene trees (validated by `.treefile` existence and newick parseability), re-run failed/pending tasks.
 
-Note: checkpoint params are hashed from resolved (effective) values — e.g., auto-detected `seq_type` rather than the literal `auto`. This ensures that if input files change between runs, the mismatch is caught; it also means a re-run with `--seq-type auto` on the same dataset produces a matching hash.
+Note: checkpoint params are hashed from resolved (effective) values — e.g., auto-detected `seq_type` rather than the literal `auto`, and the resolved absolute `site_freq_file` when PhyloAI generated `-fs`. A raw `--tool-args -fs` remains represented by `tool_args`. This ensures that if input files or structured profile selection change between runs, the mismatch is caught; it also means a re-run with `--seq-type auto` on the same dataset produces a matching hash.
 
 Checkpoint system reuses `phyloai/tree/checkpoint_helpers.py` (shared with fasttree). `_run_one_iqtree` returns status per task; `mark_task` and `plan_resume` handle tracking. For `--modelfinder MF` mode tasks, validate against `.iqtree` report existence instead of `.treefile`.
 
@@ -312,8 +325,9 @@ phyloai/tree/
 | `run_iqtree(...)` | Main entry point, same signature style as `run_fasttree` |
 | `_resolve_iqtree_path()` | Resolve `iqtree3` executable (custom path → PATH → bundled) |
 | `_classify_workflow()` | Determine workflow type from parameter combination |
-| `_build_iqtree_cmd()` | Assemble IQ-TREE CLI argument list |
-| `_run_one_iqtree()` | Execute IQ-TREE on a single MSA, parse `.iqtree` for result metadata, organize output files |
+| `_build_model_string()` | Build `-m` string from a built-in or custom exchangeability model and permitted frequency/rate modifiers |
+| `_build_iqtree_cmd()` | Assemble IQ-TREE CLI argument list, including managed `-fs` when `--site-freq-file` is provided |
+| `_run_one_iqtree()` | Resolve user-supplied IQ-TREE file paths to absolute form, execute IQ-TREE on a single MSA, parse `.iqtree` for result metadata, organize output files |
 | `_check_managed_flag_conflict()` | Block managed flags in `--tool-args` |
 | `_assemble_result()` | Build `result.json` payload |
 | `_detect_iqtree_version()` | Version detection from `iqtree3 --version` |
@@ -400,6 +414,7 @@ For `--modelfinder MF` (model-only) tasks, `output_tree` is `None`; success is d
     "model": "LG",
     "state_freq": "+F",
     "rate_heterogeneity": "+R4",
+    "site_freq_file": null,
     "modelfinder": "none",
     "mset": "LG,WAG",
     "msub": "nuclear",
@@ -477,6 +492,8 @@ For `--modelfinder MF` (model-only) tasks, `output_tree` is `None`; success is d
 - `log_likelihood`: for single mode only; `null` in batch mode (per-file values in `data.files`)
 - `boot`, `alrt`: whether branch support was computed
 - `partitioned`, `merged_partitions`: whether partitions and merge were used
+- `params.model`: built-in model name or resolved absolute path of a custom exchangeability matrix
+- `params.site_freq_file`: resolved absolute path only when `--site-freq-file` generated `-fs`; `null` when no structured profile was supplied or raw `--tool-args -fs` overrode it
 
 ### Parsing `.iqtree` for metadata
 
@@ -500,6 +517,9 @@ The `iqtree` subcommand is added under `ml` group in `tree.py`:
 - Rich progress bar for batch mode (same as fasttree)
 - `--iqtree-path` option for custom executable
 - All validation at CLI layer before calling `run_iqtree()`
+- `--site-freq-file` appears in the **Heterogeneous** help group beside built-in PMSF controls; it maps to IQ-TREE `-fs` and documents its custom-AA-model / `--state-freq none` restrictions
+- MCP exposes the option automatically through the Click-derived `tree_ml_iqtree` schema; no command-specific MCP wrapper is added
+- Report methods prose distinguishes built-in models from a custom exchangeability matrix and, when `site_freq_file` is set, records use of IQ-TREE site-specific frequency profiles
 
 ---
 

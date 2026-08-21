@@ -118,7 +118,7 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai pretree filter`  | 标记级过滤：TAPER 错误位点屏蔽、TreeShrink 分类单元剪枝、度量规则过滤、对称性检验过滤、基于聚类的探索。 | [docs/commands/pretree-filter.md](docs/commands/pretree-filter.md) |
 | `phyloai pretree concat`  | 将多个 MSA 拼接为带占用率过滤、重编码、密码子变体与外类群重排的超矩阵。 | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.md) |
 | `phyloai tree ml fasttree` | 使用 FastTree 推断 ML 基因树或超矩阵树。 | [docs/commands/tree-ml-fasttree.md](docs/commands/tree-ml-fasttree.md) |
-| `phyloai tree ml iqtree`   | 使用 IQ-TREE3 推断 ML 树：同质、异质、分区与 ModelFinder 工作流。 | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
+| `phyloai tree ml iqtree`   | 使用 IQ-TREE3 推断 ML 树：同质、异质、分区、ModelFinder，以及自定义交换率/位点频率 profile 工作流。 | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
 | `phyloai tree bi pb`    | 使用 PhyloBayes-MPI 进行 MCMC 链推断：多链并行、实时收敛监控、轨迹图与 resume。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
 | `phyloai tree bi bpcomp` | 使用 bpcomp 进行最终拓扑收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
 | `phyloai tree bi tracecomp` | 使用 tracecomp 进行最终参数收敛分析（用户指定 burn-in）。 | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |

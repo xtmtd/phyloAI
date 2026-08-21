@@ -414,11 +414,11 @@ Bootstrap 伪复制次数。FastTree 使用 SH-like 局部支持值，非标准 
 见 Common Parameters。`--msa-dir`（批量为每个基因推树）和 `--matrix`（单超级矩阵推树）二选一。
 
 #### --model
-替换模型名（`LG+F+R4`、`C20+F+G4`、`GTR+F+R6` 等）。
+替换模型名（`LG+F+R4`、`C20+F+G4`、`GTR+F+R6` 等），也可为已有的 IQ-TREE 自定义交换率模型文件路径。自定义文件仅支持 AA 单矩阵、非 ModelFinder 工作流；PhyloAI 解析其绝对路径但不检查内容。
 模型选择需结合数据类型和先验知识。使用 `--modelfinder` 可自动搜索最优模型。
 
 #### --state-freq
-状态频率类型。`F`（经验频率，推荐）、`FO`（优化频率）、`FC`（计数频率）。
+状态频率类型：`+F`（经验频率，推荐）、`+FO`（优化频率）、`+FQ`、`+FU` 或 `none`。使用 `--site-freq-file` 或 `--tool-args "-fs ..."` 时必须为 `none`。
 
 #### --rate-heterogeneity
 速率异质性模型。`G4`（Gamma 4 类）、`R4`（FreeRate 4 类）、`I+G4`（不变位点 + Gamma）等。
@@ -459,6 +459,9 @@ C10/C20/C60 等 PMSF 混合模型的基础模型（如 `LG`、`WAG`）。
 
 #### --guide-tree
 引导树（NEWICK 文件），映射 IQ-TREE `-ft`。用于 PMSF 模型推导。
+
+#### --site-freq-file
+IQ-TREE `-fs` 的逐位点 AA 状态频率 profile。仅适用于 AA 单矩阵、非 ModelFinder 的自定义 `--model` 文件，并必须设置 `--state-freq none`。路径自动转为绝对路径，PhyloAI 不复制或修改文件。`--tool-args "-fs /absolute/profile"` 可覆盖此参数，但仍必须使用 `none`，且建议绝对路径。
 
 #### --qmax
 混合物类别的搜索上限（默认 10）。设为 100 可搜索全部类别。

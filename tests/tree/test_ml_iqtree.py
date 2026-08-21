@@ -345,6 +345,18 @@ def test_build_model_string_nt_heterogeneous() -> None:
     assert result == "MIX+MF"
 
 
+def test_build_model_string_custom_exchangeabilities(tmp_path: Path) -> None:
+    from phyloai.tree.ml_iqtree import _build_model_string
+
+    model = tmp_path / "chain1.exchangeabilities"
+    model.write_text("0.5\n")
+
+    assert _build_model_string(
+        model=str(model.resolve()), state_freq="none",
+        rate_heterogeneity="+R4", modelfinder="none",
+    ) == f"{model.resolve()}+R4"
+
+
 # ===================================================================
 # _validate_model + _validate_pmsf_base_model
 # ===================================================================
@@ -474,6 +486,46 @@ def test_validate_pmsf_base_model_requires_mixture_model() -> None:
             batch_mode=False, seq_type="AA", modelfinder="none",
             model="LG", partitions=None, guide_tree=None,
             pmsf_base_model="LG",
+        )
+
+
+@pytest.mark.parametrize(
+    ("batch_mode", "seq_type", "modelfinder", "state_freq", "custom_model", "match"),
+    [
+        (True, "AA", "none", "none", True, "--matrix"),
+        (False, "NT", "none", "none", True, "AA"),
+        (False, "AA", "MF", "none", True, "ModelFinder"),
+        (False, "AA", "none", "+F", True, "--state-freq none"),
+        (False, "AA", "none", "none", False, "custom model"),
+    ],
+)
+def test_validate_site_freq_file_rejects_invalid_context(
+    batch_mode: bool,
+    seq_type: str,
+    modelfinder: str,
+    state_freq: str,
+    custom_model: bool,
+    match: str,
+) -> None:
+    from phyloai.tree.ml_iqtree import _run_validations
+
+    with pytest.raises(ValueError, match=match):
+        _run_validations(
+            batch_mode=batch_mode, seq_type=seq_type, modelfinder=modelfinder,
+            model="/tmp/chain1.exchangeabilities" if custom_model else "LG",
+            partitions=None, guide_tree=None, state_freq=state_freq,
+            custom_model=custom_model, site_freq_file="/tmp/chain1.sitefreq",
+        )
+
+
+def test_validate_tool_args_fs_requires_no_state_frequency() -> None:
+    from phyloai.tree.ml_iqtree import _run_validations
+
+    with pytest.raises(ValueError, match="--state-freq none"):
+        _run_validations(
+            batch_mode=False, seq_type="AA", modelfinder="none",
+            model="/tmp/chain1.exchangeabilities", partitions=None, guide_tree=None,
+            state_freq="+F", custom_model=True, tool_args="-fs /tmp/override.sitefreq",
         )
 
 
@@ -926,6 +978,36 @@ def test_build_iqtree_cmd_tool_args_blocked_s(tmp_path: Path) -> None:
             mode="normal", threads_arg="-T AUTO",
             tool_args="-s hack.fa",
         )
+
+
+def test_build_iqtree_cmd_adds_site_freq_file(tmp_path: Path) -> None:
+    from phyloai.tree.ml_iqtree import _build_iqtree_cmd
+
+    profile = tmp_path / "chain1.sitefreq"
+    cmd = _build_iqtree_cmd(
+        input_path=tmp_path / "matrix.fa", prefix=tmp_path / "matrix",
+        model_string="/models/chain1.exchangeabilities+R4", seq_type="AA",
+        modelfinder="none", boot=0, alrt=None, bnni=False,
+        mode="normal", threads_arg="-T 1", site_freq_file=str(profile),
+    )
+
+    assert cmd.count("-fs") == 1
+    assert cmd[cmd.index("-fs") + 1] == str(profile)
+
+
+def test_build_iqtree_cmd_tool_args_fs_overrides_structured_profile(tmp_path: Path) -> None:
+    from phyloai.tree.ml_iqtree import _build_iqtree_cmd
+
+    cmd = _build_iqtree_cmd(
+        input_path=tmp_path / "matrix.fa", prefix=tmp_path / "matrix",
+        model_string="/models/chain1.exchangeabilities+R4", seq_type="AA",
+        modelfinder="none", boot=0, alrt=None, bnni=False,
+        mode="normal", threads_arg="-T 1", site_freq_file="/managed.sitefreq",
+        tool_args="-fs /override.sitefreq",
+    )
+
+    assert cmd.count("-fs") == 1
+    assert cmd[cmd.index("-fs") + 1] == "/override.sitefreq"
 
 
 def test_build_iqtree_cmd_tool_args_blocked_pipe(tmp_path: Path) -> None:

@@ -71,3 +71,11 @@ def test_walk_click_tree_finds_pretree_concat_jackknife() -> None:
     assert props["target_length"]["default"] == 50000
     assert props["seed"]["default"] == 42
     assert props["table_format"]["enum"] == ["csv", "tsv"]
+
+
+def test_tree_ml_iqtree_schema_exposes_site_freq_file() -> None:
+    descriptor = next(d for d in walk_click_tree(cli) if d["tool_name"] == "tree_ml_iqtree")
+    props = build_mcp_tool(descriptor)["inputSchema"]["properties"]
+
+    assert props["site_freq_file"]["type"] == "string"
+    assert props["site_freq_file"]["format"] == "path"

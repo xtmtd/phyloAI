@@ -233,7 +233,7 @@ def test_tree_ml_iqtree_help() -> None:
         "--msa-dir", "--matrix", "--seq-type", "--model", "--state-freq",
         "--rate-heterogeneity", "--modelfinder", "--mset", "--msub", "--mode",
         "--boot", "--alrt", "--bnni", "--partitions", "--rclusterf",
-        "--rcluster-max", "--pmsf-base-model", "--guide-tree", "--qmax",
+        "--rcluster-max", "--pmsf-base-model", "--guide-tree", "--site-freq-file", "--qmax",
         "--rate", "--wslr", "--constraint", "--outgroup", "--prefix",
         "--output-dir", "--threads", "--iqtree-path", "--tool-args",
         "--overwrite", "--resume", "--dry-run", "--keep-extra", "--quiet", "--help",
@@ -245,12 +245,14 @@ def test_tree_ml_iqtree_help() -> None:
     assert "If neither is provided with --partitions + MF/MFP, PhyloAI uses --rclusterf 10." in normalized_grouped
     assert "Direct AA mixture:" in grouped
     assert "PMSF AA mixture:" in grouped
+    assert "Custom CAT-PMSF-style:" in grouped
     assert "NT heterogeneous:" in grouped
     assert "Example model string: C20+F+R4" in grouped
     assert "Example model string: LG+C20+F+R4" in grouped
     assert "Example model string: MIX+MF" in grouped
     assert "phyloai tree ml iqtree --matrix matrix.fa --seq-type AA --model C20" in normalized_grouped
     assert "phyloai tree ml iqtree --matrix matrix.fa --seq-type AA --model C20 --guide-tree guide.nwk" in normalized_grouped
+    assert "--model chain1.exchangeabilities --site-freq-file chain1.sitefreq --state-freq none" in normalized_grouped
     assert "phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF" in normalized_grouped
     assert "Workflow Examples:" in result.output
     assert "phyloai tree ml iqtree --msa-dir msas/ --seq-type AA --model LG" in normalized_grouped
@@ -263,6 +265,9 @@ def test_tree_ml_iqtree_help() -> None:
     assert "-t, --threads" in grouped
     assert "--matrix   Single concatenated matrix for supermatrix inference\n\n  --msa-dir and --matrix are mutually exclusive." in grouped
     assert "--qmax             MIX+MF rate categories (default: 10)\n\n  Heterogeneous workflows require --matrix." in grouped
+    assert "--site-freq-file" in grouped
+    assert "Per-site AA profile for a custom --model" in grouped
+    assert "maps to IQ-TREE -fs" in normalized_grouped
     assert "Homogeneous batch fixed model:\n    phyloai tree ml iqtree --msa-dir msas/ --seq-type AA --model LG" in grouped
     assert "PMSF AA mixture:\n    phyloai tree ml iqtree --matrix matrix.fa --seq-type AA --model C20 --guide-tree guide.nwk" in grouped
     assert "+FU" in grouped  # mentioned in state-freq help
@@ -333,6 +338,25 @@ def test_tree_ml_iqtree_quiet_dry_run_single(tmp_path: Path) -> None:
         "--model", "LG",
         "--quiet",
         "--dry-run",
+    ])
+
+    assert result.exit_code == 0
+
+
+def test_tree_ml_iqtree_custom_profile_dry_run(tmp_path: Path) -> None:
+    matrix = tmp_path / "matrix.fa"
+    matrix.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+    model = tmp_path / "chain1.exchangeabilities"
+    model.write_text("0.5\n")
+    profile = tmp_path / "chain1.sitefreq"
+    profile.write_text("1 " + " ".join(["0.05"] * 20) + "\n")
+
+    result = CliRunner().invoke(cli, [
+        "tree", "ml", "iqtree", "--matrix", str(matrix),
+        "--seq-type", "AA", "--model", str(model),
+        "--site-freq-file", str(profile), "--state-freq", "none",
+        "--rate-heterogeneity", "+R4", "--boot", "0", "--threads", "1",
+        "--dry-run", "--quiet",
     ])
 
     assert result.exit_code == 0

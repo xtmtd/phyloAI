@@ -284,8 +284,30 @@ def _build_model_string(
     return "".join(parts)
 
 
-def _validate_model(model: str, seq_type: str, modelfinder: str) -> None:
-    if modelfinder in ("MF", "MFP"):
+def _resolve_custom_model_path(model: str) -> str | None:
+    """Return an absolute custom-model path when *model* names a regular file."""
+    candidate = Path(model).expanduser()
+    if not candidate.exists():
+        return None
+    if not candidate.is_file():
+        raise ValueError(f"Custom model path is not a regular file: {candidate}")
+    return str(candidate.resolve())
+
+
+def _resolve_site_freq_file(site_freq_file: str | Path | None) -> str | None:
+    """Return an absolute per-site frequency-profile path."""
+    if site_freq_file is None:
+        return None
+    candidate = Path(site_freq_file).expanduser()
+    if not candidate.exists():
+        raise ValueError(f"--site-freq-file does not exist: {candidate}")
+    if not candidate.is_file():
+        raise ValueError(f"--site-freq-file is not a regular file: {candidate}")
+    return str(candidate.resolve())
+
+
+def _validate_model(model: str, seq_type: str, modelfinder: str, *, custom_model: bool = False) -> None:
+    if custom_model or modelfinder in ("MF", "MFP"):
         return
     if seq_type == "AA":
         valid = AA_STANDARD_MODELS | AA_MIXTURE_MODELS
@@ -335,8 +357,35 @@ def _run_validations(
     rclusterf: int | None = None,
     rcluster_max: int | None = None,
     qmax: int | None = None,
+    state_freq: str = "+F",
+    custom_model: bool = False,
+    site_freq_file: str | None = None,
+    tool_args: str | None = None,
     quiet: bool = False,
 ) -> None:
+    has_raw_site_freq = _is_flag_overridden("-fs", set(shlex.split(tool_args))) if tool_args else False
+
+    if custom_model:
+        if batch_mode:
+            raise ValueError("Custom model files are only supported with --matrix, not --msa-dir.")
+        if seq_type != "AA":
+            raise ValueError("Custom model files are only supported for AA data.")
+        if modelfinder != "none":
+            raise ValueError("Custom model files cannot be used with ModelFinder.")
+
+    if site_freq_file or has_raw_site_freq:
+        if state_freq != "none":
+            raise ValueError("--site-freq-file and --tool-args -fs require --state-freq none.")
+        if site_freq_file:
+            if batch_mode:
+                raise ValueError("--site-freq-file is only supported with --matrix, not --msa-dir.")
+            if seq_type != "AA":
+                raise ValueError("--site-freq-file is only supported for AA data.")
+            if modelfinder != "none":
+                raise ValueError("--site-freq-file cannot be used with ModelFinder.")
+            if not custom_model:
+                raise ValueError("--site-freq-file requires a custom model file supplied through --model.")
+
     # Heterogeneous workflows require --matrix
     if _is_heterogeneous_model(model, seq_type, modelfinder) and batch_mode:
         raise ValueError(
@@ -389,7 +438,7 @@ def _run_validations(
             )
 
     # Model validation
-    _validate_model(model=model, seq_type=seq_type, modelfinder=modelfinder)
+    _validate_model(model=model, seq_type=seq_type, modelfinder=modelfinder, custom_model=custom_model)
 
     # PMSF base model validation
     if pmsf_base_model and model in AA_MIXTURE_MODELS:
@@ -483,6 +532,7 @@ def _build_iqtree_cmd(
     wslr: bool = False,
     constraint: str | None = None,
     outgroup: str | None = None,
+    site_freq_file: str | None = None,
     tool_args: str | None = None,
     batch_mode: bool = False,
 ) -> list[str]:
@@ -565,6 +615,8 @@ def _build_iqtree_cmd(
         cmd.extend(shlex.split(threads_arg))
 
     # Output flags
+    if site_freq_file and not _is_flag_overridden("-fs", tool_tokens):
+        cmd.extend(["-fs", site_freq_file])
     if rate and not _is_flag_overridden("--rate", tool_tokens):
         cmd.append("--rate")
     if wslr and not _is_flag_overridden("-wslr", tool_tokens):
@@ -613,6 +665,7 @@ def _run_one_iqtree(
     wslr: bool = False,
     constraint: str | None = None,
     outgroup: str | None = None,
+    site_freq_file: str | None = None,
     prefix: str | None = None,
     tool_args: str | None = None,
     dry_run: bool = False,
@@ -688,6 +741,7 @@ def _run_one_iqtree(
         guide_tree=guide_tree, qmax=qmax,
         rate=rate, wslr=wslr,
         constraint=constraint, outgroup=outgroup,
+        site_freq_file=site_freq_file,
         tool_args=tool_args,
         batch_mode=batch_mode,
     )
@@ -884,6 +938,7 @@ def _resolved_iqtree_params(
     rcluster_max: int | None,
     pmsf_base_model: str | None,
     guide_tree: str | None,
+    site_freq_file: str | None,
     qmax: int | None,
     rate: bool,
     wslr: bool,
@@ -914,6 +969,7 @@ def _resolved_iqtree_params(
         "rcluster_max": rcluster_max,
         "pmsf_base_model": pmsf_base_model,
         "guide_tree": guide_tree,
+        "site_freq_file": site_freq_file,
         "qmax": qmax,
         "rate": rate,
         "wslr": wslr,
@@ -949,6 +1005,7 @@ def run_iqtree(
     rcluster_max: int | None = None,
     pmsf_base_model: str | None = None,
     guide_tree: str | None = None,
+    site_freq_file: str | Path | None = None,
     qmax: int | None = None,
     rate: bool = False,
     wslr: bool = False,
@@ -980,6 +1037,14 @@ def run_iqtree(
     iqtree_exe = _resolve_iqtree_path(iqtree_path, dry_run)
 
     batch_mode = msa_dir is not None
+    raw_site_freq_override = bool(tool_args and _is_flag_overridden("-fs", set(shlex.split(tool_args))))
+    custom_model = False
+    resolved_site_freq_file = _resolve_site_freq_file(site_freq_file)
+    if model is not None:
+        custom_model_path = _resolve_custom_model_path(model)
+        if custom_model_path is not None:
+            model = custom_model_path
+            custom_model = True
     n_resume_skipped = 0
     resolved_seq_type = seq_type
 
@@ -1069,16 +1134,6 @@ def run_iqtree(
         resolved_boot = boot
         resolved_alrt = alrt
         resolved_bnni = bnni
-        if modelfinder == "MF":
-            if boot is not None or alrt is not None or bnni:
-                if not quiet:
-                    warnings.warn(
-                        "Branch support flags ignored in MF (model-only) mode.", UserWarning
-                    )
-            resolved_boot = None
-            resolved_alrt = None
-            resolved_bnni = False
-
         # Validations
         _run_validations(
             batch_mode=False, seq_type=resolved_seq_type,
@@ -1088,6 +1143,8 @@ def run_iqtree(
             prefix=prefix, pmsf_base_model=pmsf_base_model,
             rclusterf=resolved_rclusterf, rcluster_max=resolved_rcluster_max,
             qmax=resolved_qmax,
+            state_freq=state_freq, custom_model=custom_model,
+            site_freq_file=resolved_site_freq_file, tool_args=tool_args,
             quiet=quiet,
         )
 
@@ -1113,6 +1170,7 @@ def run_iqtree(
             guide_tree=guide_tree, qmax=resolved_qmax,
             rate=rate, wslr=wslr,
             constraint=constraint, outgroup=outgroup,
+            site_freq_file=resolved_site_freq_file,
             prefix=prefix,
             tool_args=tool_args,
             dry_run=dry_run, batch_mode=False, keep_extra=keep_extra,
@@ -1145,6 +1203,7 @@ def run_iqtree(
             state_freq=state_freq, rate_heterogeneity=rate_heterogeneity,
             mset=mset, msub=msub,
             pmsf_base_model=pmsf_base_model,
+            site_freq_file=(None if raw_site_freq_override else resolved_site_freq_file),
             qmax=resolved_qmax, rate=rate, wslr=wslr,
             constraint=constraint, outgroup=outgroup,
             prefix=prefix,
@@ -1229,6 +1288,8 @@ def run_iqtree(
         prefix=prefix, pmsf_base_model=pmsf_base_model,
         rclusterf=resolved_rclusterf, rcluster_max=resolved_rcluster_max,
         qmax=resolved_qmax,
+        state_freq=state_freq, custom_model=custom_model,
+        site_freq_file=resolved_site_freq_file, tool_args=tool_args,
         quiet=quiet,
     )
 
@@ -1270,7 +1331,8 @@ def run_iqtree(
                 mset=mset, msub=msub, mode=mode,
                 boot=boot, alrt=alrt, bnni=bnni,
                 partitions=partitions, rclusterf=rclusterf, rcluster_max=rcluster_max,
-                pmsf_base_model=pmsf_base_model, guide_tree=guide_tree, qmax=qmax,
+                pmsf_base_model=pmsf_base_model, guide_tree=guide_tree,
+                site_freq_file=(None if raw_site_freq_override else resolved_site_freq_file), qmax=qmax,
                 rate=rate, wslr=wslr, constraint=constraint, outgroup=outgroup,
                 prefix=prefix, threads=str(threads_spec),
                 overwrite=overwrite, iqtree_path=iqtree_path, tool_args=tool_args,
@@ -1319,6 +1381,8 @@ def run_iqtree(
                 iqtree_cmd_parts.extend(["--pmsf-base-model", pmsf_base_model])
             if guide_tree is not None:
                 iqtree_cmd_parts.extend(["--guide-tree", guide_tree])
+            if resolved_site_freq_file is not None:
+                iqtree_cmd_parts.extend(["--site-freq-file", resolved_site_freq_file])
             if resolved_qmax is not None:
                 iqtree_cmd_parts.extend(["--qmax", str(resolved_qmax)])
             if rate:
@@ -1351,7 +1415,8 @@ def run_iqtree(
                     mset=mset, msub=msub, mode=mode,
                     boot=boot, alrt=alrt, bnni=bnni,
                     partitions=partitions, rclusterf=rclusterf, rcluster_max=rcluster_max,
-                    pmsf_base_model=pmsf_base_model, guide_tree=guide_tree, qmax=qmax,
+                    pmsf_base_model=pmsf_base_model, guide_tree=guide_tree,
+                    site_freq_file=(None if raw_site_freq_override else resolved_site_freq_file), qmax=qmax,
                     rate=rate, wslr=wslr, constraint=constraint, outgroup=outgroup,
                     prefix=prefix, threads=str(threads_spec),
                     overwrite=overwrite, iqtree_path=iqtree_path, tool_args=tool_args,
@@ -1504,16 +1569,17 @@ def run_iqtree(
         iqtree_path=iqtree_path, tool_args=tool_args,
         overwrite=overwrite, threads=str(threads_spec),
         skipped_input=skipped_input,
-            n_resume_skipped=n_resume_skipped,
-            dry_run=dry_run, resume=resume, keep_extra=keep_extra,
-            state_freq=state_freq, rate_heterogeneity=rate_heterogeneity,
-            mset=mset, msub=msub,
-            pmsf_base_model=pmsf_base_model,
-            qmax=resolved_qmax, rate=rate, wslr=wslr,
-            constraint=constraint, outgroup=outgroup,
-            prefix=prefix,
-            quiet=quiet,
-        )
+        n_resume_skipped=n_resume_skipped,
+        dry_run=dry_run, resume=resume, keep_extra=keep_extra,
+        state_freq=state_freq, rate_heterogeneity=rate_heterogeneity,
+        mset=mset, msub=msub,
+        pmsf_base_model=pmsf_base_model,
+        site_freq_file=(None if raw_site_freq_override else resolved_site_freq_file),
+        qmax=resolved_qmax, rate=rate, wslr=wslr,
+        constraint=constraint, outgroup=outgroup,
+        prefix=prefix,
+        quiet=quiet,
+    )
 
 
 def _assemble_iqtree_result(
@@ -1553,6 +1619,7 @@ def _assemble_iqtree_result(
     mset: str | None = None,
     msub: str | None = None,
     pmsf_base_model: str | None = None,
+    site_freq_file: str | None = None,
     qmax: int | None = None,
     rate: bool = False,
     wslr: bool = False,
@@ -1625,6 +1692,8 @@ def _assemble_iqtree_result(
         cmd_parts.extend(["--pmsf-base-model", pmsf_base_model])
     if guide_tree is not None:
         cmd_parts.extend(["--guide-tree", guide_tree])
+    if site_freq_file is not None:
+        cmd_parts.extend(["--site-freq-file", site_freq_file])
     if qmax is not None:
         cmd_parts.extend(["--qmax", str(qmax)])
     if rate:
@@ -1742,6 +1811,7 @@ def _assemble_iqtree_result(
             "bnni": bnni,
             "pmsf_base_model": pmsf_base_model,
             "guide_tree": guide_tree,
+            "site_freq_file": site_freq_file,
             "qmax": qmax,
             "rate": rate,
             "wslr": wslr,

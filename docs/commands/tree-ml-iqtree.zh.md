@@ -40,6 +40,15 @@ phyloai tree ml iqtree --matrix matrix.fa --model C20
 # PMSF AA 混合
 phyloai tree ml iqtree --matrix matrix.fa --model C20 --guide-tree guide.nwk
 
+# 自定义交换率矩阵 + 逐位点频率 profile（CAT-PMSF 风格）
+phyloai tree ml iqtree \
+  --matrix runs/test/matrix.fa \
+  --seq-type AA \
+  --model runs/test/chain1.exchangeabilities \
+  --site-freq-file runs/test/chain1.sitefreq \
+  --state-freq none --rate-heterogeneity +R4 \
+  --boot 0 --threads 1 --output-dir runs/test/cat-pmsf
+
 # NT 异质
 phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 ```
@@ -69,7 +78,7 @@ phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--model` | str | `LG` (AA) / `GTR` (NT) | 替换模型 |
+| `--model` | str | `LG` (AA) / `GTR` (NT) | 替换模型，或已有的 IQ-TREE 自定义交换率模型文件 |
 | `--state-freq` | `+F\|+FO\|+FQ\|+FU\|none` | `+F` | 状态频率类型 |
 | `--rate-heterogeneity` | `+I\|+G4\|+I+G4\|+R4\|+I+R4\|none` | `+R4` | 速率异质性 |
 
@@ -95,8 +104,9 @@ phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pmsf-base-model` | str | `LG` | PMSF 的基础 AA 模型（仅 C10–C60） |
-| `--guide-tree` | Path | — | PMSF 的引导树（NEWICK） |
+| `--pmsf-base-model` | str | `LG` | 内置 C10–C60 PMSF 的基础 AA 模型 |
+| `--guide-tree` | Path | — | 内置 PMSF 的引导树（NEWICK） |
+| `--site-freq-file` | Path | — | 自定义 `--model` 的逐位点 AA 频率 profile，映射到 IQ-TREE `-fs`，必须配合 `--state-freq none` |
 | `--qmax` | int | `10` | MIX+MF 的速率类别数 |
 
 ### Tree Search
@@ -187,6 +197,7 @@ runs/tree/ml/iqtree/
 | `--partitions` 与 `--msa-dir` | 错误：`--partitions` 要求 `--matrix` |
 | `--overwrite` 与 `--resume` 同时使用 | 错误：互斥 |
 | 输出目录非空且未加 `--overwrite` | 错误：目录已存在 |
+| `--site-freq-file` 未配合 AA 自定义 `--model`、`--matrix`、`--modelfinder none` 或 `--state-freq none` | 错误：无效的自定义 profile 组合 |
 
 ## 备注
 
@@ -195,5 +206,6 @@ runs/tree/ml/iqtree/
 - 单 `--matrix` 模式将 IQ-TREE stdout 流式输出到终端以查看进度。
 - 批量 `--msa-dir` 模式默认在 `logs/` 中仅保留 `.iqtree` 与 `.log` 文件。使用 `--keep-extra` 保留所有 IQ-TREE 输出文件。
 - 当 `--modelfinder` 为 `MF` 或 `MFP` 时，`--model`、`--state-freq`、`--rate-heterogeneity` 不会传给 IQ-TREE，且在 `result.json` 中记为 `null`。
-- IQ-TREE 输入与用户提供的路径参数（`--partitions`、`--guide-tree`、`--constraint`）在内部被解析为绝对路径。
+- IQ-TREE 输入及用户提供的路径参数（`--partitions`、`--guide-tree`、`--constraint`、自定义 `--model`、`--site-freq-file`）在内部解析为绝对路径。
+- 自定义模型/profile 文件由 IQ-TREE 直接读取；PhyloAI 不复制或修改它们。`--tool-args "-fs /absolute/profile"` 会覆盖 `--site-freq-file`，仍作为原始 `tool_args` 记录，也必须使用 `--state-freq none`。
 - `--matrix` 模式下的 `--resume` 会重新运行 IQ-TREE 命令；IQ-TREE 通过自己的机制（`--redo`）原生处理 checkpoint/resume。`--msa-dir` 批量模式下，PhyloAI 管理 checkpoint 状态以跳过已完成的基因树。

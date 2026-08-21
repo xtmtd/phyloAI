@@ -211,7 +211,7 @@ class _IQTreeCommand(_GroupedHelpCommand):
         (
             "Model",
             [
-                "--model             Substitution model (omit for auto: AA->LG, NT->GTR)",
+                "--model             Built-in substitution model or existing IQ-TREE custom model file path (omit for auto: AA->LG, NT->GTR)",
                 "AA standard models:",
                 "  LG, Poisson, cpREV, mtREV, Dayhoff, mtMAM, JTT, WAG, mtART, mtZOA, VT, rtREV, DCMut, PMB, HIVb, HIVw, JTTDCMut, FLU, Blosum62, GTR20, mtMet, mtVer, mtInv, FLAVI, Q.LG, Q.pfam, Q.pfam_gb, Q.bird, Q.mammal, Q.insect, Q.plant, Q.yeast",
                 "NT standard models:",
@@ -259,11 +259,13 @@ class _IQTreeCommand(_GroupedHelpCommand):
             [
                 "--pmsf-base-model  Base AA model for PMSF (default: LG)",
                 "--guide-tree       Required to trigger PMSF with C10-C60",
+                "--site-freq-file  Per-site AA profile for a custom --model; maps to IQ-TREE -fs",
                 "--qmax             MIX+MF rate categories (default: 10)",
                 "",
                 "Heterogeneous workflows require --matrix.",
                 "Direct AA mixture: choose a mixture model such as C20 or LG4X without --guide-tree. Example model string: C20+F+R4.",
                 "PMSF AA mixture: choose C10-C60 and provide --guide-tree; PhyloAI defaults --pmsf-base-model to LG. Example model string: LG+C20+F+R4.",
+                "Custom CAT-PMSF-style: pass an AA model file with --site-freq-file and --state-freq none; raw --tool-args -fs overrides it.",
                 "NT heterogeneous: use --model MIX+MF; optional --mset restricts candidate models. Example model string: MIX+MF.",
             ],
         ),
@@ -325,6 +327,7 @@ class _IQTreeCommand(_GroupedHelpCommand):
                 "Partitioned ModelFinder merge:\n    phyloai tree ml iqtree --matrix matrix.fa --seq-type AA --partitions parts.nex --modelfinder MFP",
                 "Direct AA mixture:\n    phyloai tree ml iqtree --matrix matrix.fa --seq-type AA --model C20",
                 "PMSF AA mixture:\n    phyloai tree ml iqtree --matrix matrix.fa --seq-type AA --model C20 --guide-tree guide.nwk",
+                "Custom CAT-PMSF-style:\n    phyloai tree ml iqtree --matrix matrix.fa --seq-type AA --model chain1.exchangeabilities --site-freq-file chain1.sitefreq --state-freq none",
                 "NT heterogeneous:\n    phyloai tree ml iqtree --matrix matrix.fa --seq-type NT --model MIX+MF",
             ],
         ),
@@ -649,7 +652,7 @@ def fasttree_command(
 @click.option("--seq-type", type=click.Choice(["AA", "NT", "auto"]), default="auto", show_default=True,
               help="Molecule type. NT maps to --seqtype DNA.")
 @click.option("--model", type=str, default=None,
-              help="Substitution model. Omit for auto-detect: AA->LG, NT->GTR. Heterogeneous: C10-C60, MIX+MF.")
+              help="Built-in substitution model or existing IQ-TREE custom model file path. Omit for auto: AA->LG, NT->GTR.")
 @click.option("--state-freq", type=click.Choice(["+F", "+FO", "+FQ", "+FU", "none"]),
               default="+F", show_default=True, help="State frequency type.")
 @click.option("--rate-heterogeneity", type=click.Choice(["+I", "+G4", "+I+G4", "+R4", "+I+R4", "none"]),
@@ -678,6 +681,8 @@ def fasttree_command(
               help="Base AA model for PMSF (C10-C60 only). Default: LG. Requires --guide-tree.")
 @click.option("--guide-tree", type=click.Path(dir_okay=False, path_type=Path), default=None,
               help="Guide tree for PMSF in NEWICK format. Only with --model C10-C60.")
+@click.option("--site-freq-file", type=click.Path(dir_okay=False, path_type=Path), default=None,
+              help="Per-site AA frequency profile for custom --model. Maps to IQ-TREE -fs; requires --state-freq none.")
 @click.option("--qmax", type=int, default=None,
               help="Max rate categories for MIX+MF (default: 10).")
 @click.option("--rate", is_flag=True, default=False,
@@ -723,6 +728,7 @@ def iqtree_command(
     rcluster_max: int | None,
     pmsf_base_model: str | None,
     guide_tree: Path | None,
+    site_freq_file: Path | None,
     qmax: int | None,
     rate: bool,
     wslr: bool,
@@ -785,6 +791,7 @@ def iqtree_command(
     iqtree_path_str = str(iqtree_path) if iqtree_path else None
     partitions_str = str(partitions) if partitions else None
     guide_tree_str = str(guide_tree) if guide_tree else None
+    site_freq_file_str = str(site_freq_file) if site_freq_file else None
     constraint_str = str(constraint) if constraint else None
 
     # Resolve pmsf_base_model default: only when PMSF is triggered
@@ -805,7 +812,7 @@ def iqtree_command(
             partitions=partitions_str,
             rclusterf=rclusterf, rcluster_max=rcluster_max,
             pmsf_base_model=pmsf_base_model_resolved,
-            guide_tree=guide_tree_str, qmax=qmax,
+            guide_tree=guide_tree_str, site_freq_file=site_freq_file_str, qmax=qmax,
             rate=rate, wslr=wslr,
             constraint=constraint_str, outgroup=outgroup,
             prefix=prefix, threads=threads,

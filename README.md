@@ -149,7 +149,7 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai pretree filter`  | Marker-level filtering: TAPER error-site masking, TreeShrink taxon pruning, metric-rule filtering, symmetry test filtering, cluster-based exploration. | [docs/commands/pretree-filter.md](docs/commands/pretree-filter.md) |
 | `phyloai pretree concat`  | Concatenate multiple MSAs into a supermatrix with occupancy filtering, recoding, codon variants, outgroup reordering, and gene-jackknife pseudoreplicates for expensive downstream runs such as Bayesian or high-memory heterogeneous ML analyses. | [docs/commands/pretree-concat.md](docs/commands/pretree-concat.md) |
 | `phyloai tree ml fasttree` | Infer ML gene trees or supermatrix trees using FastTree. | [docs/commands/tree-ml-fasttree.md](docs/commands/tree-ml-fasttree.md) |
-| `phyloai tree ml iqtree`   | Infer ML trees with IQ-TREE3: homogeneous, heterogeneous, partitioned, and ModelFinder workflows. | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
+| `phyloai tree ml iqtree`   | Infer ML trees with IQ-TREE3: homogeneous, heterogeneous, partitioned, ModelFinder, and custom exchangeability/site-profile workflows. | [docs/commands/tree-ml-iqtree.md](docs/commands/tree-ml-iqtree.md) |
 | `phyloai tree bi pb`    | MCMC chain inference with PhyloBayes-MPI: multi-chain MCMC, real-time convergence monitoring, trace plots, and resume. | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
 | `phyloai tree bi bpcomp` | Topology convergence analysis with bpcomp using user-specified burn-in. | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |
 | `phyloai tree bi tracecomp` | Parameter convergence analysis with tracecomp using user-specified burn-in. | [docs/commands/tree-bi.md](docs/commands/tree-bi.md) |

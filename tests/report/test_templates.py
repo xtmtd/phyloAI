@@ -207,3 +207,34 @@ class TestIqtree:
         )
         assert "partition" in text.lower()
         assert "rclusterf" in text.lower()
+
+    def test_custom_exchangeabilities_and_profile(self):
+        text = generate_all_methods(
+            "tree.ml.iqtree",
+            params={
+                "modelfinder": "none",
+                "model": "/abs/chain1.exchangeabilities",
+                "state_freq": "none",
+                "rate_heterogeneity": "+R4",
+                "site_freq_file": "/abs/chain1.sitefreq",
+                "boot": None,
+            },
+            key_results={}, tool_versions={"iqtree3": "3.1.2"},
+        )
+
+        assert "custom exchangeability matrix" in text
+        assert "site-specific state-frequency profiles" in text
+        assert "+R4" in text
+
+    def test_windows_custom_exchangeabilities_are_reported(self):
+        text = generate_all_methods(
+            "tree.ml.iqtree",
+            params={
+                "modelfinder": "none",
+                "model": "C:/data/chain1.exchangeabilities",
+                "state_freq": "none",
+            },
+            key_results={}, tool_versions={"iqtree3": "3.1.2"},
+        )
+
+        assert "custom exchangeability matrix" in text

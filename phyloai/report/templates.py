@@ -7,6 +7,7 @@ producing 2-5 sentences of academic English suitable for journal Methods.
 
 from __future__ import annotations
 
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 _ALIGN_METHOD_MAP: dict[str, tuple[str, str]] = {
@@ -600,13 +601,20 @@ def generate_methods_tree_ml_iqtree(
             f"from a candidate set comprising {mset} matrix models (`--mset {mset}`). "
         )
     else:
-        model = str(params.get("model") or "LG").upper()
-        model_desc = model
-        if state_freq and state_freq != "none":
-            model_desc += str(state_freq)
-        if rate_het and rate_het != "none":
-            model_desc += str(rate_het)
-        text += f"The {model_desc} substitution model was used. "
+        model_value = str(params.get("model") or "LG")
+        if Path(model_value).is_absolute() or PureWindowsPath(model_value).is_absolute():
+            text += "A user-specified custom exchangeability matrix was used. "
+            if rate_het and rate_het != "none":
+                text += f"Rate heterogeneity was modeled with {rate_het}. "
+            if params.get("site_freq_file"):
+                text += "IQ-TREE site-specific state-frequency profiles (-fs) were used. "
+        else:
+            model_desc = model_value.upper()
+            if state_freq and state_freq != "none":
+                model_desc += str(state_freq)
+            if rate_het and rate_het != "none":
+                model_desc += str(rate_het)
+            text += f"The {model_desc} substitution model was used. "
 
     if log_lk is not None:
         text += f"The final log-likelihood of the best tree was {_safe_fmt(log_lk, '.2f')}. "
