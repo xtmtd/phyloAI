@@ -868,10 +868,14 @@ def _run_one_iqtree(
                     "warnings": warnings_list,
                 }
 
-        # Validate tree for non-MF modes
+        # Some IQ-TREE models (for example GHOST) write one Newick tree per
+        # heterotachy class. Require one or more parseable trees.
         if not is_mf_only and out_tree.exists():
             try:
-                Phylo.read(str(out_tree), "newick")
+                trees = Phylo.parse(str(out_tree), "newick")
+                next(trees)
+                for _ in trees:
+                    pass
             except Exception as e:
                 return {
                     **result,

@@ -115,7 +115,10 @@ def resume_verifier_iqtree(validate_tree: bool = True) -> Callable[[Path], bool]
             if not tree_path.exists() or tree_path.stat().st_size == 0:
                 return False
             try:
-                Phylo.read(str(tree_path), "newick")
+                trees = Phylo.parse(str(tree_path), "newick")
+                next(trees)
+                for _ in trees:
+                    pass
                 return True
             except Exception:
                 return False

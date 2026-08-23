@@ -1243,6 +1243,38 @@ def test_run_one_iqtree_success_single(tmp_path: Path) -> None:
     assert Path(result["log_iqtree"]).exists()
 
 
+def test_run_one_iqtree_single_accepts_multiple_trees(tmp_path: Path) -> None:
+    from unittest.mock import patch
+    from phyloai.tree.ml_iqtree import _run_one_iqtree
+
+    inp = tmp_path / "matrix.fa"
+    inp.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+
+    class _FakePopen:
+        returncode = 0
+
+        def __init__(self, *args, **kwargs):
+            (out_dir / "matrix.iqtree").write_text("Log-likelihood: -100.0\n")
+            (out_dir / "matrix.treefile").write_text("(a:0.1,b:0.1);\n(a:0.2,b:0.2);\n")
+            (out_dir / "matrix.log").write_text("done\n")
+
+        def communicate(self):
+            return "", ""
+
+    with patch("subprocess.Popen", _FakePopen):
+        result = _run_one_iqtree(
+            gene_path=inp, seq_type="AA",
+            model_string="LG+H4", modelfinder="none",
+            boot=None, alrt=None, bnni=False,
+            mode="normal", threads_arg="-T 1",
+            log_dir=out_dir, output_dir=out_dir,
+        )
+
+    assert result["status"] == "success"
+
+
 @pytest.mark.skipif(not shutil.which("iqtree3"), reason="iqtree3 not found in PATH")
 def test_run_one_iqtree_success_batch(tmp_path: Path) -> None:
     from phyloai.tree.ml_iqtree import _run_one_iqtree
@@ -1522,6 +1554,15 @@ def test_resume_verifier_iqtree_validates_treefile(tmp_path: Path) -> None:
     assert verify(tree) is True
 
 
+def test_resume_verifier_iqtree_accepts_multiple_trees(tmp_path: Path) -> None:
+    from phyloai.tree.checkpoint_helpers import resume_verifier_iqtree
+
+    tree = tmp_path / "gene.treefile"
+    tree.write_text("(a:0.1,b:0.2);\n(a:0.3,b:0.4);\n")
+
+    assert resume_verifier_iqtree()(tree) is True
+
+
 def test_resume_verifier_iqtree_rejects_empty(tmp_path: Path) -> None:
     from phyloai.tree.checkpoint_helpers import resume_verifier_iqtree
 
@@ -1694,6 +1735,38 @@ def test_run_one_iqtree_keep_extra(tmp_path: Path) -> None:
     assert (log_dir / "gene.ufboot").exists()
 
 
+def test_run_one_iqtree_accepts_multiple_trees(tmp_path: Path) -> None:
+    from unittest.mock import patch
+    from phyloai.tree.ml_iqtree import _run_one_iqtree
+
+    inp = tmp_path / "gene.fa"
+    inp.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+    out_dir = tmp_path / "out"
+    log_dir = tmp_path / "logs"
+    work_dir = tmp_path / "work"
+    out_dir.mkdir()
+    log_dir.mkdir()
+    work_dir.mkdir()
+
+    def _fake_run(cmd, **kw):
+        (work_dir / "gene.iqtree").write_text("Log-likelihood: -100.0\n")
+        (work_dir / "gene.treefile").write_text("(a:0.1,b:0.1);\n(a:0.2,b:0.2);\n")
+        (work_dir / "gene.log").write_text("done\n")
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with patch("subprocess.run", _fake_run):
+        result = _run_one_iqtree(
+            gene_path=inp, seq_type="AA",
+            model_string="LG+H8", modelfinder="none",
+            boot=None, alrt=None, bnni=False,
+            mode="normal", threads_arg="-T 1",
+            log_dir=log_dir, output_dir=out_dir,
+            batch_mode=True, work_dir=work_dir,
+        )
+
+    assert result["status"] == "success"
+
+
 def test_run_one_iqtree_no_keep_extra(tmp_path: Path) -> None:
     from unittest.mock import patch
     from phyloai.tree.ml_iqtree import _run_one_iqtree
@@ -1701,15 +1774,14 @@ def test_run_one_iqtree_no_keep_extra(tmp_path: Path) -> None:
     inp = tmp_path / "gene.fa"
     inp.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
     out_dir = tmp_path / "out"
-    out_dir.mkdir()
     log_dir = tmp_path / "logs"
-    log_dir.mkdir()
     work_dir = tmp_path / "work"
+    out_dir.mkdir()
+    log_dir.mkdir()
     work_dir.mkdir()
 
     def _fake_run(cmd, **kw):
-        iqtree = work_dir / "gene.iqtree"
-        iqtree.write_text("Log-likelihood: -100.0\n")
+        (work_dir / "gene.iqtree").write_text("Log-likelihood: -100.0\n")
         (work_dir / "gene.treefile").write_text("(a:0.1,b:0.1);\n")
         (work_dir / "gene.log").write_text("done\n")
         (work_dir / "gene.ufboot").write_text("boot data\n")
@@ -1724,6 +1796,7 @@ def test_run_one_iqtree_no_keep_extra(tmp_path: Path) -> None:
             log_dir=log_dir, output_dir=out_dir,
             keep_extra=False, batch_mode=True, work_dir=work_dir,
         )
+
     assert result["status"] == "success"
     assert not (log_dir / "gene.ufboot").exists()
 
