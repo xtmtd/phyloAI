@@ -79,6 +79,11 @@ phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulat
 系统误差枝长筛查：跨后验/模型树提取枝长（节点映射在不同拓扑间识别同一生物学节点）：
 
 ```bash
+# 跨类群组成异质性筛查（仅需比对）
+phyloai posttree syserror taxcomp --matrix matrix.aa.fa --seq-type AA \
+  -o runs/posttree/syserror/taxcomp
+
+# 系统误差枝长筛查：跨后验/模型树
 phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
   --map nodes.map.txt --node1 Collembola -o runs/posttree/syserror/brlen
 
@@ -158,6 +163,7 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree modelcompare pb` | 使用 PhyloBayes `.sitelogl` 位点对数似然文件进行 LOO-CV / wAIC 相对模型比较（Lartillot 2023），纯 Python 实现。 | [docs/commands/posttree-modelcompare.md](docs/commands/posttree-modelcompare.zh.md) |
 | `phyloai posttree simulate alisim` | 基于 IQ-TREE3 AliSim 的序列模拟，保留数据集实证特征：`params` 从 IQ-TREE 报告中提取逐位点参数，`iqtree` 模拟单个或批量 MSA（complete/mixed/pdf 策略，可恢复），`transfergaps` 将原始 gap 掩码重新引入一条或多条模拟比对。 | [docs/commands/posttree-simulate-alisim.md](docs/commands/posttree-simulate-alisim.zh.md) |
 | `phyloai posttree simulate adequacy` | 使用本地纯 Python 后验预测检验，将观测 PPA-DIV、PPA-CONV、PPA-VAR 和 PPA-COMP 与模拟 MSA 比较。 | [docs/commands/posttree-simulate-adequacy.md](docs/commands/posttree-simulate-adequacy.zh.md) |
+| `phyloai posttree syserror taxcomp` | 跨类群组成筛查：Pearson 共同组成 X2，含名义与 Holm 校正的 per-taxon p 值，以及观测 PPA-COMP 组成距离。仅探索性；不做类群删除或重编码。 | [docs/commands/posttree-syserror-taxcomp.md](docs/commands/posttree-syserror-taxcomp.zh.md) |
 | `phyloai posttree syserror brlen` | 从单个树、目录或多树 Newick 文件提取枝长统计（total、terminal、internal、patristic、tip-to-tip、node-to-node、node-to-tip），诊断跨类群速率异质性；`label-nodes` 生成带标签参考树与映射模板。 | [docs/commands/posttree-syserror-brlen.md](docs/commands/posttree-syserror-brlen.zh.md) |
 | `phyloai posttree syserror rate` | 面向 IQ-TREE 或 PhyloBayes 速率的位点速率排序/提取敏感性工具；可写出慢/快位点的比对子集。 | [docs/commands/posttree-syserror-rate.md](docs/commands/posttree-syserror-rate.zh.md) |
 | `phyloai posttree syserror cca` | 比较两个模型分析中逐位点拓扑偏好的组成约束诊断。 | [docs/commands/posttree-syserror-cca.md](docs/commands/posttree-syserror-cca.zh.md) |

@@ -1,21 +1,17 @@
-"""Stub MCP tools for public commands not implemented in this package."""
+"""Stub MCP tools for public commands not implemented in this package.
+
+The registry is intentionally empty: every current public CLI command is
+implemented and discovered dynamically from the Click tree. ``handle_stub``
+is kept so ``cli_tools.py`` can route unknown tool names safely.
+"""
 
 from __future__ import annotations
 
-STUB_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "posttree_syserror_sites",
-    }
-)
+STUB_TOOL_NAMES: frozenset[str] = frozenset()
 
-_DESCRIPTIONS = {
-    "posttree_syserror_sites": "Systematic error diagnosis: site-wise analysis (not yet available).",
-}
+_DESCRIPTIONS: dict[str, str] = {}
 
-STUB_TOOLS: list[dict] = [
-    {"name": name, "description": _DESCRIPTIONS[name], "inputSchema": {"type": "object", "properties": {}, "required": []}}
-    for name in sorted(STUB_TOOL_NAMES)
-]
+STUB_TOOLS: list[dict] = []
 
 
 def handle_stub(tool_name: str) -> dict | None:

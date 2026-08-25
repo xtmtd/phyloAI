@@ -869,6 +869,40 @@ PhyloBayes `readpb -r` 生成的 `.meansiterates` 文件，每行 `<site> <rate>
 
 ---
 
+### posttree syserror taxcomp
+
+纯 Python 的跨类群组成异质性筛查，不调用外部可执行程序，无需 `doctor`。它只用一个
+比对，输出 Pearson 共同组成卡方与观测 PPA-COMP 距离；所有 p 值都是名义/探索性的，
+本命令不做类群删除、重编码、选模型或选拓扑。
+
+#### --matrix
+一个已比对的 FASTA、PHYLIP、PHYLIP-PAML 或 Nexus 比对（不支持 Clustal）。格式自动
+检测；不需要树或模型。比对至少需两个名称唯一的类群和至少两个全局观测到的标准状态；
+重复类群、空比对、零有效字符类群、长度不等都是硬错误。
+
+#### --seq-type
+`AA`、`NT` 或 `auto`（默认）。`auto` 从比对内容检测；AA 只统计标准氨基酸、NT 只统计
+`ACGT`，gap/未知/简并码/终止符都作为缺失排除，不产生小数计数。解析后的类型会写入
+`result.json` 的 `detected_seq_type` 与报告文本，因此应核对自检是否与预期分子类型一致。
+
+#### --table-format
+`csv`（默认）或 `tsv`，同时决定 `overall_summary`、`taxon_summary` 的定界符与后缀。
+
+#### --output-dir
+输出目录，默认 `runs/posttree/syserror/taxcomp`，含 `overall_summary.csv|tsv`、
+`taxon_summary.csv|tsv` 与 `result.json`。非空目录需 `--overwrite` 才能写入。
+
+#### --overwrite
+仅在验证与统计计算成功后删除并重建非空输出目录；验证失败时保留现有文件，最多只替换根
+`result.json`。此选项会丢弃目录内已有内容，需谨慎。
+
+#### --dry-run
+校验、解析并计算全部汇总，但不写任何文件；把汇总以 JSON 打印到终端，便于执行前核对
+计数与模型输入，避免意外删除现有输出。
+
+#### --quiet
+除错误外抑制终端输出；不影响 `result.json` 的写入。
+
 ### posttree syserror cca
 
 纯 Python 的组成约束诊断，不调用外部可执行程序，无需 `doctor`。它使用一个

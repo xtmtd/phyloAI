@@ -1461,14 +1461,35 @@ def generate_methods_posttree_syserror_cca(
     )
 
 
-def generate_methods_posttree_syserror_sites(
+def generate_methods_posttree_syserror_taxcomp(
     params: dict[str, Any],
     key_results: dict[str, Any],
     tool_versions: dict[str, Any],
 ) -> str:
+    n_taxa = key_results.get("n_taxa", "")
+    n_sites = key_results.get("n_sites", "")
+    seq_type = key_results.get("seq_type", "")
     return (
-        "Site-wise systematic error was diagnosed by evaluating "
-        "per-site phylogenetic signal contributions."
+        f"Taxon compositional heterogeneity was screened in a {n_taxa}-taxon, "
+        f"{n_sites}-site {seq_type} alignment using a Pearson common-composition X2 "
+        "statistic calculated from the taxon-by-state count table. The overall X2 "
+        "(p_nominal) and each taxon row's X2 contribution with its nominal "
+        "p_nominal were reported; a row contribution is part of the overall "
+        "statistic and is not an independent one-taxon-versus-rest test. Per-taxon "
+        "nominal p-values were additionally adjusted by Holm's method (p_holm), "
+        "which addresses multiplicity only and does not correct phylogenetic or "
+        "sparse-count limitations. These p-values are exploratory because "
+        "homologous taxa are phylogenetically dependent, so conventional chi-square "
+        "interpretation is limited even when the sparse-cell rule is not triggered. "
+        "A conventional sparse-cell rule was evaluated from expected counts; it "
+        "concerns the asymptotic chi-square reference only and does not validate the "
+        "phylogenetic null model. For each taxon, a unitless squared Euclidean "
+        "composition discrepancy from the equal-taxon mean was calculated; this is "
+        "neither an evolutionary distance nor a p-value. Its maximum (comp_max) and "
+        "mean (comp_mean) summarize observed taxon heterogeneity, but these observed "
+        "distances have no universal cutoff and require simulated model comparison "
+        "(posttree simulate adequacy) for adequacy assessment. No taxon was removed, "
+        "data recoded, or topology/model selected automatically."
     )
 
 
@@ -1664,7 +1685,7 @@ METHODS_GENERATORS: dict[str, Any] = {
     "posttree.syserror.brlen.label-nodes": generate_methods_posttree_syserror_brlen_label_nodes,
     "posttree.syserror.rate": generate_methods_posttree_syserror_rate,
     "posttree.syserror.cca": generate_methods_posttree_syserror_cca,
-    "posttree.syserror.sites": generate_methods_posttree_syserror_sites,
+    "posttree.syserror.taxcomp": generate_methods_posttree_syserror_taxcomp,
     "posttree.simulate.alisim.params": generate_methods_posttree_simulate_alisim_params,
     "posttree.simulate.alisim.iqtree": generate_methods_posttree_simulate_alisim_iqtree,
     "posttree.simulate.alisim.transfergaps": generate_methods_posttree_simulate_alisim_transfergaps,

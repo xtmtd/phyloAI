@@ -45,6 +45,12 @@ class TestParseStepId:
     def test_syserror_rate_step_id(self):
         assert parse_step_id("phyloai posttree syserror rate --pb-rate x") == "posttree.syserror.rate"
 
+    def test_taxcomp_step_id(self):
+        assert parse_step_id("phyloai posttree syserror taxcomp --matrix matrix.fa") == "posttree.syserror.taxcomp"
+
+    def test_removed_sites_step_is_not_parsed_as_leaf(self):
+        assert parse_step_id("phyloai posttree syserror sites --matrix matrix.fa") == "posttree.syserror"
+
     def test_empty_command(self):
         assert parse_step_id("") == "unknown"
 
@@ -74,6 +80,11 @@ class TestStepOrder:
 
     def test_syserror_rate_follows_brlen(self):
         assert STEP_ORDER.index("posttree.syserror.brlen") < STEP_ORDER.index("posttree.syserror.rate")
+
+    def test_taxcomp_before_brlen_and_sites_removed(self):
+        assert "posttree.syserror.taxcomp" in STEP_ORDER
+        assert "posttree.syserror.sites" not in STEP_ORDER
+        assert STEP_ORDER.index("posttree.syserror.taxcomp") < STEP_ORDER.index("posttree.syserror.brlen")
 
 
 class TestDiscoverStepsModule:

@@ -2093,7 +2093,7 @@ def transfergaps_command(
 
 class _SyserrorGroup(click.Group):
     def list_commands(self, ctx: click.Context) -> list[str]:
-        return ["brlen", "rate", "cca"]
+        return ["brlen", "rate", "taxcomp", "cca"]
 
 
 @posttree.group("syserror", cls=_SyserrorGroup)
@@ -2103,8 +2103,9 @@ def syserror() -> None:
     \b
     Subcommands:
       brlen        branch-length heterogeneity statistics
-      cca          compositional constraint analysis
       rate         site-rate heterogeneity statistics
+      taxcomp      across-taxon composition heterogeneity screen
+      cca          compositional constraint analysis
     """
 
 
@@ -2162,6 +2163,65 @@ def _output_dir_writable(output_dir: Path) -> bool:
     return not output_dir.exists() or not any(output_dir.iterdir())
 
 
+
+
+@syserror.command("taxcomp")
+@click.option("--matrix", type=click.Path(path_type=Path), required=True,
+              help="Aligned FASTA, PHYLIP, PHYLIP-PAML, or Nexus MSA; no tree or model input. Clustal is unsupported.")
+@click.option("--seq-type", type=_CaseInsensitiveChoice(["AA", "NT", "auto"]),
+              default="auto", show_default=True,
+              help="Sequence type; auto resolves AA/NT from the alignment. AA counts only standard amino acids and NT only ACGT; gaps and ambiguity codes are excluded as missing.")
+@click.option("--table-format", type=click.Choice(["csv", "tsv"]),
+              default="csv", show_default=True,
+              help="Delimiter and suffix for overall_summary and taxon_summary.")
+@click.option("-o", "--output-dir", type=click.Path(path_type=Path),
+              default=Path("runs/posttree/syserror/taxcomp"), show_default=True,
+              help="Output directory containing two summaries and result.json.")
+@click.option("--overwrite", is_flag=True, default=False,
+              help="Delete and recreate a non-empty output directory after validation succeeds.")
+@click.option("--dry-run", is_flag=True, default=False,
+              help="Validate and calculate summaries without writing files.")
+@click.option("-q", "--quiet", is_flag=True, default=False,
+              help="Suppress terminal output except errors.")
+def taxcomp(
+    matrix: Path, seq_type: str, table_format: str, output_dir: Path,
+    overwrite: bool, dry_run: bool, quiet: bool,
+) -> None:
+    """Screen compositional heterogeneity across taxa in one aligned MSA.
+
+    Computes a Pearson common-composition X2 statistic (overall plus each
+    taxon's row contribution) with nominal chi-square reference p-values,
+    per-taxon Holm-adjusted exploratory p-values, a conventional sparse-cell
+    diagnostic, and observed PPA-COMP squared composition distances. All
+    p-values are nominal and exploratory: this command is a screen only and
+    makes no taxon-removal, recoding, model, or topology decision. The
+    sparse-cell status is not an assumption pass, and the composition
+    distances have no universal cutoff; model adequacy requires simulated
+    comparison via posttree simulate adequacy. Because homologous taxa are
+    phylogenetically dependent, conventional chi-square p-value
+    interpretation is limited even when the sparse-cell rule is not
+    triggered.
+
+    \b
+    Examples:
+      phyloai posttree syserror taxcomp --matrix matrix.aa.fa --seq-type AA
+      phyloai posttree syserror taxcomp --matrix matrix.nt.fa --seq-type NT --table-format tsv
+    """
+    from phyloai.posttree.syserror_taxcomp import build_taxcomp_command, run_taxcomp
+
+    resolved = output_dir.resolve()
+    command = build_taxcomp_command(matrix, seq_type, table_format, resolved, overwrite, dry_run, quiet)
+    if resolved.exists() and not resolved.is_dir():
+        _fail(f"output path is not a directory: {resolved}", exit_code=1)
+    pre_existing = resolved.is_dir() and any(resolved.iterdir())
+    try:
+        payload = run_taxcomp(matrix, seq_type, table_format, output_dir, overwrite, dry_run, quiet)
+    except ValueError as exc:
+        if not dry_run and (not pre_existing or overwrite):
+            _write_error_result_json(resolved, command, str(exc), "input")
+        _fail(str(exc), exit_code=1)
+    if dry_run:
+        click.echo(json.dumps(payload, indent=2))
 
 
 @syserror.command("cca", cls=_GroupedCcaCommand)
