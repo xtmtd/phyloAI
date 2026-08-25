@@ -255,6 +255,32 @@ class TestSyserrorCca:
         assert "5" in text
 
 
+class TestSyserrorTaxcomp:
+    def test_methods_describe_screening_without_decisions(self):
+        text = generate_all_methods(
+            "posttree.syserror.taxcomp",
+            params={"seq_type": "auto", "detected_seq_type": "AA"},
+            key_results={
+                "n_taxa": 6, "n_states": 20, "n_sites": 5604, "seq_type": "AA",
+                "comp_max": 0.004, "comp_mean": 0.002,
+            },
+            tool_versions={},
+        )
+
+        for phrase in (
+            "Pearson", "p_nominal", "p_holm", "nominal", "sparse-cell",
+            "phylogenetically dependent", "one-taxon-versus-rest",
+            "multiplicity only", "comp_max", "comp_mean", "No taxon",
+            "neither an evolutionary distance nor a p-value",
+        ):
+            assert phrase in text
+        assert "6-taxon" in text and "5604-site" in text and "AA" in text
+
+    def test_sites_generator_is_removed(self):
+        assert "posttree.syserror.sites" not in METHODS_GENERATORS
+        assert "posttree.syserror.taxcomp" in METHODS_GENERATORS
+
+
 class TestConcat:
     def test_basic(self):
         text = generate_all_methods(

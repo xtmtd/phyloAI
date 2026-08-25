@@ -196,6 +196,29 @@ observed missing data are substantial. A low pp (`< 0.05`) or `|z| > 2`
 indicates potential inadequacy; `div` pp is `P(sim <= obs)`, while the other
 statistics use `P(sim > obs)`. `phybase` remains a future placeholder.
 
+### posttree syserror taxcomp
+
+Across-taxon composition heterogeneity screen, pure Python (no external tool,
+so no `doctor` needed — but still review parameters and get explicit user
+approval before running).
+
+- **Input selection:** exactly one aligned MSA (`--matrix`); no tree or model
+  input required. `--seq-type auto` resolves AA/NT from the alignment;
+  standard states are counted and gaps/ambiguity codes are excluded.
+- **Approval:** requires the full schema card and explicit execution approval;
+  it is a read-only diagnostic that writes only two summaries plus
+  `result.json`.
+- **Results interpretation:** inspect `sparse_count_check` first — a
+  `triggered` sparse-cell rule warns that the nominal chi-square p-values are
+  especially unreliable. Treat the overall and per-taxon `p_nominal` and
+  `p_holm` values as nominal/exploratory, never as a pass/fail verdict. Use
+  the taxon `x2_contribution` and `squared_composition_distance` only to
+  prioritize which taxa to inspect (annotation, coverage, contamination,
+  lineage composition). Do not delete taxa from this screen alone; model-
+  calibrated PPA-COMP requires `posttree simulate adequacy`. Optional recoding
+  is a separate, user-approved sensitivity analysis with `Dayhoff-6` for AA or
+  `RY-nucleotide` for NT.
+
 ### posttree syserror brlen
 
 Branch-length extraction for rate-heterogeneity / LBA diagnosis, pure Python
@@ -224,7 +247,8 @@ explicit user approval before running).
   measurements, and node-to-node vs node-to-tip distances. Compare these
   distributions across model runs (e.g. LG vs CAT-PMSF posterior trees). Do not
   declare model superiority from branch lengths alone; combine with `cca` and
-  `sites` diagnostics.
+  `taxcomp` diagnostics (for across-taxon composition) and `rate` (for
+  site-rate heterogeneity).
 
 ### posttree syserror rate
 
@@ -273,8 +297,9 @@ parameter in the parameter card, and obtain explicit user approval.
 full parameter card, and get explicit user approval before invoking it —
 including `--dry-run` to show the sampling plan/command first. `alisim params`,
 `alisim transfergaps`, and `simulate adequacy` are local-only (no external tool)
-but still get the standard parameter review. `posttree syserror brlen`,
-`label-nodes`, `posttree syserror rate`, and `posttree syserror cca` are
+but still get the standard parameter review. `posttree syserror taxcomp`,
+`posttree syserror brlen`, `label-nodes`, `posttree syserror rate`, and
+`posttree syserror cca` are
 likewise local-only: run `get_command_schema`, render a parameter card, and
 get explicit user approval before running. `check_status`,
 `read_result`, `read_report`, and `get_command_schema` remain directly

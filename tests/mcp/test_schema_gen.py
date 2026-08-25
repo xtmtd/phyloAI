@@ -142,3 +142,16 @@ def test_brlen_main_and_label_nodes_schemas_are_generated() -> None:
     label_props = build_mcp_tool(label)["inputSchema"]
     assert label_props["required"] == ["tree"]
     assert set(label_props["properties"]) == {"tree", "output_dir", "overwrite", "quiet"}
+
+
+def test_taxcomp_mcp_tool_is_generated_from_click() -> None:
+    descriptor = next(
+        item for item in walk_click_tree(cli)
+        if item["tool_name"] == "posttree_syserror_taxcomp"
+    )
+    tool = build_mcp_tool(descriptor)
+
+    assert tool["inputSchema"]["required"] == ["matrix"]
+    props = tool["inputSchema"]["properties"]
+    assert props["seq_type"]["enum"] == ["AA", "NT", "auto"]
+    assert props["table_format"]["enum"] == ["csv", "tsv"]

@@ -13,6 +13,7 @@ from Bio.SeqRecord import SeqRecord
 from phyloai.posttree.simulate_adequacy import (
     PreflightError,
     _compute_statistics,
+    _compute_taxon_composition,
     _summarize_distribution,
     run_simulate_adequacy,
 )
@@ -37,6 +38,23 @@ def test_statistics_known_values_and_gap_exclusion() -> None:
     assert stats["sitecomp"] == 0.0
     assert stats["comp_max"] == 0.5
     assert stats["comp_mean"] == 0.25
+
+
+def test_taxon_composition_helper_matches_existing_statistics() -> None:
+    alignment = _msa(
+        ("A", "AA--"),
+        ("B", "AC--"),
+        ("C", "CC--"),
+        ("D", "CA--"),
+    )
+
+    comp = _compute_taxon_composition(alignment, "AA")
+    stats = _compute_statistics(alignment, "AA")
+
+    assert comp["taxon_dist_j"] == pytest.approx(stats["taxon_dist_j"])
+    assert comp["comp_max"] == pytest.approx(stats["comp_max"])
+    assert comp["comp_mean"] == pytest.approx(stats["comp_mean"])
+    assert comp["taxon_freqs"]["A"] == pytest.approx([1.0, 0.0] + [0.0] * 18)
 
 
 def test_pp_directions_match_phylobayes() -> None:

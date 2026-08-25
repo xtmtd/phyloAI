@@ -22,11 +22,14 @@ def test_make_tool_handlers_includes_dynamic_and_non_overlapping_stubs() -> None
 
 
 @pytest.mark.anyio
-async def test_stub_handler_returns_json() -> None:
+async def test_handlers_build_with_empty_stub_registry() -> None:
     handlers = make_tool_handlers()
-    result = await handlers[next(iter(STUB_TOOL_NAMES))]()
+    dynamic = {d["tool_name"] for d in walk_click_tree(cli)}
 
-    assert json.loads(result)["status"] == "not_implemented"
+    assert STUB_TOOL_NAMES == frozenset()
+    assert "posttree_syserror_taxcomp" in handlers
+    assert "posttree_syserror_sites" not in handlers
+    assert not (dynamic & STUB_TOOL_NAMES)
 
 
 def test_tree_bi_tools_replace_legacy_tool() -> None:

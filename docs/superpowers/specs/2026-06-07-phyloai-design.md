@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-06-26 (updated report module design; Section 3, 4.1, 6, 7 revised to match `2026-06-26-phyloai-report-design.md`)  
+**Last updated:** 2026-08-25 (added taxon-composition screening and removed the unimplemented `syserror sites` placeholder)
 **Status:** Approved for implementation
 
 ---
@@ -143,10 +143,10 @@ phyloai posttree simulate alisim transfergaps --original-msa orig.fa --simulated
 phyloai posttree simulate alisim transfergaps --original-msa orig.fa --simulated-dir MSAs/
 phyloai posttree simulate adequacy --original-msa matrix.fa --simulated-dir runs/simulated/
 phyloai posttree simulate phybase ...   # future stub: Phybase R-script generation
+phyloai posttree syserror taxcomp --matrix ./matrix.fa
 phyloai posttree syserror brlen  --tree ./tree.nwk
 phyloai posttree syserror rate --iqtree-rate ./matrix.rate --matrix ./matrix.fa --fraction 0.25,0.5,0.75
 phyloai posttree syserror cca    --site-freq ./chain1.sitefreq --site-lnl1 ./lnl_LG/site_lnl.csv --site-lnl2 ./lnl_C20/site_lnl.csv --model1-name LG --model2-name C20
-phyloai posttree syserror sites  --matrix ./matrix.fa --tree ./tree.nwk
 
 # Report (see 2026-06-26-phyloai-report-design.md)
 phyloai report --run-dir ./runs/run/faa      # single pipeline run
@@ -522,7 +522,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 6 | `report/` module | collector, templates, schema, renderer; outputs report.json + report.html | Phases 2–4 |
 | 7 | MCP Server | All CLI tools wrapped (fine-grained, one tool per subcommand); check_status / read_result / read_report / get_command_schema utilities; stub tools for future commands; stdio transport | Phases 1–6 |
 | 8 | `phyloai-workflow` Skill | Full guided workflow; parameter cards with runtime schema; result interpretation; session recovery via report.json; demo mode; error handling (catalog + AI) | Phase 7 |
-| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (brlen → rate → cca → sites); CCA consumes a prepared `.sitefreq` plus two `site_lnl.csv` likelihood tables after site-frequency and site-likelihood generation. | syserror CLI (Phase 4) + Phase 7 |
+| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (`taxcomp → brlen → rate → cca`); `taxcomp` is an alignment-only composition screen, while CCA consumes a prepared `.sitefreq` plus two `site_lnl.csv` likelihood tables after site-frequency and site-likelihood generation. | syserror CLI (Phase 4) + Phase 7 |
 | 10 | Report AI review | `polish_methods` MCP tool + Skill integration; scientific accuracy verification of methods text | Separate spec required |
 
 **Spec granularity:** Phase 1 has one spec+plan. Phases 2–4 have one spec+plan per subcommand under `docs/superpowers/specs/` and `docs/superpowers/plans/`. Phases 5–8 have one spec+plan each. Every subcommand spec must be consistent with Section 9 conventions.

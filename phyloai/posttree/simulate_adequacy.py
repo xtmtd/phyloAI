@@ -505,11 +505,45 @@ def _print_summary(payload: dict[str, Any], dry_run: bool) -> None:
     click_echo("Result written to " + str(Path(payload["params"]["output_dir"]) / "result.json"))
 
 
+def _compute_taxon_composition(
+    alignment: MultipleSeqAlignment,
+    seq_type: str,
+) -> dict[str, Any]:
+    states = AA_STATES if seq_type == "AA" else NT_STATES
+    state_index = {state: index for index, state in enumerate(states)}
+    taxon_freqs: dict[str, list[float]] = {}
+
+    for record in alignment:
+        counts = [0] * len(states)
+        for state in str(record.seq).upper():
+            index = state_index.get(state)
+            if index is not None:
+                counts[index] += 1
+        total = sum(counts)
+        if not total:
+            raise ValueError(f"taxon {record.id!r} has no valid characters")
+        taxon_freqs[record.id] = [count / total for count in counts]
+
+    global_freq = [
+        sum(freq[index] for freq in taxon_freqs.values()) / len(taxon_freqs)
+        for index in range(len(states))
+    ]
+    taxon_dist = {
+        name: sum((freq[index] - global_freq[index]) ** 2 for index in range(len(states)))
+        for name, freq in taxon_freqs.items()
+    }
+    return {
+        "taxon_freqs": taxon_freqs,
+        "taxon_dist_j": taxon_dist,
+        "comp_max": max(taxon_dist.values()),
+        "comp_mean": sum(taxon_dist.values()) / len(taxon_dist),
+    }
+
+
 def _compute_statistics(alignment: MultipleSeqAlignment, seq_type: str) -> dict[str, Any]:
     states = AA_STATES if seq_type == "AA" else NT_STATES
     state_index = {state: index for index, state in enumerate(states)}
     n_states = len(states)
-    names = [record.id for record in alignment]
     sequences = [str(record.seq).upper() for record in alignment]
     n_sites = alignment.get_alignment_length()
 
@@ -539,30 +573,13 @@ def _compute_statistics(alignment: MultipleSeqAlignment, seq_type: str) -> dict[
         for k in range(n_states)
     ) / n_states
 
-    taxon_freqs: dict[str, list[float]] = {}
-    for name, sequence in zip(names, sequences):
-        counts = [0] * n_states
-        for state in sequence:
-            index = state_index.get(state)
-            if index is not None:
-                counts[index] += 1
-        total = sum(counts)
-        if not total:
-            raise ValueError(f"taxon {name!r} has no valid characters")
-        taxon_freqs[name] = [count / total for count in counts]
-    global_freq = [sum(freq[k] for freq in taxon_freqs.values()) / len(taxon_freqs) for k in range(n_states)]
-    taxon_dist = {
-        name: sum((freq[k] - global_freq[k]) ** 2 for k in range(n_states))
-        for name, freq in taxon_freqs.items()
-    }
+    composition = _compute_taxon_composition(alignment, seq_type)
     return {
         "div": diversity_total / n_informative,
         "siteconvprob": squared_freq_total / n_informative,
         "sitecomp": sitecomp,
-        "comp_max": max(taxon_dist.values()),
-        "comp_mean": sum(taxon_dist.values()) / len(taxon_dist),
-        "taxon_dist_j": taxon_dist,
         "n_informative_sites": n_informative,
+        **composition,
     }
 
 
