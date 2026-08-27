@@ -120,3 +120,6 @@ phyloai posttree syserror rate --pb-rate chain.meansiterates --matrix raw.phy \
   subsets isolate that contribution. Neither interpretation establishes the
   true topology.
 - Tree inference and comparison of extracted matrices are never automatic.
+- For rate-model comparisons, slow/fast subset sensitivity interpretation, and
+  the relationship to heterotachy, see the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md).

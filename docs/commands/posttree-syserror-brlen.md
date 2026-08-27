@@ -232,3 +232,9 @@ the default 5-decimal truncation.
   always carries the full resolved values.
 - This command extracts diagnostic measurements only; it does not declare which
   model is superior. Compare distributions across model runs.
+- For systematic-error interpretation, model/taxon sensitivity choices, and
+  optional posterior-predictive simulation, see the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md).
+  When a posterior tree distribution is used, inspect convergence and normally
+  prepare a post-burn-in tree input before running `brlen`; this command does
+  not select burn-in or thin/filter a treelist.

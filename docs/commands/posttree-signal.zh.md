@@ -231,6 +231,10 @@ phyloai posttree signal fclm --matrix matrix.fa --taxset-csv taxsets.csv --parti
 - 默认 `--output-dir`：`runs/posttree/signal/lnl`、
   `runs/posttree/signal/consistent`、`runs/posttree/signal/fclm`。
 - `--dry-run` 仅打印 IQ-TREE 命令，不实际运行。
+- `signal lnl` 为 CCA 准备每个模型对应的 `site_lnl.csv`：对每个模型运行一次，
+  并使用相同且顺序一致、包含两棵树的 `--candidate-trees` 输入，使每个 CSV 都含
+  `lnL_Tree1` 与 `lnL_Tree2`。CCA 输入准备和解释见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。
 - 参考文献：Shen et al. (2017) *Nature Ecology & Evolution*；Shen et al. (2021) *Systematic Biology*。
 
 ## 退出码

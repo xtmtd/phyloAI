@@ -82,3 +82,6 @@ runs/posttree/simulate/adequacy/
 - 观测和模拟 MSA 可以混用上述支持格式。
 - 当观测 MSA 缺失数据较多而模拟序列无 gap 时，应在 adequacy 前运行 `phyloai posttree simulate alisim transfergaps`。
 - 所有统计量排除非标准字符：AA 为 `ACDEFGHIKLMNPQRSTVWY`，NT 为 `ACGT`。模拟分布 SD 为零时，JSON 中 pp 为 `null`，表格 pp 单元格为空。
+- 本命令将一个观测 MSA 与一组模拟 replicate 的分布比较，不会对每个 replicate
+  独立运行充分性检验。严格的 `readpb --mode ppred` 与 AliSim plug-in 模拟选择见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。

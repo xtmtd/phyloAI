@@ -231,3 +231,9 @@ any files.
   IQ-TREE console output.
 - IQ-TREE3 (`iqtree3`) must be on `PATH` (or passed via `--iqtree-path`);
   `phyloai doctor` reports its detection status.
+- In systematic-error workflows, AliSim with `readpb --mode ss,rr,r` inputs is
+  posterior-mean plug-in parametric simulation, not strict posterior predictive
+  simulation. See the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md)
+  for the primary `readpb --mode ppred` route and gapless/gap-transferred
+  comparison.

@@ -201,3 +201,7 @@ phyloai posttree syserror brlen label-nodes --tree species.nwk
 - `result.json` 中记录的 `command` 为可复现调用：恒含必填输入与 `-o`，外加
   显式提供的选项与非默认值；默认值标志省略。`params` 始终携带全部解析值。
 - 本命令仅提取诊断测量值，不判定哪个模型更优。请跨模型运行比较分布。
+- 系统误差的解释、模型/类群敏感性选择及可选的后验预测模拟见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。
+  使用后验树分布时，应先检查收敛并通常准备去除适当 burn-in 后的树输入；
+  `brlen` 不选择 burn-in，也不对 treelist 做 thinning/filtering。

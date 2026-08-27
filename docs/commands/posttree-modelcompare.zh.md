@@ -173,6 +173,9 @@ phyloai posttree modelcompare pb \
 - `iqtree` 的 IQ-TREE 输出文件放在 `iqtree/` 子目录下；执行时 IQ-TREE stdout 实时输出到终端。
 - `--dry-run` 打印 IQ-TREE 命令并校验输入，但不运行外部工具。
 - 输出目录必须为空（或使用 `--overwrite`）；`pb` 在未指定 `--overwrite` 时会拒绝非空目录。
+- 相对模型适合度只在提供的候选模型间识别较优者，不能建立绝对充分性或拓扑正确性。
+  模型充分性和可选后验预测后续分析见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。
 - 参考文献：Kalyaanamoorthy et al. (2017) *Nature Methods*；Lartillot (2023) *Systematic Biology* 72(3):616–638；Watanabe (2009) *JMLR*。
 
 ## 退出码

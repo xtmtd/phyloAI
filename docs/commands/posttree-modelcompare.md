@@ -209,6 +209,10 @@ phyloai posttree modelcompare pb \
   external tools.
 - Output directories must be empty (or use `--overwrite`); `pb` refuses a
   non-empty directory without `--overwrite`.
+- Relative model fit identifies the better candidate among those supplied; it
+  does not establish absolute adequacy or topology correctness. For model
+  adequacy and optional posterior-predictive follow-up, see the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md).
 - References: Kalyaanamoorthy et al. (2017) *Nature Methods*; Lartillot (2023)
   *Systematic Biology* 72(3):616–638; Watanabe (2009) *JMLR*.
 

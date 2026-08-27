@@ -107,3 +107,5 @@ phyloai posttree syserror rate --pb-rate chain.meansiterates --matrix raw.phy \
   阈值视为具有特殊生物学意义。
 - 慢位点子集降低快速演化位点的贡献；快位点子集隔离该贡献。两者均不能确定真实拓扑。
 - 对提取矩阵进行树推断和比较永不自动执行。
+- 关于速率模型比较、慢/快位点子集敏感性解释，以及它与 heterotachy 的关系，见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。

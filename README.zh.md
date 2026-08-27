@@ -66,37 +66,6 @@ phyloai run --seq-dir ./markers
 phyloai run --seq-dir ./markers --mode supertree --speed fast --threads 16
 ```
 
-四步模拟工作流：从 IQ-TREE 报告提取每个位点的实证参数，
-批量模拟比对，重新应用原始 gap 掩码，并评估模型适当性：
-
-```bash
-phyloai posttree simulate alisim params --iqtree-dir reports --tree-dir trees -o runs/params
-phyloai posttree simulate alisim iqtree --model-params runs/params/params.tsv --strategy pdf --num-simulations 100 -o runs/sim
-phyloai posttree simulate alisim transfergaps --original-msa markers/concat.aa.fa --simulated-dir runs/sim/MSAs -o runs/transfer
-phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulated-dir runs/transfer -o runs/adequacy
-```
-
-系统误差枝长筛查：跨后验/模型树提取枝长（节点映射在不同拓扑间识别同一生物学节点）：
-
-```bash
-# 跨类群组成异质性筛查（仅需比对）
-phyloai posttree syserror taxcomp --matrix matrix.aa.fa --seq-type AA \
-  -o runs/posttree/syserror/taxcomp
-
-# 系统误差枝长筛查：跨后验/模型树
-phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
-  --map nodes.map.txt --node1 Collembola -o runs/posttree/syserror/brlen
-
-# 位点速率排序/提取敏感性分析
-phyloai posttree syserror rate --iqtree-rate matrix.rate --matrix raw.fa \
-  --subset slow --fraction 0.25,0.5,0.75 -o runs/posttree/syserror/rate
-
-# 两个模型分析之间的组成约束诊断
-phyloai posttree syserror cca --site-freq chain1.sitefreq \
-  --site-lnl1 lnl_LG/site_lnl.csv --site-lnl2 lnl_C20/site_lnl.csv \
-  --model1-name LG --model2-name C20 -o runs/posttree/syserror/cca
-```
-
 显示所有可用命令：
 
 ```bash
@@ -168,3 +137,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree syserror rate` | 面向 IQ-TREE 或 PhyloBayes 速率的位点速率排序/提取敏感性工具；可写出慢/快位点的比对子集。 | [docs/commands/posttree-syserror-rate.md](docs/commands/posttree-syserror-rate.zh.md) |
 | `phyloai posttree syserror cca` | 比较两个模型分析中逐位点拓扑偏好的组成约束诊断。 | [docs/commands/posttree-syserror-cca.md](docs/commands/posttree-syserror-cca.zh.md) |
 | `phyloai report`   | 生成可复现的分析报告（JSON + 自包含的 HTML，含嵌入图表、可排序表格与方法段落草稿）。自动生成的方法文本在发表前应仔细核对。 | [docs/commands/report.md](docs/commands/report.zh.md) |
+
+有关这些命令的 AI 引导选择、输入准备、敏感性结果解读和可选后验预测模拟，见[系统误差工作流参考](skills/phyloai-workflow/references/syserror-workflow.md)。

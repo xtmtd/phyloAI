@@ -182,3 +182,7 @@ phyloai posttree simulate alisim iqtree --model-params params.tsv --strategy pdf
 - `alisim iqtree` 的 `--tool-args` 透传额外的 IQ-TREE 标志；仅受管的 I/O 标志（`--alisim`、`-t`、`--prefix`、`--out-format`、`-af`，`--flag` 或 `--flag=value` 两种形式均被拦截）被阻止。其它标志（如 `--seqtype`、`--length`、`--num-alignments`、`-T`）可覆盖 PhyloAI 默认值；PhyloAI 会抑制自身已覆盖的受管标志，最终 IQ-TREE 命令中每个标志只出现一次。
 - AliSim 不产生 `.iqtree` 报告；`logs/` 存放捕获的 IQ-TREE 控制台输出。
 - IQ-TREE3（`iqtree3`）必须在 `PATH` 上（或通过 `--iqtree-path` 指定）；`phyloai doctor` 报告其检测状态。
+- 在系统误差工作流中，使用 `readpb --mode ss,rr,r` 输入的 AliSim 是后验均值
+  plug-in 参数模拟，不是严格的后验预测模拟。主要的 `readpb --mode ppred` 路径以及
+  无 gap/gap-transferred 比较见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。

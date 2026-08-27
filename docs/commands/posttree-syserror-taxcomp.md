@@ -170,6 +170,9 @@ removal list.
 
 - `taxcomp` is a screen only: it never deletes taxa, recodes data, selects a
   model or topology, or recommends a threshold.
+- For theory, evidence limits, recoding/taxon-sampling sensitivity choices, and
+  the boundary with nonstationary composition models, see the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md).
 - All p-values are nominal and exploratory; phylogenetic dependence limits
   conventional chi-square interpretation even when the sparse-cell rule is
   not triggered.
