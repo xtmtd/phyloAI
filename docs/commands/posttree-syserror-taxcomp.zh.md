@@ -127,3 +127,5 @@ phyloai posttree syserror taxcomp --matrix matrix.nt.fa --seq-type NT --table-fo
 - `squared_composition_distance` 即每个类群的观测 PPA-COMP 值（`obs comp`）；经模型校准的解释需用
   `posttree simulate adequacy`，它提供基于模拟的 z 分数与后验预测 pp 值。
 - 不同字母表、类群集合和缺失模式之间的数值未必可直接比较。
+- 关于理论、证据边界、重编码/类群采样敏感性选择，以及与非平稳组成模型的界限，见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。

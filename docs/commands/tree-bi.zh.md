@@ -383,3 +383,8 @@ iqtree3 --alisim simulated.phy -t tree.nwk -p runs/tree/bi/readpb/partition.PMSF
 ## 备注
 
 各子命令在 `runs/tree/bi/` 下使用独立输出目录。
+
+- 对系统误差工作流，`--mode ppred` 是主要的后验预测 MSA 模拟路径；
+  `--mode ss,rr,r` 为可选 AliSim 使用创建后验均值 PMSF 模拟输入，并非严格后验预测
+  模拟。CCA、枝长和模型充分性前置条件见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。

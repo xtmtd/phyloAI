@@ -1,7 +1,7 @@
 # PhyloAI Design Specification
 
 **Date:** 2026-06-07  
-**Last updated:** 2026-08-25 (added taxon-composition screening and removed the unimplemented `syserror sites` placeholder)
+**Last updated:** 2026-08-28 (added taxon-composition screening, removed the unimplemented `syserror sites` placeholder, and integrated systematic-error orchestration into `phyloai-workflow` references)
 **Status:** Approved for implementation
 
 ---
@@ -338,7 +338,7 @@ Two components built on top of the stable CLI:
 
 **MCP Server (Phase 7):** One tool per CLI subcommand. Schemas generated dynamically from the Click command tree at startup — zero manual sync. All commands fire-and-forget; `output_dir` is the persistent job handle across sessions. Transport: stdio.
 
-**Skill `phyloai-workflow` (Phase 8):** Guided workflow with parameter confirmation cards, result interpretation, session recovery via `report.json`, demo mode, and error handling. Lives in `skills/phyloai-workflow/` inside this repo, version-coupled to CLI. Future: `phyloai-syserror` sub-workflow Skill and AI-assisted report review (separate specs).
+**Skill `phyloai-workflow` (Phase 8):** Guided workflow with parameter confirmation cards, result interpretation, session recovery via `report.json`, demo mode, and error handling. Lives in `skills/phyloai-workflow/` inside this repo, version-coupled to CLI. Systematic-error orchestration is a detailed reference module within this Skill (`references/syserror-workflow.md`), superseding the former plan for a standalone `phyloai-syserror` sub-workflow Skill. AI-assisted report review remains a separate future specification.
 
 ---
 
@@ -522,7 +522,7 @@ All PhyloAI-authored FASTA-family outputs must wrap sequence lines at 60 charact
 | 6 | `report/` module | collector, templates, schema, renderer; outputs report.json + report.html | Phases 2–4 |
 | 7 | MCP Server | All CLI tools wrapped (fine-grained, one tool per subcommand); check_status / read_result / read_report / get_command_schema utilities; stub tools for future commands; stdio transport | Phases 1–6 |
 | 8 | `phyloai-workflow` Skill | Full guided workflow; parameter cards with runtime schema; result interpretation; session recovery via report.json; demo mode; error handling (catalog + AI) | Phase 7 |
-| 9 | `phyloai-syserror` Skill | Results-driven syserror orchestration sub-workflow (`taxcomp → brlen → rate → cca`); `taxcomp` is an alignment-only composition screen, while CCA consumes a prepared `.sitefreq` plus two `site_lnl.csv` likelihood tables after site-frequency and site-likelihood generation. | syserror CLI (Phase 4) + Phase 7 |
+| 9 | Systematic-error reference module | Detailed optional workflows within `phyloai-workflow/references/syserror-workflow.md`: rates across taxa, rates across sites, heterotachy, compositions across taxa, compositions across sites, and substitution patterns across sites. It composes existing atomic commands and requires iterative user decisions; it does not create a standalone Skill. | syserror CLI (Phase 4) + Phase 7 + Phase 8 |
 | 10 | Report AI review | `polish_methods` MCP tool + Skill integration; scientific accuracy verification of methods text | Separate spec required |
 
 **Spec granularity:** Phase 1 has one spec+plan. Phases 2–4 have one spec+plan per subcommand under `docs/superpowers/specs/` and `docs/superpowers/plans/`. Phases 5–8 have one spec+plan each. Every subcommand spec must be consistent with Section 9 conventions.
@@ -553,7 +553,7 @@ Modules within each phase can be developed in parallel. Phases are strictly sequ
 | --tool-args strategy-only model | Deterministic batch I/O while exposing tool-specific knobs |
 | Format handling per-module | Different tools need different formats; per-module via core/formats.py |
 | backtrans in align | Direct post-processing of alignment, uses trimAl already a dependency |
-| syserror exposed as atomic ops only | Full diagnosis needs iterative human decisions; CLI atomics + Skill orchestration |
+| syserror exposed as atomic ops only | Full diagnosis needs iterative human decisions; CLI atomics + the `phyloai-workflow` systematic-error reference module |
 | simulate supports AliSim and adequacy | Current implementation covers parameter extraction, AliSim alignment simulation, gap-mask transfer, and pure-Python model adequacy checks; phybase remains an explicit future CLI stub |
 | genetree in tree/ not pretree/ | Gene trees are tree inference results, not preprocessing steps |
 | JSON result.json for non-doctor commands | One stable machine-readable result path for MCP wrapping |

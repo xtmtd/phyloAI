@@ -290,6 +290,11 @@ phyloai posttree signal fclm --matrix matrix.fa --taxset-csv taxsets.csv --parti
   external tools. Still reads input files to validate partition ranges, tree
   matching, and taxset assignments; does NOT create output directories or write
   cluster.nexus.
+- `signal lnl` prepares each model-specific `site_lnl.csv` used by CCA: run it
+  once per model with the same ordered two-tree `--candidate-trees` input, so
+  each CSV contains both `lnL_Tree1` and `lnL_Tree2`. See the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md)
+  for CCA input preparation and interpretation.
 - References: Shen et al. (2017) *Nature Ecology & Evolution*; Shen et al. (2021)
   *Systematic Biology*.
 

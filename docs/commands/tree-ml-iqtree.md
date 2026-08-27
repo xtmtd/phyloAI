@@ -210,3 +210,7 @@ runs/tree/ml/iqtree/
 - IQ-TREE input and user-provided path arguments (`--partitions`, `--guide-tree`, `--constraint`, custom `--model`, and `--site-freq-file`) are resolved to absolute paths internally.
 - A custom model/profile file is read directly; PhyloAI does not copy or alter either file. `--tool-args "-fs /absolute/profile"` overrides `--site-freq-file`, remains raw in `tool_args`, and also requires `--state-freq none`.
 - `--resume` in `--matrix` mode re-runs the IQ-TREE command; IQ-TREE natively handles checkpoint/resume via its own mechanism (`--redo`). In `--msa-dir` batch mode, PhyloAI manages checkpoint state to skip completed gene trees.
+- GHOST/heterotachy analyses require a user-reviewed raw IQ-TREE `-m`
+  expression through `--tool-args`; PhyloAI does not provide a structured
+  GHOST model selector. For model limits and interpretation, see the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md).

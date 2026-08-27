@@ -467,3 +467,10 @@ Missing external tools or invalid inputs produce a non-zero exit. `--overwrite` 
 ## Notes
 
 Subcommands use separate output directories under `runs/tree/bi/`.
+
+- For systematic-error workflows, `--mode ppred` is the primary
+  posterior-predictive MSA simulation route. `--mode ss,rr,r` creates
+  posterior-mean PMSF simulation inputs for optional AliSim use; it is not
+  strict posterior predictive simulation. See the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md)
+  for CCA, branch-length, and model-adequacy prerequisites.

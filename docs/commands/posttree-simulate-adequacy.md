@@ -82,3 +82,7 @@ With `--table-format tsv`, the three tables use `.tsv` suffixes and tab delimite
 - Observed and simulated MSAs may use mixed supported formats.
 - Apply `phyloai posttree simulate alisim transfergaps` before adequacy when the observed MSA has substantial missing data and simulations are gap-free.
 - All statistics exclude non-standard characters: `ACDEFGHIKLMNPQRSTVWY` for AA and `ACGT` for NT. Zero-SD simulated distributions report `pp=null` in JSON and an empty pp table cell.
+- This command compares one observed MSA with a replicate distribution; it is
+  not an adequacy test run independently on each replicate. For strict
+  `readpb --mode ppred` versus AliSim plug-in simulation choices, see the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md).

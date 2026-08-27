@@ -2,9 +2,9 @@
 name: phyloai-workflow
 description: >-
   Guide users through PhyloAI CLI analyses through the local MCP server.
-  Use for PhyloAI analysis, command execution, run recovery, `doctor`,
-  environment checks, missing external tools, installation, and
-  external-tool failures.
+  Use for PhyloAI analysis, command execution, run recovery, systematic-error
+  and heterogeneity workflows, `doctor`, environment checks, missing external
+  tools, installation, and external-tool failures.
 ---
 
 # PhyloAI Workflow
@@ -40,6 +40,7 @@ description: >-
 - Pretree: `convert -> align -> trim -> metrics / filter -> concat` (supermatrix) or `... -> gene trees` (supertree). `stats` inspects results at any step.
 - Tree: `tree ml iqtree` + `tree msc` as primary, `tree ml fasttree` for fast exploration, `tree bi pb` for Bayesian MCMC, `tree bi bpcomp`/`tree bi tracecomp` for final convergence diagnostics with user-chosen burn-in, `tree bi readpb` for posterior summaries. For custom CAT-PMSF-style ML, pass an AA exchangeability file with `tree ml iqtree --model`, a profile with `--site-freq-file`, and `--state-freq none`; raw `--tool-args -fs` overrides the structured profile. For PMSF simulation input, use `tree bi readpb --mode ss,rr,r`; it writes `partition.PMSF.nex` from posterior site rates, alpha, Gamma category count, and the co-generated `.exchangeabilities` model. Use `cf` on species trees.
 - Posttree: `topology`, `dating hessian`, `dating mcmc`, `signal lnl`, `signal consistent`, `signal fclm`, `modelcompare iqtree`, `modelcompare pb`, `simulate alisim`, `simulate adequacy`.
+- Systematic error / heterogeneity: when users ask about LBA, long branches, rate/composition heterogeneity, heterotachy/GHOST, CCA, model adequacy, or systematic-error correction, load `references/syserror-workflow.md` before selecting a path. Explain the relevant theory, offer only the applicable subset of the six optional analyses, and do not run a full diagnostic battery by default. The reference governs prerequisites, evidence limits, sensitivity options, and advanced simulations; existing schema review, doctor, explicit approval, overwrite, status, and recovery rules still apply one command at a time.
 - Report: run `report` only when the user requests a report/methods draft or recovery needs `report.json`.
 
 ### posttree signal
@@ -323,4 +324,5 @@ inspectable without approval.
 - `references/dialog-templates.md`
 - `references/demo-data.md`
 - `references/workflow.md`
+- `references/syserror-workflow.md` for optional systematic-error and heterogeneity workflows
 - `docs/commands/installation.md` for external-tool setup guidance

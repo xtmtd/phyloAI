@@ -209,3 +209,6 @@ runs/tree/ml/iqtree/
 - IQ-TREE 输入及用户提供的路径参数（`--partitions`、`--guide-tree`、`--constraint`、自定义 `--model`、`--site-freq-file`）在内部解析为绝对路径。
 - 自定义模型/profile 文件由 IQ-TREE 直接读取；PhyloAI 不复制或修改它们。`--tool-args "-fs /absolute/profile"` 会覆盖 `--site-freq-file`，仍作为原始 `tool_args` 记录，也必须使用 `--state-freq none`。
 - `--matrix` 模式下的 `--resume` 会重新运行 IQ-TREE 命令；IQ-TREE 通过自己的机制（`--redo`）原生处理 checkpoint/resume。`--msa-dir` 批量模式下，PhyloAI 管理 checkpoint 状态以跳过已完成的基因树。
+- GHOST/heterotachy 分析需要通过 `--tool-args` 提供用户审查过的原始 IQ-TREE `-m`
+  表达式；PhyloAI 不提供结构化的 GHOST 模型选择器。模型限制和结果解释见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。

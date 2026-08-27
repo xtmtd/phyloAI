@@ -88,39 +88,6 @@ phyloai run --seq-dir ./markers
 phyloai run --seq-dir ./markers --mode supertree --speed fast --threads 16
 ```
 
-Four-command simulation workflow: extract empirical per-locus parameters from
-IQ-TREE reports, simulate a batch of alignments, then re-apply the original
-gap mask and assess adequacy:
-
-```bash
-phyloai posttree simulate alisim params --iqtree-dir reports --tree-dir trees -o runs/params
-phyloai posttree simulate alisim iqtree --model-params runs/params/params.tsv --strategy pdf --num-simulations 100 -o runs/sim
-phyloai posttree simulate alisim transfergaps --original-msa markers/concat.aa.fa --simulated-dir runs/sim/MSAs -o runs/transfer
-phyloai posttree simulate adequacy --original-msa markers/concat.aa.fa --simulated-dir runs/transfer -o runs/adequacy
-```
-
-Systematic-error branch-length screen across posterior/model trees (node map
-identifies the same biological node across differing topologies):
-
-```bash
-# Across-taxon composition heterogeneity screen (alignment only)
-phyloai posttree syserror taxcomp --matrix matrix.aa.fa --seq-type AA \
-  -o runs/posttree/syserror/taxcomp
-
-# Systematic-error branch-length screen across posterior/model trees
-phyloai posttree syserror brlen --tree-dir posterior_trees --mode node-to-tip \
-  --map nodes.map.txt --node1 Collembola -o runs/posttree/syserror/brlen
-
-# Site-rate ranking/extraction sensitivity analysis
-phyloai posttree syserror rate --iqtree-rate matrix.rate --matrix raw.fa \
-  --subset slow --fraction 0.25,0.5,0.75 -o runs/posttree/syserror/rate
-
-# Compositional-constraint diagnostic across two model analyses
-phyloai posttree syserror cca --site-freq chain1.sitefreq \
-  --site-lnl1 lnl_LG/site_lnl.csv --site-lnl2 lnl_C20/site_lnl.csv \
-  --model1-name LG --model2-name C20 -o runs/posttree/syserror/cca
-```
-
 Show all available commands:
 
 ```bash
@@ -203,3 +170,5 @@ Email: <xtmtd.zf@gmail.com>
 | `phyloai posttree syserror rate` | Site-rate ranking/extraction sensitivity utility for IQ-TREE or PhyloBayes rates; optionally writes slow/fast alignment subsets. | [docs/commands/posttree-syserror-rate.md](docs/commands/posttree-syserror-rate.md) |
 | `phyloai posttree syserror cca` | Composition-constraint diagnostic comparing site-wise topology preference across two model analyses. | [docs/commands/posttree-syserror-cca.md](docs/commands/posttree-syserror-cca.md) |
 | `phyloai report`   | Generate a reproducible analysis report (JSON + self-contained HTML with embedded figures, sortable tables, and a draft Methods paragraph). Auto-generated methods text should be carefully verified before publication use. | [docs/commands/report.md](docs/commands/report.md) |
+
+For AI-guided selection, input preparation, sensitivity interpretation, and optional posterior-predictive simulation across these commands, see the [systematic-error workflow reference](skills/phyloai-workflow/references/syserror-workflow.md).

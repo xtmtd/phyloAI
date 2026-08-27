@@ -115,3 +115,7 @@ phyloai posttree syserror cca --site-freq chain1.sitefreq \
 
 - Keff 是 20 个频率的 inverse homozygosity，不是熵；CCA 不实现熵版本。
 - CCA 可显示拓扑偏好是否随组成约束而改变，但不能单独证明任一模型或拓扑在生物学上正确。
+- 每个 `site_lnl.csv` 都必须来自相同且顺序一致的 Tree1/Tree2 候选树对上的
+  `posttree signal lnl` 运行；CCA 比较的是两次模型分析，而不是每棵树各运行一次。
+  `.sitefreq` 准备、CAT/PMSF 敏感性选择以及 Keff 过滤的手动/未来功能边界，见
+  [系统误差工作流参考](../../skills/phyloai-workflow/references/syserror-workflow.md)。

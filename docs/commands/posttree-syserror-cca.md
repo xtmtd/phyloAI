@@ -161,3 +161,8 @@ phyloai posttree syserror cca --site-freq chain1.sitefreq \
 - CCA can show whether topology preference changes with compositional
   constraint, but it cannot alone demonstrate that either model or topology is
   biologically correct.
+- Each `site_lnl.csv` must come from `posttree signal lnl` on the same ordered
+  Tree1/Tree2 candidate pair; CCA compares two model analyses, not one
+  likelihood run per tree. For `.sitefreq` preparation, CAT/PMSF sensitivity
+  choices, and the manual/future boundary for Keff filtering, see the
+  [systematic-error workflow reference](../../skills/phyloai-workflow/references/syserror-workflow.md).
