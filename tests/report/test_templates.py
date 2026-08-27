@@ -238,3 +238,34 @@ class TestIqtree:
         )
 
         assert "custom exchangeability matrix" in text
+
+    def test_raw_tool_args_m_override_reported_truthfully(self):
+        text = generate_all_methods(
+            "tree.ml.iqtree",
+            params={
+                "modelfinder": "none",
+                "model": "LG", "state_freq": "+F", "rate_heterogeneity": "+R4",
+                "tool_args": "-m LG+H4", "boot": 1000,
+            },
+            key_results={"log_likelihood": -2658.2}, tool_versions={"iqtree3": "3.1.2"},
+        )
+        # A raw --tool-args -m overrides the structured model (GHOST); report the
+        # executed model, never the LG+F+R4 spelling IQ-TREE was told to ignore.
+        assert "LG+H4" in text
+        assert "LG+F+R4" not in text
+
+    def test_raw_tool_args_m_override_with_spaced_custom_path(self):
+        text = generate_all_methods(
+            "tree.ml.iqtree",
+            params={
+                "modelfinder": "none", "model": "LG", "state_freq": "none",
+                "rate_heterogeneity": "+R4", "boot": None,
+                "tool_args": "-m '/tmp/CUSTOM matrix.exchangeabilities+R4'",
+            },
+            key_results={"log_likelihood": -2280.3}, tool_versions={"iqtree3": "3.1.2"},
+        )
+        # A quoted raw -m path containing spaces must parse as one token (shlex)
+        # and enter the custom-exchangeability branch — not truncate to
+        # "The '/TMP/CUSTOM substitution model was used."
+        assert "custom exchangeability matrix" in text
+        assert "substitution model was used" not in text

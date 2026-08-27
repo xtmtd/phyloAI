@@ -25,6 +25,7 @@ description: >-
 
 - New task: ask for input data path, run `doctor` if needed, then start pretree workflow.
 - Resume task: call `read_report(run_dir)`; if missing, ask whether to run `report` or inspect a specific step with `read_result`.
+- Recovery is verified, not assumed: when resuming or inspecting an existing `output_dir`, smoke-test the read path with `check_status` → `read_result` → (when requested) `read_report`, and report the observed state. A completed atomic run (`result.json` present, `status: success`) is NOT re-run merely because the Skill conversation was interrupted — show the existing result and only relaunch if the user explicitly asks for a fresh run or grants `--overwrite`.
 - Single-step task: render the parameter card for the requested command and wait for confirmation.
 
 ## Language Policy

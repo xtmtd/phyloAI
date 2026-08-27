@@ -63,6 +63,11 @@ def test_build_model_flags_homogeneous_lg():
     assert _build_model_flags("lg", "1", 4, None, None) == ["-ncat", "1", "-lg", "-dgam", "4"]
 
 
+def test_build_model_flags_cat_lg():
+    # CAT-LG: --model lg --mixture auto -> -cat -lg
+    assert _build_model_flags("lg", "auto", 4, None, None) == ["-cat", "-lg", "-dgam", "4"]
+
+
 def test_build_model_flags_fixed_mixture():
     assert _build_model_flags("wag", "20", 4, None, None) == ["-ncat", "20", "-wag", "-dgam", "4"]
 

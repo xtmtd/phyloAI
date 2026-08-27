@@ -1741,7 +1741,10 @@ def _assemble_iqtree_result(
     if len(all_ok) > 0:
         model_selected = all_ok[0].get("model_selected")
     if modelfinder == "none":
-        model_selected = model_string
+        # A raw `--tool-args -m` overrides the structured model (e.g. GHOST
+        # `-m LG+H4`). Record the actually-executed model, not the structured
+        # model_string that IQ-TREE never used.
+        model_selected = _get_tool_arg_value("-m", tool_args) or model_string
 
     if batch_mode:
         ok_files = []

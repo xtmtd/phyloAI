@@ -1527,6 +1527,39 @@ def test_run_iqtree_nt_seq_type_mapping(tmp_path: Path) -> None:
     assert payload["key_results"]["seq_type"] == "NT"
 
 
+def test_run_iqtree_tool_args_m_override_records_effective_model(tmp_path: Path) -> None:
+    from phyloai.tree.ml_iqtree import run_iqtree
+
+    mat = tmp_path / "matrix.fa"
+    mat.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+
+    payload = run_iqtree(
+        matrix=mat, output_dir=tmp_path / "out",
+        seq_type="AA", model="LG", state_freq="+F",
+        rate_heterogeneity="+R4", tool_args="-m LG+H4",
+        dry_run=True, quiet=True,
+    )
+    # A raw `--tool-args -m` overrides the structured model (e.g. GHOST); the
+    # recorded model_selected must be the actually-executed model, never the
+    # structured parameter spelling that IQ-TREE was told to ignore.
+    assert payload["key_results"]["model_selected"] == "LG+H4"
+    assert payload["key_results"]["model_selected"] != "LG+F+R4"
+
+
+def test_run_iqtree_structured_model_preserved_without_tool_args(tmp_path: Path) -> None:
+    from phyloai.tree.ml_iqtree import run_iqtree
+
+    mat = tmp_path / "matrix.fa"
+    mat.write_text(">a\nMKTLLL\n>b\nMKTLLL\n")
+
+    payload = run_iqtree(
+        matrix=mat, output_dir=tmp_path / "out",
+        seq_type="AA", model="LG", state_freq="+F",
+        rate_heterogeneity="+R4", dry_run=True, quiet=True,
+    )
+    assert payload["key_results"]["model_selected"] == "LG+F+R4"
+
+
 def test_run_iqtree_seq_type_mismatch(tmp_path: Path) -> None:
     from phyloai.tree.ml_iqtree import run_iqtree
 

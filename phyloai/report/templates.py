@@ -7,6 +7,7 @@ producing 2-5 sentences of academic English suitable for journal Methods.
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
@@ -68,6 +69,28 @@ def _safe_fmt(value: Any, fmt_spec: str) -> str:
     if isinstance(value, (int, float)):
         return format(value, fmt_spec)
     return "?"
+
+
+def _tool_arg_value(flag: str, tool_args: str | None) -> str | None:
+    """Return the value immediately following a flag in --tool-args, if present.
+
+    Uses shlex.split() to match ml_iqtree._get_tool_arg_value() so quoted values
+    containing spaces (e.g. a custom matrix path like -m '/tmp/CUSTOM matrix')
+    are parsed as one token instead of being truncated at the first space.
+    """
+    if not tool_args:
+        return None
+    try:
+        tokens = shlex.split(tool_args)
+    except ValueError:
+        return None
+    try:
+        idx = tokens.index(flag)
+    except ValueError:
+        return None
+    if idx + 1 >= len(tokens):
+        return None
+    return tokens[idx + 1]
 
 
 # ---------------------------------------------------------------------------
@@ -601,19 +624,24 @@ def generate_methods_tree_ml_iqtree(
             f"from a candidate set comprising {mset} matrix models (`--mset {mset}`). "
         )
     else:
-        model_value = str(params.get("model") or "LG")
+        # A raw `--tool-args -m` overrides the structured model (e.g. GHOST
+        # `-m LG+H4`); describe the actually-executed model, not the structured
+        # params spelling the user's run never used.
+        raw_m = _tool_arg_value("-m", params.get("tool_args"))
+        model_value = raw_m if raw_m is not None else str(params.get("model") or "LG")
         if Path(model_value).is_absolute() or PureWindowsPath(model_value).is_absolute():
             text += "A user-specified custom exchangeability matrix was used. "
-            if rate_het and rate_het != "none":
+            if raw_m is None and rate_het and rate_het != "none":
                 text += f"Rate heterogeneity was modeled with {rate_het}. "
-            if params.get("site_freq_file"):
+            if raw_m is None and params.get("site_freq_file"):
                 text += "IQ-TREE site-specific state-frequency profiles (-fs) were used. "
         else:
             model_desc = model_value.upper()
-            if state_freq and state_freq != "none":
-                model_desc += str(state_freq)
-            if rate_het and rate_het != "none":
-                model_desc += str(rate_het)
+            if raw_m is None:
+                if state_freq and state_freq != "none":
+                    model_desc += str(state_freq)
+                if rate_het and rate_het != "none":
+                    model_desc += str(rate_het)
             text += f"The {model_desc} substitution model was used. "
 
     if log_lk is not None:
