@@ -159,7 +159,8 @@ Resume: `mpirun -np <threads> pb_mpi <chainname>`
 
 - **Every `--poll-interval` sec:** poll `.trace` files, update progress display, check `--nsamples` target.
 - **Every `--monitor-freq` new samples:** trigger convergence check (bpcomp + tracecomp).
-- **Ctrl+C:** soft-stop all chains, final convergence check, write `result.json`.
+- **Ctrl+C:** soft-stop all chains, final convergence check, write `result.json`; a second one stops at once.
+- **SIGTERM / SIGHUP:** same path; `result.json` is written first, the scheduler's second signal skips the wait.
 
 ## Convergence Thresholds
 

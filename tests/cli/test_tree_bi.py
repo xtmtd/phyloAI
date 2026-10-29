@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -101,3 +102,22 @@ def test_tree_bi_readpb_dry_run(tmp_path: Path):
     (tmp_path / "chain1.chain").write_text("fake state")
     result = CliRunner().invoke(cli, ["tree", "bi", "readpb", "--chain", str(chain), "--mode", "rr", "--output-dir", str(tmp_path / "readpb"), "--dry-run"])
     assert result.exit_code == 0
+
+
+def test_previous_result_is_backed_up_before_the_run(tmp_path: Path):
+    """A stop signal writes result.json mid-run, so the old file is copied first."""
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "result.json").write_text(json.dumps({"command": "phyloai previous run", "sentinel": True}))
+    matrix = tmp_path / "m.phy"
+    matrix.write_text("2 3\na AAA\nb AAA\n")
+
+    result = CliRunner().invoke(
+        cli,
+        ["tree", "bi", "pb", "--matrix", str(matrix), "--output-dir", str(out), "--burnin-frac", "1.5"],
+    )
+
+    assert result.exit_code == 1
+    backups = list(out.glob("result_*.json"))
+    assert backups, "the previous result.json was not backed up"
+    assert any(json.loads(p.read_text()).get("sentinel") is True for p in backups)
