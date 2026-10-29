@@ -1574,6 +1574,14 @@ def bi_group() -> None:
 def bi_pb_command(**kwargs) -> None:
     from phyloai.tree.bi import run_bi_pb
 
+    # Back up a previous result before the run: a stop signal makes `run_bi_pb`
+    # write a provisional result.json itself.
+    result_path = kwargs["output_dir"] / "result.json"
+    if not kwargs.get("dry_run") and result_path.exists():
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        shutil.copy2(str(result_path), str(result_path.with_name(f"result_{ts}.json")))
+
     try:
         payload = run_bi_pb(**kwargs)
     except FileNotFoundError as exc:
@@ -1587,7 +1595,6 @@ def bi_pb_command(**kwargs) -> None:
             for cmd in payload["data"]["chain_cmds"].values():
                 click.echo(" ".join(cmd))
         return
-    result_path = kwargs["output_dir"] / "result.json"
     result_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Add convergence_render.txt to output_files if it exists
@@ -1597,11 +1604,6 @@ def bi_pb_command(**kwargs) -> None:
             "path": str(conv_path), "description": "Human-readable convergence diagnostic summary"
         }
 
-    if result_path.exists():
-        from datetime import datetime
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = result_path.with_name(f"result_{ts}.json")
-        shutil.copy2(str(result_path), str(backup_path))
     with open(result_path, "w") as fh:
         json.dump(payload, fh, indent=2)
     if payload["status"] == "error":

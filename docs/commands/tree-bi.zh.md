@@ -149,7 +149,8 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 
 - **每 `--poll-interval` 秒：** 轮询 `.trace` 文件，更新进度显示，检查 `--nsamples` 目标。
 - **每 `--monitor-freq` 新样本：** 触发收敛检查（bpcomp + tracecomp）。
-- **Ctrl+C：** 软停止所有链，最终收敛检查，写入 `result.json`。
+- **Ctrl+C：** 软停止所有链，最终收敛检查，写入 `result.json`；再次收到则直接结束。
+- **SIGTERM / SIGHUP：** 与 Ctrl+C 相同；`result.json` 先写入，调度器的第二个信号直接结束。
 
 ## 收敛阈值
 

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+import signal
+import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -501,3 +505,67 @@ def test_run_convergence_check_warns_on_failed_tool(tmp_path: Path):
     result = _run_convergence_check(tmp_path, ["chain1"], {"bpcomp": str(bpcomp), "tracecomp": str(tracecomp)}, 1)
     assert len(result["warnings"]) >= 1
     assert "exited with code" in result["warnings"][0]
+
+
+# ---------------------------------------------------------------------------
+# Signal handlers (POSIX)
+# ---------------------------------------------------------------------------
+
+
+def test_stop_before_chains_start_still_returns_a_result(tmp_path: Path, monkeypatch):
+    import rich.progress as rich_progress
+
+    from phyloai.tree import bi as bi_module
+
+    before_term = signal.getsignal(signal.SIGTERM)
+    before_int = signal.getsignal(signal.SIGINT)
+    during: dict[str, object] = {}
+
+    def interrupt(*_args, **_kwargs):
+        during["term"] = signal.getsignal(signal.SIGTERM)
+        during["int"] = signal.getsignal(signal.SIGINT)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(rich_progress.Progress, "add_task", interrupt)
+    (tmp_path / "chains").mkdir()
+
+    payload = bi_module._run_bi_processes(
+        output_dir=tmp_path,
+        chain_names=["chain1"],
+        chain_cmds={"chain1": ["true"]},
+        tools={"bpcomp": "bpcomp", "tracecomp": "tracecomp"},
+        tool_versions={},
+        params={},
+        command="phyloai tree bi pb",
+        run_start=time.monotonic(),
+        nsamples=-1,
+        monitor_freq=100,
+        burnin_frac=0.5,
+        poll_interval=1,
+        quiet=False,
+    )
+
+    assert payload["data"]["interrupted"] is True
+    assert (tmp_path / "result.json").exists()
+    assert during["term"] is not before_term, "SIGTERM is not handled during the run"
+    assert during["int"] is before_int, "Ctrl+C keeps its disposition"
+    assert signal.getsignal(signal.SIGTERM) is before_term, "the previous handler is not restored"
+    assert signal.getsignal(signal.SIGINT) is before_int
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signals and a shell stub are required")
+def test_terminate_end_kills_a_process_that_ignores_sigterm(tmp_path: Path):
+    from phyloai.tree.bi import _terminate_end
+
+    script = tmp_path / "stubborn.sh"
+    script.write_text("#!/bin/sh\ntrap '' TERM\nwhile :; do sleep 1; done\n")
+    script.chmod(0o755)
+    proc = subprocess.Popen([str(script)])
+    try:
+        assert proc.poll() is None
+        _terminate_end(proc)
+        proc.wait(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()

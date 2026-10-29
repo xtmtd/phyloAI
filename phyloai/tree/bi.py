@@ -7,6 +7,7 @@ import json
 import math
 import re
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -503,6 +504,46 @@ def _soft_stop_chains(output_dir: Path, chain_names: list[str]) -> None:
         (output_dir / "chains" / f"{name}.run").write_text("0\n")
 
 
+def _install_stop_handlers() -> dict[int, Any]:
+    """Handle scheduler stop signals exactly like Ctrl+C; return the previous handlers."""
+    previous: dict[int, Any] = {}
+
+    def _interrupt(_signum: int, _frame: Any) -> None:
+        raise KeyboardInterrupt
+
+    for name in ("SIGTERM", "SIGHUP"):
+        signum = getattr(signal, name, None)
+        if signum is None:
+            continue
+        try:
+            previous[signum] = signal.getsignal(signum)
+            signal.signal(signum, _interrupt)
+        except (ValueError, OSError):
+            # Non-main thread or a platform that refuses the handler.
+            previous.pop(signum, None)
+    return previous
+
+
+def _restore_stop_handlers(previous: dict[int, Any]) -> None:
+    for signum, handler in previous.items():
+        try:
+            signal.signal(signum, handler)
+        except (ValueError, OSError):
+            pass
+
+
+def _terminate_end(proc: subprocess.Popen[str]) -> None:
+    """Last resort for a chain that ignored the soft stop: TERM, then KILL."""
+    try:
+        proc.terminate()
+        proc.wait(timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
 def _format_convergence_text(conv_result: dict[str, Any]) -> str:
     """Render convergence stats as ASCII-only text matching the design spec layout.
     Handles None metrics (from failed convergence tools) gracefully."""
@@ -545,6 +586,10 @@ def _format_convergence_text(conv_result: dict[str, Any]) -> str:
 def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict[str, list[str]], tools: dict[str, str], tool_versions: dict[str, str | None], params: dict[str, Any], command: str, run_start: float, nsamples: int, monitor_freq: int, burnin_frac: float, poll_interval: int, quiet: bool) -> dict[str, Any]:
     procs: dict[str, subprocess.Popen[str]] = {}
     outputs: dict[str, str] = {name: "" for name in chain_names}
+    # Bound before the handlers: a stop can arrive before the display exists.
+    conv_warnings: list[str] = []
+    live_display: Any = None
+    previous_handlers = _install_stop_handlers()
     try:
         from rich.console import Console
         from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
@@ -586,7 +631,6 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
             trace_lengths[name] = _count_trace_samples(trace_path) if trace_path.exists() else 0
         last_trace_read = time.monotonic()
         final_convergence: dict[str, Any] | None = None
-        conv_warnings: list[str] = []
         while procs:
             now = time.monotonic()
             # --- Poll .trace files every --poll-interval seconds ---
@@ -674,27 +718,64 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
             outputs[name] = log_path.read_text() if log_path.exists() else ""
         return _assemble_result(params, command, time.monotonic() - run_start, tool_versions, chain_cmds, lengths, final_convergence, outputs, False, warnings=conv_warnings, output_dir=output_dir)
     except KeyboardInterrupt:
-        if not quiet:
+        # First signal: let the running MCMC cycle finish, as Ctrl+C always has.
+        # Second signal: stop now.
+        if not quiet and live_display is not None:
             live_display.stop()
             print("\n  Caught interrupt -- sending soft-stop to all chains...")
         _soft_stop_chains(output_dir, chain_names)
         if not quiet:
             for name in chain_names:
                 print(f"    Wrote 0 -> chains/{name}.run")
-            print("    Waiting for chains to finish current cycle...")
-        for name, proc in procs.items():
-            proc.wait()
-            getattr(proc, "_phyloai_log").close()
-            if not quiet:
-                print(f"    {name} stopped at {_count_trace_samples(output_dir / 'chains' / f'{name}.trace')} samples.")
-        if not quiet:
-            print("    Running final convergence check...")
+            print("    Waiting for chains to finish current cycle (signal again to stop now)...")
+        # Write before waiting: a hard kill during the shutdown would otherwise
+        # leave no result at all. The final payload overwrites this file.
+        early_lengths = {name: _count_trace_samples(output_dir / "chains" / f"{name}.trace") for name in chain_names}
+        try:
+            (output_dir / "result.json").write_text(
+                json.dumps(
+                    _assemble_result(
+                        params, command, time.monotonic() - run_start, tool_versions,
+                        chain_cmds, early_lengths, None, {},
+                        True, warnings=["Stop requested; final convergence check pending"],
+                        output_dir=None,
+                    ),
+                    indent=2,
+                )
+            )
+        except OSError as exc:
+            conv_warnings.append(f"Could not write the early result.json: {exc}")
+        forced = False
+        try:
+            for name, proc in list(procs.items()):
+                proc.wait()
+                getattr(proc, "_phyloai_log").close()
+                if not quiet:
+                    samples = _count_trace_samples(output_dir / "chains" / f"{name}.trace")
+                    print(f"    {name} stopped at {samples} samples.")
+        except KeyboardInterrupt:
+            forced = True
+            conv_warnings.append("Second stop request: terminating the chains now")
+            for name, proc in list(procs.items()):
+                if proc.poll() is None:
+                    _terminate_end(proc)
+                log = getattr(proc, "_phyloai_log", None)
+                if log is not None and not log.closed:
+                    log.close()
         lengths = {name: _count_trace_samples(output_dir / "chains" / f"{name}.trace") for name in chain_names}
         final_convergence = None
-        if lengths:
+        if forced:
+            conv_warnings.append("Skipping final convergence check: stopped by a second request")
+        elif lengths:
             burnin = math.floor(min(lengths.values()) * burnin_frac)
             if burnin >= 10:
-                final_convergence = _run_convergence_check(output_dir, chain_names, tools, burnin)
+                if not quiet:
+                    print("    Running final convergence check...")
+                try:
+                    final_convergence = _run_convergence_check(output_dir, chain_names, tools, burnin)
+                except KeyboardInterrupt:
+                    forced = True
+                    conv_warnings.append("Second stop request: final convergence check skipped")
             else:
                 conv_warnings.append(f"Skipping convergence check: chains too short (burnin {burnin} < 10)")
         for name in chain_names:
@@ -703,6 +784,8 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
         if not quiet:
             print("    Writing result.json  (status: success)")
         return _assemble_result(params, command, time.monotonic() - run_start, tool_versions, chain_cmds, lengths, final_convergence, outputs, True, warnings=conv_warnings, output_dir=output_dir)
+    finally:
+        _restore_stop_handlers(previous_handlers)
 
 
 # ---------------------------------------------------------------------------
