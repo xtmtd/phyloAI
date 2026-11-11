@@ -149,8 +149,9 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 
 - **每 `--poll-interval` 秒：** 轮询 `.trace` 文件，更新进度显示，检查 `--nsamples` 目标。
 - **每 `--monitor-freq` 新样本：** 触发收敛检查（bpcomp + tracecomp）。
-- **Ctrl+C：** 软停止所有链，最终收敛检查，写入 `result.json`；再次收到则直接结束。
-- **SIGTERM / SIGHUP：** 与 Ctrl+C 相同；`result.json` 先写入，调度器的第二个信号直接结束。
+- **第一次 SIGINT / SIGTERM / SIGHUP：** 请求软停，写入 `stop_state.json`（`state: stop_requested`），向每个 `chains/<name>.run` 写入 `0`，等待当前轮结束，条件满足时做最终收敛检查，然后发布 `result.json` 并删除 sidecar。完成的软停为 `status: success`、退出码 0、`data.shutdown_state: "stopped"`。
+- **结果提交前的第二次信号：** 强制结束直接链进程，跳过最终收敛，发布 `status: error` 且 `data.shutdown_state: "forced"`，退出码 `128+signal`（SIGINT=130，SIGTERM=143，SIGHUP=129）。清理是 best-effort：只针对直接进程（通常是 `mpirun`）；真实 MPI 后代是否退出取决于 `mpirun` 和调度器的 process-group 处理。
+- **SIGKILL：** 无法捕获。若 `stop_state.json` 已写入，`check_status` 返回 `unknown`，不会把旧的 `success` 当成本次完成；可能没有最终 result。调度器取消前建议先向 `chains/<name>.run` 写 `0`，等链退出和收敛完成后再 cancel。
 
 ## 收敛阈值
 
@@ -168,10 +169,12 @@ phyloai tree bi pb --matrix concat/matrix.phy --dry-run
 
 | 码 | 含义 |
 |----|------|
-| 0 | 成功（链完成或被软停止） |
+| 0 | 成功（链完成或软停完成） |
 | 1 | 输入验证错误 |
 | 2 | pb_mpi 链非零退出 |
 | 3 | 必需工具未找到 |
+| 4 | 结果发布失败（备份/序列化/flush/fsync/replace）；旧 result 和 sidecar 保留 |
+| 130 / 143 / 129 | 被 SIGINT / SIGTERM / SIGHUP 强制停止（128+signal）；若已确定 forced 码，发布失败时保留该码 |
 
 ---
 

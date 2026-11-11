@@ -266,7 +266,11 @@ Commands without external tool invocations per task (e.g., `pretree metrics`, `p
 `✓¹` = MAY be `""` when per-locus diagnostic output is captured in `output/<locus>.log` (single-mode FastTree/IQ-TREE).
 `✓²` = MAY be `""` when full diagnostic output is in an external log file referenced by `data.tool_log` (wASTRAL-based commands).
 
-**`params` full?** means the `params` dict MUST include every Python parameter name from the `run_*` function signature, with its resolved value. No parameter may be silently omitted. This is the single most common source of bugs in PhyloAI JSON output — manual dict construction without a shared source of truth inevitably leads to drift.
+**`tree bi pb` stop metadata:** `data.shutdown_state` is `"completed"` only for a normal successful finish, `"stopped"` for a completed soft stop, and `"forced"` for a forced stop. `data.stop_signal` and `data.force_signal` are numeric signal numbers and are absent on normal completion. Tool-failure and input-error payloads keep their original error fields and are not forced into these three states. The top-level `status` remains `success | error`.
+
+**Internal injection parameters:** The `stop` controller parameter of `run_bi_pb()` is an internal injection parameter, not a user-facing analysis parameter. It is excluded from `params` completeness and from Click/MCP schema, matching the existing `progress_callback` precedent.
+
+**`params` full?** means the `params` dict MUST include every user-facing Python parameter name from the `run_*` function signature, with its resolved value. No user-facing parameter may be silently omitted. This is the single most common source of bugs in PhyloAI JSON output — manual dict construction without a shared source of truth inevitably leads to drift.
 
 ---
 

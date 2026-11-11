@@ -105,8 +105,8 @@ All phylogenomics commands are treated as long-running. The MCP server uses a **
 
 1. **Pre-launch**: MCP resolves and validates `--output-dir` before starting the subprocess. The resolved absolute path is returned to the caller immediately as the job handle, so the user can track the job even in a new session. If the path is invalid or conflicts with an existing directory (and `--overwrite` is not set), fail before launching.
 2. **Launch**: MCP starts the CLI command as a detached background subprocess. On launch, writes a minimal `job.json` to `output_dir` containing `{"pid": ..., "started_at": ..., "command": ...}`. If the subprocess fails to start (e.g. path error, permission denied), captures the launch stderr and returns it immediately as an error.
-3. **Track**: `check_status(output_dir)` reads `job.json`, `checkpoint.json` (if present), and `result.json` to determine state. Returns one of: `not_started | running | success | error | unknown`.
-4. **Complete**: When `result.json` appears with `status: "success"` or `status: "error"`, the job is done.
+3. **Track**: `check_status(output_dir)` reads `job.json`, `checkpoint.json` (if present), `result.json`, and `stop_state.json` (if present) to determine state. Returns one of: `not_started | running | success | error | unknown`. An active job PID still returns `running`; the response may also include `stop_state` so the caller can see a stop in progress.
+4. **Complete**: When `result.json` appears with `status: "success"` or `status: "error"` **and no `stop_state.json` remains**, the job is done. If `stop_state.json` exists while the job is not running, `check_status` returns `unknown` with `stop_state` (and `result` if readable); if the sidecar is unreadable or corrupt, it returns `unknown` with `stop_state_error`. It must not treat an old or provisional result as this run's completion. The sidecar is removed by the CLI only after the final result is published.
 
 ```json
 // check_status response (in progress)
@@ -128,6 +128,19 @@ All phylogenomics commands are treated as long-running. The MCP server uses a **
   "status": "unknown",
   "output_dir": "/abs/path/runs/tree/ml/iqtree",
   "message": "Process exited but result.json not found. Check logs/ for tool stderr."
+}
+
+// check_status response (tree bi pb stopped before finalization)
+{
+  "status": "unknown",
+  "output_dir": "/abs/path/runs/tree/bi",
+  "message": "Stop was requested but the run did not finalize; see stop_state.json",
+  "stop_state": {
+    "state": "stop_requested",
+    "pid": 12345,
+    "requested_at": "2026-11-10T12:34:56+08:00",
+    "stop_signal": 15
+  }
 }
 ```
 

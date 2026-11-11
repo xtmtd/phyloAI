@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -10,7 +12,9 @@ import pytest
 
 from phyloai.tree.bi import (
     RESUME_ALL,
+    StopController,
     _build_chain_cmd,
+    _clear_stop_state,
     _build_model_flags,
     _build_resume_cmd,
     _count_trace_samples,
@@ -23,6 +27,8 @@ from phyloai.tree.bi import (
     _status_from_metrics,
     _update_run_state_for_new_chains,
     _write_run_state,
+    _write_stop_state,
+    finalize_stop_payload,
     run_bi_pb,
 )
 
@@ -512,18 +518,313 @@ def test_run_convergence_check_warns_on_failed_tool(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_stop_before_chains_start_still_returns_a_result(tmp_path: Path, monkeypatch):
+def _stop_signals() -> list[int]:
+    signals = [signal.SIGINT, signal.SIGTERM]
+    sighup = getattr(signal, "SIGHUP", None)
+    if sighup is not None:
+        signals.append(sighup)
+    return signals
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal dispositions are required")
+def test_stop_controller_respects_inherited_sig_ign():
+    original: dict[int, object] = {}
+    try:
+        for signum in _stop_signals():
+            original[signum] = signal.getsignal(signum)
+            signal.signal(signum, signal.SIG_IGN)
+        with StopController():
+            for signum in _stop_signals():
+                assert signal.getsignal(signum) == signal.SIG_IGN
+    finally:
+        for signum, handler in original.items():
+            signal.signal(signum, handler)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal dispositions are required")
+def test_stop_controller_installs_and_restores_handlers():
+    original = {signum: signal.getsignal(signum) for signum in _stop_signals()}
+    with StopController():
+        for signum in _stop_signals():
+            assert signal.getsignal(signum) != original[signum]
+    for signum, handler in original.items():
+        assert signal.getsignal(signum) == handler
+
+
+def test_stop_controller_state_transitions_and_pending_commit():
+    stop = StopController(install_handlers=False)
+    assert not stop.requested and not stop.forced and not stop.pending_request
+
+    stop.note_signal(signal.SIGTERM)
+    assert stop.first_signal == signal.SIGTERM
+    assert stop.requested and not stop.forced and stop.pending_request
+    assert stop.begin_commit() is False
+    assert stop.phase == "stop_requested"
+
+    stop.mark_handled(1)
+    assert not stop.pending_request
+    assert stop.begin_commit() is True
+    assert stop.phase == "committing"
+
+    stop.note_signal(signal.SIGINT)
+    assert stop.force_signal is None
+    assert stop.stop_level == 1
+    assert stop.latched_signals == (signal.SIGINT,)
+
+
+def test_stop_controller_historical_request_does_not_block_commit():
+    stop = StopController(install_handlers=False)
+    stop.note_signal(signal.SIGTERM)
+    stop.mark_handled(1)
+    assert stop.requested is True
+    assert stop.pending_request is False
+    assert stop.begin_commit() is True
+
+
+def test_stop_controller_second_request_forces_and_third_is_latched():
+    stop = StopController(install_handlers=False)
+    stop.note_signal(signal.SIGTERM)
+    stop.mark_handled(1)
+    stop.note_signal(signal.SIGINT)
+    assert stop.forced is True
+    assert stop.force_signal == signal.SIGINT
+    assert stop.pending_request is True
+    assert stop.begin_commit() is False
+    assert stop.phase == "forced"
+
+    stop.mark_handled(2)
+    assert stop.pending_request is False
+    assert stop.begin_commit() is True
+    stop.note_signal(getattr(signal, "SIGHUP", signal.SIGTERM))
+    assert stop.force_signal == signal.SIGINT
+    assert stop.latched_signals == (getattr(signal, "SIGHUP", signal.SIGTERM),)
+
+
+def test_stop_controller_keyboard_interrupt_is_sigint_and_can_upgrade():
+    stop = StopController(install_handlers=False)
+    stop.note_keyboard_interrupt()
+    assert stop.first_signal == signal.SIGINT
+    assert stop.requested is True
+    stop.mark_handled(1)
+    stop.note_keyboard_interrupt()
+    assert stop.forced is True
+    assert stop.force_signal == signal.SIGINT
+
+
+def test_stop_controller_no_handlers_does_not_change_dispositions():
+    before = {signum: signal.getsignal(signum) for signum in _stop_signals()}
+    with StopController(install_handlers=False):
+        for signum in _stop_signals():
+            assert signal.getsignal(signum) == before[signum]
+
+
+def test_write_stop_state_is_minimal_and_preserves_requested_at(tmp_path: Path):
+    _write_stop_state(tmp_path, state="stop_requested", pid=123, stop_signal=signal.SIGTERM)
+    first = json.loads((tmp_path / "stop_state.json").read_text())
+    assert first["state"] == "stop_requested"
+    assert first["pid"] == 123
+    assert first["stop_signal"] == signal.SIGTERM
+    assert "chain_lengths" not in first
+    assert "forced_at" not in first
+
+    _write_stop_state(
+        tmp_path, state="forced", pid=123, stop_signal=signal.SIGTERM, force_signal=signal.SIGINT
+    )
+    second = json.loads((tmp_path / "stop_state.json").read_text())
+    assert second["state"] == "forced"
+    assert second["requested_at"] == first["requested_at"]
+    assert second["force_signal"] == signal.SIGINT
+    assert "forced_at" in second
+
+    _clear_stop_state(tmp_path)
+    assert not (tmp_path / "stop_state.json").exists()
+    _clear_stop_state(tmp_path)
+
+
+def test_finalize_late_first_request_keeps_completed_payload(tmp_path: Path):
+    stop = StopController(install_handlers=False)
+    stop.note_signal(signal.SIGTERM)
+    payload = {
+        "status": "success",
+        "error": None,
+        "data": {"interrupted": False, "shutdown_state": "completed", "warnings": []},
+    }
+    final = finalize_stop_payload(stop, payload, output_dir=tmp_path)
+    assert final["status"] == "success"
+    assert final["data"]["shutdown_state"] == "completed"
+    assert stop.pending_request is False
+    assert stop.handled_level == 1
+
+
+def test_finalize_late_second_request_forces_payload_and_sidecar(tmp_path: Path):
+    stop = StopController(install_handlers=False)
+    stop.note_signal(signal.SIGTERM)
+    stop.mark_handled(1)
+    stop.note_signal(signal.SIGINT)
+    payload = {
+        "status": "success",
+        "error": None,
+        "data": {"interrupted": True, "shutdown_state": "stopped", "warnings": []},
+    }
+    final = finalize_stop_payload(stop, payload, output_dir=tmp_path)
+    assert final["status"] == "error"
+    assert final["data"]["shutdown_state"] == "forced"
+    assert final["data"]["stop_signal"] == signal.SIGTERM
+    assert final["data"]["force_signal"] == signal.SIGINT
+    assert stop.pending_request is False
+    sidecar = json.loads((tmp_path / "stop_state.json").read_text())
+    assert sidecar["state"] == "forced"
+    assert sidecar["force_signal"] == signal.SIGINT
+
+
+def test_stop_controller_is_not_exposed_in_params(tmp_path: Path):
+    matrix = tmp_path / "m.phy"
+    matrix.write_text("2 3\na AAA\nb AAA\n")
+    payload = run_bi_pb(
+        matrix=matrix,
+        output_dir=tmp_path / "out",
+        dry_run=True,
+        stop=StopController(install_handlers=False),
+    )
+    assert "stop" not in payload["params"]
+
+
+def test_direct_call_two_ctrl_c_upgrades_to_forced(tmp_path: Path, monkeypatch):
     import rich.progress as rich_progress
 
     from phyloai.tree import bi as bi_module
 
-    before_term = signal.getsignal(signal.SIGTERM)
-    before_int = signal.getsignal(signal.SIGINT)
-    during: dict[str, object] = {}
+    (tmp_path / "chains").mkdir()
+    original_soft_stop = bi_module._soft_stop_chains
+    calls = {"soft": 0}
 
     def interrupt(*_args, **_kwargs):
-        during["term"] = signal.getsignal(signal.SIGTERM)
-        during["int"] = signal.getsignal(signal.SIGINT)
+        raise KeyboardInterrupt
+
+    def soft_stop_once(output_dir, names):
+        calls["soft"] += 1
+        if calls["soft"] == 1:
+            raise KeyboardInterrupt
+        return original_soft_stop(output_dir, names)
+
+    monkeypatch.setattr(rich_progress.Progress, "add_task", interrupt)
+    monkeypatch.setattr(bi_module, "_soft_stop_chains", soft_stop_once)
+
+    payload = bi_module._run_bi_processes(
+        output_dir=tmp_path,
+        chain_names=["chain1"],
+        chain_cmds={"chain1": ["true"]},
+        tools={"bpcomp": "bpcomp", "tracecomp": "tracecomp"},
+        tool_versions={},
+        params={},
+        command="phyloai tree bi pb",
+        run_start=time.monotonic(),
+        nsamples=-1,
+        monitor_freq=100,
+        burnin_frac=0.5,
+        poll_interval=1,
+        quiet=True,
+    )
+
+    assert payload["status"] == "error"
+    assert payload["data"]["shutdown_state"] == "forced"
+    assert payload["data"]["force_signal"] == signal.SIGINT
+    sidecar = json.loads((tmp_path / "stop_state.json").read_text())
+    assert sidecar["state"] == "forced"
+
+
+def test_failed_chain_second_signal_forces_remaining_chain(tmp_path: Path, monkeypatch):
+    from phyloai.tree import bi as bi_module
+
+    (tmp_path / "chains").mkdir()
+    entered = threading.Event()
+    original_soft_stop = bi_module._soft_stop_chains
+
+    def soft_stop_and_signal(output_dir, names):
+        entered.set()
+        return original_soft_stop(output_dir, names)
+
+    monkeypatch.setattr(bi_module, "_soft_stop_chains", soft_stop_and_signal)
+    stop = StopController(install_handlers=False)
+
+    def send_signals():
+        if entered.wait(timeout=5):
+            stop.note_signal(signal.SIGTERM)
+            time.sleep(0.2)
+            stop.note_signal(signal.SIGINT)
+
+    thread = threading.Thread(target=send_signals)
+    thread.start()
+    payload = bi_module._run_bi_processes(
+        output_dir=tmp_path,
+        chain_names=["chain1", "chain2"],
+        chain_cmds={
+            "chain1": ["sh", "-c", "exit 1"],
+            "chain2": ["sh", "-c", "echo $$ > chain2.pid; trap '' TERM; while :; do sleep 1; done"],
+        },
+        tools={"bpcomp": "bpcomp", "tracecomp": "tracecomp"},
+        tool_versions={},
+        params={},
+        command="phyloai tree bi pb",
+        run_start=time.monotonic(),
+        nsamples=-1,
+        monitor_freq=100,
+        burnin_frac=0.5,
+        poll_interval=1,
+        quiet=True,
+        stop=stop,
+    )
+    thread.join(timeout=10)
+
+    assert payload["status"] == "error"
+    assert "chain1 exited with code 1" in payload["error"]
+    assert payload["data"]["shutdown_state"] == "forced"
+    assert payload["data"]["force_signal"] == signal.SIGINT
+    sidecar = json.loads((tmp_path / "stop_state.json").read_text())
+    assert sidecar["state"] == "forced"
+    child_pid = int((tmp_path / "chains" / "chain2.pid").read_text())
+    with pytest.raises(OSError):
+        os.kill(child_pid, 0)
+
+
+def test_matrix_conversion_failure_preserves_stale_stop_state(tmp_path: Path):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    for name in ("pb_mpi", "bpcomp", "tracecomp"):
+        tool = tools / name
+        tool.write_text("#!/bin/sh\nexit 0\n")
+        tool.chmod(0o755)
+
+    matrix = tmp_path / "matrix.fa"
+    matrix.write_text(">a\nAAAA\n>b\nAAA\n")
+    out = tmp_path / "out"
+    out.mkdir()
+    state = _state_payload(
+        ["chain1"], matrix.resolve(), _build_model_flags("gtr", "auto", 4, None, None),
+        sample_freq=1, nsamples=-1, threads=2, model="gtr", mixture="auto", gamma_cats=4,
+    )
+    (out / "run_state.json").write_text(json.dumps(state))
+    (out / "stop_state.json").write_text(json.dumps({"state": "stop_requested", "pid": 1, "stop_signal": 15}))
+
+    with pytest.raises(ValueError):
+        run_bi_pb(
+            matrix=matrix,
+            output_dir=out,
+            chain_names="chain2",
+            threads=2,
+            pb_path=tools,
+            quiet=True,
+        )
+
+    assert json.loads((out / "stop_state.json").read_text())["state"] == "stop_requested"
+
+
+def test_direct_call_stop_before_chains_start_records_sidecar(tmp_path: Path, monkeypatch):
+    import rich.progress as rich_progress
+
+    from phyloai.tree import bi as bi_module
+
+    def interrupt(*_args, **_kwargs):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(rich_progress.Progress, "add_task", interrupt)
@@ -546,11 +847,37 @@ def test_stop_before_chains_start_still_returns_a_result(tmp_path: Path, monkeyp
     )
 
     assert payload["data"]["interrupted"] is True
-    assert (tmp_path / "result.json").exists()
-    assert during["term"] is not before_term, "SIGTERM is not handled during the run"
-    assert during["int"] is before_int, "Ctrl+C keeps its disposition"
-    assert signal.getsignal(signal.SIGTERM) is before_term, "the previous handler is not restored"
-    assert signal.getsignal(signal.SIGINT) is before_int
+    assert payload["data"]["shutdown_state"] == "stopped"
+    assert (tmp_path / "stop_state.json").exists()
+    assert not (tmp_path / "result.json").exists()
+
+
+def test_stop_before_launch_does_not_start_chains(tmp_path: Path):
+    from phyloai.tree import bi as bi_module
+
+    (tmp_path / "chains").mkdir()
+    stop = StopController(install_handlers=False)
+    stop.note_signal(signal.SIGTERM)
+    payload = bi_module._run_bi_processes(
+        output_dir=tmp_path,
+        chain_names=["chain1"],
+        chain_cmds={"chain1": ["sh", "-c", "echo started > started"]},
+        tools={"bpcomp": "bpcomp", "tracecomp": "tracecomp"},
+        tool_versions={},
+        params={},
+        command="phyloai tree bi pb",
+        run_start=time.monotonic(),
+        nsamples=-1,
+        monitor_freq=100,
+        burnin_frac=0.5,
+        poll_interval=1,
+        quiet=True,
+        stop=stop,
+    )
+
+    assert payload["data"]["shutdown_state"] == "stopped"
+    assert not (tmp_path / "chains" / "started").exists()
+    assert (tmp_path / "stop_state.json").exists()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signals and a shell stub are required")

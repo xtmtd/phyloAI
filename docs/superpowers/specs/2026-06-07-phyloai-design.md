@@ -362,6 +362,10 @@ This section defines binding conventions for all subcommand implementations. Per
 | `1` | User input error (bad parameter, file not found, invalid value) |
 | `2` | External tool execution failed (non-zero returncode from subprocess) |
 | `3` | Environment error (required tool not installed or not detectable) |
+| `4` | Result publication failed (backup/serialize/flush/fsync/replace); currently used by `tree bi pb` |
+| `128+signal` | Interrupted by a signal; currently used by `tree bi pb` forced stop: SIGINT=130, SIGTERM=143, SIGHUP=129 |
+
+`4` and `128+signal` are command-specific extensions; command specs must state their exact meaning and preserve the existing 0/1/2/3 semantics.
 
 ### 9.4 JSON Output Schema
 

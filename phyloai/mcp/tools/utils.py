@@ -15,6 +15,9 @@ _schema_cache: dict[str, dict] | None = None
 def check_status(output_dir: str) -> dict:
     """Inspect an output directory and return job state."""
     od = Path(output_dir).resolve()
+    stop_path = od / "stop_state.json"
+    stop_exists = stop_path.exists()
+    stop_state = _read_json(stop_path)
 
     job = read_job_json(od)
     if job is not None:
@@ -26,9 +29,37 @@ def check_status(output_dir: str) -> dict:
                 response: dict = {"status": "running", "output_dir": str(od)}
                 if checkpoint is not None:
                     response["checkpoint"] = checkpoint
+                if stop_exists:
+                    if stop_state is not None:
+                        response["stop_state"] = stop_state
+                    else:
+                        response["stop_state_error"] = "stop_state.json is unreadable or invalid"
                 return response
             except (OSError, ValueError):
                 pass
+
+    # A stop sidecar takes precedence over any result file: an old or
+    # provisional result must not be reported as this run's completion. A
+    # corrupt sidecar is still a stop record and must not fall back to a
+    # stale success.
+    if stop_exists:
+        response = {
+            "status": "unknown",
+            "output_dir": str(od),
+            "message": (
+                "Stop was requested but the run did not finalize; see stop_state.json"
+                if stop_state is not None
+                else "stop_state.json is unreadable or invalid; the run did not finalize cleanly"
+            ),
+        }
+        if stop_state is not None:
+            response["stop_state"] = stop_state
+        else:
+            response["stop_state_error"] = "stop_state.json is unreadable or invalid"
+        result = _read_json(od / "result.json")
+        if result is not None:
+            response["result"] = result
+        return response
 
     result = _read_json(od / "result.json")
     if result is not None:
