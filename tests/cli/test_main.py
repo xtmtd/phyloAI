@@ -13,8 +13,8 @@ def test_root_help_does_not_expose_config_option() -> None:
     assert "YAML config" not in result.output
 
 
-def test_version_is_0_5_0() -> None:
+def test_version_is_0_5_1() -> None:
     result = CliRunner().invoke(cli, ["--version"])
 
     assert result.exit_code == 0
-    assert "0.5.0" in result.output
+    assert "0.5.1" in result.output
