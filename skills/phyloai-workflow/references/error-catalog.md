@@ -1,6 +1,6 @@
 # Error Catalog
 
-Use this for exit code 1 and 3 errors. Exit code 2 is external-tool stderr diagnosis.
+Use this for exit code 1 and 3 errors. Exit code 2 is external-tool stderr diagnosis. Exit code 4 is result publication failure. Exit codes 130/143/129 are forced stops by SIGINT/SIGTERM/SIGHUP (`128+signal`).
 
 ## Exit 1: Missing Required Parameter
 Pattern: `Missing option`, `is required`
@@ -72,3 +72,11 @@ Notes:
 ## Exit 3: Runtime Missing
 Pattern: `Java`, `Julia`, `MPI`
 Fix: Show the same missing-tool fix card. Link Java and Julia to the Runtime Dependencies section of `docs/commands/installation.md`; link MPI-related failures to the Bayesian Inference section.
+
+## Exit 4: Result Publication Failed
+Pattern: `Could not back up existing result.json`, `Could not publish result.json`
+Fix: Check output-directory permissions and free space. The old `result.json` and `stop_state.json` are preserved when publication fails. Do not claim success; the run may have completed but its result was not published.
+
+## Exit 130 / 143 / 129: Forced Stop
+Pattern: `Run forcibly stopped by a second stop signal`
+Fix: Read `result.json` and `stop_state.json`. `data.shutdown_state: forced` means the second signal terminated chains and skipped final convergence. Report the stop state; do not treat it as a completed analysis. A forced code is preserved if final publication also fails.

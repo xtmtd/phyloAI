@@ -124,6 +124,13 @@ def _validate_data_section(data: dict[str, Any]) -> None:
         assert isinstance(data["tool_log"], str), \
             f"data.tool_log must be a str, got {type(data['tool_log'])}"
 
+    if "shutdown_state" in data:
+        assert data["shutdown_state"] in ("completed", "stopped", "forced"), \
+            f"data.shutdown_state must be completed/stopped/forced, got {data['shutdown_state']!r}"
+    for field in ("stop_signal", "force_signal"):
+        if field in data:
+            assert isinstance(data[field], int), f"data.{field} must be an int"
+
     for f in data.get("files", []):
         assert isinstance(f, dict), "files[] entries must be dicts"
         if "cmd" in f:

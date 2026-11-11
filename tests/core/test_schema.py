@@ -1,7 +1,18 @@
 # tests/core/test_schema.py
+import json
+import os
+import stat
+
 import pytest
 from pathlib import Path
-from phyloai.core.schema import MSACollection, TreeSet, RunRecord, ToolResult
+from phyloai.core.schema import (
+    MSACollection,
+    RunRecord,
+    ToolResult,
+    TreeSet,
+    save_json_atomic,
+    write_result_json,
+)
 
 
 def test_msa_collection_requires_directory():
@@ -96,3 +107,39 @@ def test_run_record_explicit_version():
     from pathlib import Path
     record = RunRecord(run_dir=Path("./runs"), phyloai_version="9.9.9")
     assert record.phyloai_version == "9.9.9"
+
+
+def test_write_result_json_uses_atomic_helper(tmp_path):
+    write_result_json({"status": "success", "data": {}}, tmp_path)
+    assert json.loads((tmp_path / "result.json").read_text()) == {"status": "success", "data": {}}
+
+
+def test_save_json_atomic_preserves_target_on_serialization_failure(tmp_path):
+    target = tmp_path / "result.json"
+    target.write_text('{"old": true}')
+    with pytest.raises(TypeError):
+        save_json_atomic(target, {"bad": object()})
+    assert json.loads(target.read_text()) == {"old": True}
+    assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
+
+
+def test_save_json_atomic_preserves_target_on_replace_failure(tmp_path, monkeypatch):
+    target = tmp_path / "result.json"
+    target.write_text('{"old": true}')
+
+    def fail_replace(*_args, **_kwargs):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+    with pytest.raises(OSError, match="replace failed"):
+        save_json_atomic(target, {"new": True})
+    assert json.loads(target.read_text()) == {"old": True}
+    assert not [p for p in tmp_path.iterdir() if p.name.endswith(".tmp")]
+
+
+def test_save_json_atomic_preserves_existing_mode(tmp_path):
+    target = tmp_path / "result.json"
+    target.write_text('{"old": true}')
+    os.chmod(target, 0o640)
+    save_json_atomic(target, {"new": True})
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640

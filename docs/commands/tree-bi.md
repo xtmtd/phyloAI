@@ -159,8 +159,9 @@ Resume: `mpirun -np <threads> pb_mpi <chainname>`
 
 - **Every `--poll-interval` sec:** poll `.trace` files, update progress display, check `--nsamples` target.
 - **Every `--monitor-freq` new samples:** trigger convergence check (bpcomp + tracecomp).
-- **Ctrl+C:** soft-stop all chains, final convergence check, write `result.json`; a second one stops at once.
-- **SIGTERM / SIGHUP:** same path; `result.json` is written first, the scheduler's second signal skips the wait.
+- **First SIGINT / SIGTERM / SIGHUP:** request a soft stop, write `stop_state.json` (`state: stop_requested`), write `0` to every `chains/<name>.run`, wait for the current cycle, run the final convergence check when eligible, then publish `result.json` and remove the sidecar. A completed soft stop is `status: success`, exit 0, `data.shutdown_state: "stopped"`.
+- **Second signal before the result commit:** force-stop the direct chain processes, skip the final convergence check, publish `status: error` with `data.shutdown_state: "forced"`, and exit `128+signal` (SIGINT=130, SIGTERM=143, SIGHUP=129). Cleanup is best-effort: it targets the direct process (normally `mpirun`); real MPI descendants depend on `mpirun` and the scheduler's process-group handling.
+- **SIGKILL:** cannot be caught. If `stop_state.json` was already written, `check_status` reports `unknown` instead of a stale `success`; no final result may be written. For a clean scheduler stop, write `0` to `chains/<name>.run` first, wait for chain exit and convergence, then cancel.
 
 ## Convergence Thresholds
 
@@ -186,6 +187,7 @@ runs/tree/bi/
 │   ├── bpcomp_all.{bpdiff,bplist,con.tre}
 │   └── ...
 ├── run_state.json
+├── stop_state.json      # transient: only after a stop request; removed after final publish
 └── result.json
 ```
 
@@ -193,10 +195,12 @@ runs/tree/bi/
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (chains completed or soft-stopped) |
+| 0 | Success (chains completed or a completed soft stop) |
 | 1 | Input validation error |
 | 2 | pb_mpi chain non-zero exit |
 | 3 | Required tool not found |
+| 4 | Result publication failed (backup/serialize/flush/fsync/replace); old result and sidecar preserved |
+| 130 / 143 / 129 | Forced stop by SIGINT / SIGTERM / SIGHUP (128+signal); an already-selected forced code is preserved if publication also fails |
 
 ---
 

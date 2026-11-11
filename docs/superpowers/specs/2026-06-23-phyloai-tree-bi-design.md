@@ -18,7 +18,7 @@
 
 `phyloai tree bi pb` performs Bayesian phylogenetic inference using PhyloBayes-MPI (`pb_mpi`). It runs N independent MCMC chains in parallel, monitors convergence in real time via `bpcomp` and `tracecomp`, and generates a consensus tree when chains are stopped.
 
-Unlike `ml` and `msc`, `bi pb` is a long-running interactive command — chains may run for hours or days. The command stays alive throughout, providing a live progress display and periodic convergence statistics. The user terminates chains via Ctrl+C (soft-stop) or by pre-specifying a sample target.
+Unlike `ml` and `msc`, `bi pb` is a long-running interactive command — chains may run for hours or days. The command stays alive throughout, providing a live progress display and periodic convergence statistics. The user terminates chains via a stop signal (Ctrl+C/SIGINT, SIGTERM, or SIGHUP; soft-stop) or by pre-specifying a sample target.
 
 `bi pb` is registered as a subcommand of the `tree bi` group. The command is:
 
@@ -81,7 +81,7 @@ The effective names list is resolved as: if `--chain-names` is given, use it; el
 | `--sample-freq` | int | `1` | `-x <every>` | Save one MCMC point every N cycles. |
 | `--nsamples` | int | `-1` | `-x <every> <until>` | Total MCMC cycles per chain after which pb_mpi stops (pb_mpi `-x <until>`). The number of saved points is `nsamples / sample_freq` (since samples are taken every `sample_freq` cycles). `-1` = run forever (passed to pb_mpi as `<until>`; pb_mpi interprets `-1` as indefinite). |
 
-To stop a forever-running chain: use Ctrl+C (phyloai sends soft-stop), or directly write `echo 0 > chains/<chainname>.run`.
+To stop a forever-running chain: use a stop signal (`Ctrl+C`/SIGINT, SIGTERM, or SIGHUP; phyloai sends soft-stop), or directly write `echo 0 > chains/<chainname>.run`.
 
 #### Convergence Monitoring
 
@@ -115,8 +115,8 @@ Usage: phyloai tree bi pb [OPTIONS]
 
   Runs N independent MCMC chains in parallel using mpirun + pb_mpi, monitors
   convergence in real time via bpcomp and tracecomp, and generates a consensus
-  tree. Chains run until stopped: use Ctrl+C for a safe soft-stop, or set
-  --nsamples to stop automatically after N MCMC cycles.
+  tree. Chains run until stopped: use Ctrl+C / SIGTERM / SIGHUP for a safe
+  soft-stop, or set --nsamples to stop automatically after N MCMC cycles.
 
   Examples:
     # Standard: 3 chains, CAT-GTR, 4 MPI processes each, run forever
@@ -177,6 +177,8 @@ click.rich_click.OPTION_GROUPS["phyloai tree bi"] = [
 5. Write `output_dir/run_state.json` (fresh run only; not overwritten on resume). This file persists parameters needed for resume (see Section 3.4).
 6. Build and launch all chain processes in parallel (`subprocess.Popen`), working directory = `output_dir/chains/`.
 7. Enter monitoring loop.
+
+**Signal lifecycle:** `bi_pb_command()` installs a command-local `StopController` for `SIGINT`, `SIGTERM`, and `SIGHUP` before calling `run_bi_pb()`, and keeps it active through final result publication and sidecar cleanup. The library never installs or restores handlers on the CLI path. Signals inherited as `SIG_IGN` remain ignored. Direct library calls use a controller that does not install handlers but still records stop requests; a single `KeyboardInterrupt` fallback at the unified execution/stop loop boundary preserves Ctrl+C soft-stop, and a second Ctrl+C upgrades to forced stop. See Sections 5.2, 7, and 9.2.
 
 ### 3.2 Chain Commands
 
@@ -241,9 +243,11 @@ The main thread runs a monitoring loop while chain subprocesses are alive:
 
 **Every `--monitor-freq` new samples** (measured as: `min_chain_length - last_check_length >= monitor_freq`): trigger a convergence check (Section 4). Convergence output is printed via `live_display.stop()` → `console.print()` → `live_display.start()` to ensure visibility during active Rich Live rendering.
 
-**On Ctrl+C:** capture `SIGINT`, immediately call `live_display.stop()`, write `0` to all `chains/<chainname>.run` files, print soft-stop messages, wait for all subprocesses to exit (they finish their current cycle), then run a final convergence check and write `result.json`.
+**On a stop signal (`SIGINT`, `SIGTERM`, or `SIGHUP` not inherited as `SIG_IGN`):** the first request sets `stop_requested`, writes `output_dir/stop_state.json` with `state: "stop_requested"`, immediately calls `live_display.stop()`, writes `0` to all `chains/<chainname>.run` files, prints soft-stop messages, and waits for all subprocesses to exit (they finish their current cycle). If the sample threshold is met, run the final convergence check; the CLI then writes the final `result.json` and removes the sidecar.
 
-**On subprocess exit:** if any chain exits with non-zero return code, mark it as failed. If all chains exit normally (zero return code or soft-stopped), write `result.json` with `status: "success"`.
+A second request before the commit decision is fixed upgrades to forced stop: terminate remaining direct chain processes, skip final convergence, write a final error payload with `data.shutdown_state: "forced"`, and exit with `128+signal` (see Sections 5.2 and 10). Requests after the commit decision is fixed are latched and do not change the result. `SIGKILL` cannot be caught; the sidecar remains if it was already written, and `check_status` reports `unknown` rather than a preserved `success`.
+
+**On subprocess exit:** if any chain exits with non-zero return code, mark it as failed. Remaining chains are soft-stopped with the same bounded wait/controller checks as a normal stop; a second signal forces them, and the original chain-failure message is preserved. If all chains exit normally (zero return code or soft-stopped), the CLI writes `result.json` with `status: "success"` and the appropriate `data.shutdown_state`.
 
 ---
 
@@ -354,22 +358,32 @@ Notification messages below the separator are tiered:
 
 Status labels are ASCII: `good`, `ok`, `no`. The old label `[not converged]` is replaced by per-column `no` for each tool, making it clear which metric is failing.
 
-### 5.2 Ctrl+C Soft-Stop
+### 5.2 Stop Signals and Soft-Stop
 
-The `KeyboardInterrupt` handler immediately calls `live_display.stop()` to release the console, then prints each step of the shutdown sequence:
+`SIGINT`, `SIGTERM`, and `SIGHUP` use one command-local `StopController`; inherited `SIG_IGN` is respected. The first request is a soft stop. The controller records the first signal number in `stop_state.json` and `data.stop_signal`; it does not clear the request after the action completes. `stop_level`/`handled_level` distinguish a historical request from a still-pending one. `handled_level` means the corresponding stop action has reached the **submission-ready condition**, not merely that a request was sent.
+
+The soft-stop path immediately calls `live_display.stop()` to release the console, then prints each step:
 
 ```
 ^C  Caught interrupt -- sending soft-stop to all chains...
     Wrote 0 -> chains/chain1.run
     Wrote 0 -> chains/chain2.run
     Wrote 0 -> chains/chain3.run
-    Waiting for chains to finish current cycle...
+    Waiting for chains to finish current cycle (signal again to stop now)...
     chain1 stopped at 6423 samples.
     chain2 stopped at 6420 samples.
     chain3 stopped at 6421 samples.
     Running final convergence check...
     Writing result.json  (status: success)
 ```
+
+A second request before the commit decision is fixed upgrades to forced stop: terminate remaining direct chain processes (`terminate` → bounded wait → `kill` if needed), skip the final convergence check, and publish an error payload with `data.shutdown_state: "forced"`, `data.stop_signal`, and `data.force_signal`. The CLI exits with `128 + force_signal` (SIGINT=130, SIGTERM=143, SIGHUP=129). A third or later signal only latches the forced request; it does not repeat cleanup. `stop_state.json` records `state: "forced"`.
+
+**Cleanup is best-effort:** it targets the direct chain process (normally `mpirun`). Whether all real MPI descendants exit depends on `mpirun` and the scheduler's process-group handling; PhyloAI does not scan or guarantee the full MPI process tree.
+
+`stop_state.json` is written by the library (`phyloai/tree/bi.py`) and removed by the CLI only after the final `result.json` is published. If the result being published was a normal or soft-stop success (original exit 0), a backup/serialize/flush/fsync/replace failure preserves the old `result.json` and the sidecar and exits **4**. If a forced code (130/143/129) was already selected, that code is preserved and the publication error is reported; existing 1/2/3 error handling is unchanged. See Section 10. If the process is killed, the sidecar remains and `check_status` returns `unknown` rather than a stale `success`. `SIGKILL` cannot be caught.
+
+**Direct library calls:** when no controller is passed, the library uses a controller with `install_handlers=False` and a single fallback at the unified execution/stop loop boundary. Each `KeyboardInterrupt` is fed to the same controller: the first soft-stops, the second forces. The shutdown work runs outside the `except` body so a second Ctrl+C is not lost.
 
 ---
 
@@ -403,8 +417,11 @@ runs/tree/bi/
 │   ├── tracecomp_chain1_chain3.contdiff
 │   └── tracecomp_chain2_chain3.contdiff
 │
+├── stop_state.json       # Transient stop state; only after a stop request, removed after final result
 └── result.json
 ```
+
+`stop_state.json` is an auxiliary sidecar, not a result file. The library writes/updates it; the CLI removes it after the final `result.json` is published. It contains `state` (`stop_requested` or `forced`), `pid`, `requested_at`, `stop_signal`, and on forced stop `forced_at`/`force_signal`. It may remain after a hard kill; `check_status` uses it to avoid reporting a stale success. A new run clears a stale sidecar only after input preparation (including matrix conversion) and chain-command validation succeed and the run is accepted; rejected runs, input-conversion failures, and chain-command validation failures do not modify it.
 
 ---
 
@@ -493,6 +510,8 @@ Follows the JSON output standard (`2026-06-21-phyloai-json-output-standard.md`).
       "chain3": ""
     },
     "interrupted": true,
+    "shutdown_state": "stopped",
+    "stop_signal": 2,
     "output_files": {
       "trace_plots": {
         "path": "/abs/path/trace_plots.pdf",
@@ -507,8 +526,11 @@ Follows the JSON output standard (`2026-06-21-phyloai-json-output-standard.md`).
 **Notes:**
 - `data.chain_cmds` records the actual argv lists executed (fresh run format or resume format).
 - `data.tool_stderr` contains merged stdout+stderr per chain (per JSON standard section 5.3: field name is legacy but content is merged output). pb_mpi writes diagnostics to stdout; both streams are captured and written to `chains/<chainname>.log`. The `tool_stderr` field in result.json holds this merged content (or references the log file if content is large). The JSON standard `tool_log` field may also be used: `"tool_logs": {"chain1": "chains/chain1.log", ...}`.
-- `data.interrupted`: `true` if stopped via Ctrl+C before reaching `--nsamples`; `false` if chains exited normally.
-- `status: "success"` for both normal exit and Ctrl+C soft-stop. `status: "error"` only if pb_mpi exits with non-zero return code.
+- `data.interrupted`: `true` if stopped by a stop signal before reaching `--nsamples`; `false` if chains exited normally.
+- `data.shutdown_state`: `"completed"` only for a normal successful finish; `"stopped"` for a completed soft stop; `"forced"` for a forced stop. Tool-failure and input-error payloads keep their original error fields and are not forced into these three states.
+- `data.stop_signal` is the numeric first stop signal; `data.force_signal` is the numeric signal that first upgraded to forced stop. They are absent on normal completion.
+- `status: "success"` for normal exit and completed soft-stop; `status: "error"` for forced stop and for pb_mpi non-zero exit. Forced stop exits with `128+force_signal` (SIGINT=130, SIGTERM=143, SIGHUP=129). A result-publication failure changes an original success 0 to 4; an already-selected forced code is preserved and the publication error is reported (see Section 10).
+- `result.json` is written only by the CLI. The library writes `stop_state.json` only; it does not write `result.json`.
 - `tool_versions.pb_mpi/bpcomp/tracecomp`: detected by searching for version-bearing files (e.g. `pb_mpiManual*.pdf`, `VERSION`, `CHANGELOG`) in the tool's parent directory using glob + regex. Falls back to `null` if not found.
 
 ### 7.1 JSON Standard Compliance Note
@@ -592,11 +614,14 @@ PhyloBayes MPI
 
 ### 9.1 CLI Layer (`cli/commands/tree.py`)
 
-- Register `bi` as a `@tree.command()` (direct command, not a group).
-- Add `"bi"` to `_TreeGroup.list_commands()`.
-- Register `OPTION_GROUPS` for `"phyloai tree bi"`.
-- Import and call `run_bi()` from `phyloai/tree/bi.py`.
-- Handle exit codes: 3 = tool not found, 2 = execution error, 1 = input error.
+`tree bi` is a Click group with the four subcommands defined in `2026-07-26-phyloai-tree-bi-subcommands-design.md`; `bi pb` is the command described here.
+
+- `bi_pb_command()` imports and calls `run_bi_pb()` from `phyloai/tree/bi.py`.
+- It installs the command-local `StopController` and keeps it active through result publication and sidecar cleanup.
+- **Late-request handoff:** only the CLI final publisher calls `begin_commit()`. If `run_bi_pb()` has already returned and a signal arrives before commit, the CLI must call the library's finalization API (name implementation-defined) with the existing run context to process the request, update `stop_state.json`, and rebuild the payload, then retry commit. It must **not** call `run_bi_pb()` again or restart preparation/chains.
+- It is the sole writer of `result.json`. It backs up an existing result only when a new result is ready to publish; it does not delete old results at startup.
+- It publishes final/error results through the shared atomic JSON helper, removes `stop_state.json` after a successful publish, and preserves the sidecar on publication failure.
+- Exit codes: 0 normal/soft stop, 1 input error, 2 tool failure, 3 tool missing, 4 result publication failure for an original success 0 (a selected forced code is preserved), 128+signal forced stop.
 
 ### 9.2 Library Layer (`phyloai/tree/bi.py`)
 
@@ -613,8 +638,10 @@ _build_resume_cmd()           # builds resume argv list
 _build_model_flags()          # assembles -cat/-ncat/-dgam/tree flags
 _count_trace_samples()        # safe .trace parser
 _prepare_matrix()             # FASTA→PHYLIP conversion
+StopController                # signal state/lifecycle; no disk I/O or subprocess termination
 _state_payload()              # run_state.json dict
 _write_run_state()            # persist run_state
+_write_stop_state()           # atomic stop_state.json write/update
 _read_run_state()             # read run_state
 _update_run_state_for_new_chains()
 _resolve_resume_names()
@@ -628,13 +655,13 @@ _format_convergence_text()    # 6-column ASCII table + per-column status; also w
 _generate_trace_plots()       # matplotlib PDF
 _soft_stop_chains()           # writes 0 to .run files
 _assemble_result()            # builds result.json dict
-_run_bi_processes()           # Rich Live (stop→print→start) + convergence checks + Ctrl+C handler
-run_bi()                      # main entry point
+_run_bi_processes()           # Rich Live (stop→print→start) + convergence checks + stop controller
+run_bi_pb()                   # main entry point
 ```
 
-`run_bi()` signature:
+`run_bi_pb()` signature:
 ```python
-def run_bi(
+def run_bi_pb(
     matrix: Path,
     output_dir: Path,
     overwrite: bool,
@@ -656,10 +683,16 @@ def run_bi(
     pb_path: Path | None,
     dry_run: bool,
     quiet: bool,
+    *,
+    stop: StopController | None = None,
 ) -> dict:
 ```
 
-The `params` dict is built from these exact parameter names at the top of `run_bi()` and reused in all return paths.
+`stop` is an internal injection parameter, not a user-facing analysis parameter; it does not appear in Click/MCP schema, `command`, `params`, or parameter-completeness assertions (same precedent as `progress_callback`). The `params` dict is built from the user-facing parameter names at the top of `run_bi_pb()` and reused in all return paths.
+
+`run_bi_pb()` still returns a payload dict and never writes `result.json`. It writes only `stop_state.json` on a stop request. The CLI is the sole writer of `result.json`.
+
+`run_bi_pb()` does not call `begin_commit()`. It exposes a finalization API that the CLI calls with the existing run context when a late pending request is discovered after the library has returned. That API processes the request, updates the sidecar, and returns a rebuilt payload for another commit attempt; it must not restart analysis or launch chains.
 
 ---
 
@@ -667,10 +700,16 @@ The `params` dict is built from these exact parameter names at the top of `run_b
 
 | Code | Meaning |
 |------|---------|
-| 0 | Success (chains completed or soft-stopped) |
+| 0 | Success (chains completed or completed soft-stop) |
 | 1 | Input validation error |
 | 2 | Tool execution failed (pb_mpi non-zero exit) |
 | 3 | Required tool not found (pb_mpi, bpcomp, tracecomp, or mpirun) |
+| 4 | Result publication failed (backup/serialize/flush/fsync/replace); old result and sidecar preserved |
+| 130 | Forced stop by SIGINT (128+2) |
+| 143 | Forced stop by SIGTERM (128+15) |
+| 129 | Forced stop by SIGHUP (128+1) |
+
+A forced stop writes `status: "error"` with `data.shutdown_state: "forced"`, `data.stop_signal`, and `data.force_signal` before exiting with `128 + force_signal`. If a forced stop's final publication fails, the forced code is preserved and the publication error is reported; only an original success 0 becomes 4. `SIGKILL` cannot be caught and has no phyloai-authored exit code.
 
 ---
 
@@ -678,7 +717,10 @@ The `params` dict is built from these exact parameter names at the top of `run_b
 
 - **Parent design** (`2026-06-07-phyloai-design.md`): output dir convention `runs/tree/bi/`, execution mode single, exit codes.
 - **Tree design** (`2026-06-17-phyloai-tree-design.md`): `bi` is defined as owning Bayesian inference; this doc supersedes the placeholder section there.
-- **JSON standard** (`2026-06-21-phyloai-json-output-standard.md`): `bi` conforms with a multi-chain extension of the single pattern.
+- **JSON standard** (`2026-06-21-phyloai-json-output-standard.md`): `bi` conforms with a multi-chain extension of the single pattern; stop metadata uses `data.shutdown_state`, `stop_signal`, and `force_signal`.
+- **Subcommands design** (`2026-07-26-phyloai-tree-bi-subcommands-design.md`): `tree bi` is a group; `bi pb` is this command. The library may write only the `stop_state.json` auxiliary sidecar, never `result.json`.
+- **AI integration design** (`2026-06-27-phyloai-ai-integration-design.md`): `check_status` reads `stop_state.json`; an existing sidecar yields `unknown` plus `stop_state` even if an old result is present.
+- **Checkpoint/resume design** (`2026-06-12-checkpoint-resume-design.md`): atomic write pattern (temporary file + `os.replace`) is reused for `result.json` and `stop_state.json`.
 - **doctor design** (`2026-06-18-phyloai-doctor-design.md`): add PhyloBayes MPI tool group.
 - **posttree**: `readpb_mpi` is registered in `TOOL_REGISTRY` here but not required; its use will be defined in the posttree spec.
 - **doctor design** (`2026-06-18-phyloai-doctor-design.md`): the registry table and doctor output section must be updated to include `bpcomp`, `tracecomp`, `readpb_mpi`, and `mpirun` in a new "PhyloBayes MPI" group. The existing `pb_mpi` entry moves into that group. Doctor tests must be updated accordingly.

@@ -195,6 +195,8 @@ Stub tools (return "not yet available"): `posttree_signal`, `posttree_simulate`,
 | `read_report` | Read `report.json` from a run directory (looks under `<run_dir>/report/`). |
 | `get_command_schema` | Get runtime parameter schema (names, types, defaults, choices, help) for any tool. |
 
+`check_status` also reads `stop_state.json` (used by `tree bi pb`). If a sidecar exists while the job is not running, it returns `unknown` with `stop_state`; a readable `result` may be attached but is not treated as this run's completion. If the sidecar is unreadable or corrupt, the response still returns `unknown` with `stop_state_error`; it never falls back to a stale success. The CLI removes the sidecar only after final result publication, so a sidecar means the run did not finish its commit (or cleanup failed).
+
 ## Skill Reference Files
 
 The Skill at `skills/phyloai-workflow/` includes:

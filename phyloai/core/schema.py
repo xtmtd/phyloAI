@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -115,8 +118,47 @@ class RunRecord:
         }
 
 
-def write_result_json(payload: dict[str, Any], output_dir: Path) -> None:
+def _create_temp_target(path: Path) -> tuple[Path, int]:
+    """Create a unique temporary file in the target directory."""
+    for _ in range(100):
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp")
+        try:
+            fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+        except FileExistsError:
+            continue
+        return tmp, fd
+    raise OSError(f"Could not create a temporary file next to {path}")
+
+
+def save_json_atomic(path: Path, payload: dict[str, Any], *, fsync: bool = False) -> None:
+    """Atomically publish JSON, preserving an existing target and its mode.
+
+    A reader never sees a half-written target: the payload is written to a
+    temporary file in the same directory and then moved into place with
+    ``os.replace``.  On any failure the old target is left untouched.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+    tmp, fd = _create_temp_target(path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+            fh.flush()
+            if fsync:
+                os.fsync(fh.fileno())
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_result_json(payload: dict[str, Any], output_dir: Path, *, fsync: bool = False) -> None:
     """Write result.json payload to output directory (shared helper)."""
     output_dir.mkdir(parents=True, exist_ok=True)
-    with open(output_dir / "result.json", "w") as fh:
-        json.dump(payload, fh, indent=2)
+    save_json_atomic(output_dir / "result.json", payload, fsync=fsync)

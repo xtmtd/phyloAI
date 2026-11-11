@@ -194,6 +194,8 @@ MCP server 为每个 CLI 子命令注册一个工具，外加四个工具型工�
 | `read_report` | 读取 run 目录下的 `report.json`（在 `<run_dir>/report/` 下查找）。 |
 | `get_command_schema` | 获取任意工具的运行时参数 schema（名称、类型、默认值、可选值、说明）。 |
 
+`check_status` 还会读取 `stop_state.json`（`tree bi pb` 使用）。若任务不在 running 且 sidecar 存在，返回 `unknown` 并附带 `stop_state`；即使能读到 result，也不把它当作本次运行的完成结果。若 sidecar 损坏或不可读，仍返回 `unknown` 并附带 `stop_state_error`，不会回退到旧的 success。CLI 只有在最终 result 发布成功后才删除 sidecar，因此 sidecar 存在表示本次提交未完成（或清理失败）。
+
 ## Skill 参考文件
 
 `skills/phyloai-workflow/` 中的 Skill 包含：

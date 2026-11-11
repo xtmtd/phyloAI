@@ -107,9 +107,14 @@ def _child_env(tools: Path) -> dict[str, str]:
     return env
 
 
-def _start_cli(args: list[str], cwd: Path, tools: Path) -> subprocess.Popen[str]:
+def _start_cli(args: list[str], cwd: Path, tools: Path, *, ignore_hup: bool = False) -> subprocess.Popen[str]:
+    command = [sys.executable, "-c", CLI_CODE, *args]
+    if ignore_hup:
+        wrapper = tools / "ignore_hup.sh"
+        _write_tool(wrapper, "trap '' HUP\nexec \"$@\"\n")
+        command = [str(wrapper), *command]
     return subprocess.Popen(
-        [sys.executable, "-c", CLI_CODE, *args],
+        command,
         cwd=cwd,
         env=_child_env(tools),
         stdout=subprocess.PIPE,
@@ -176,9 +181,33 @@ def _assert_soft_stopped(out: Path, proc: subprocess.Popen[str], rc: int) -> dic
     payload = json.loads((out / "result.json").read_text())
     validate_result_json(payload)
     assert payload["data"]["interrupted"] is True
+    assert payload["data"]["shutdown_state"] == "stopped"
+    assert "stop_signal" in payload["data"]
+    assert not (out / "stop_state.json").exists()
     for name in ("chain1", "chain2"):
         assert (out / "chains" / f"{name}.run").read_text() == "0\n"
     return payload
+
+
+def test_normal_completion_publishes_completed_result_and_removes_sidecar(tmp_path: Path):
+    tools = _make_tools(tmp_path)
+    out = tmp_path / "out"
+    args = _pb_args(tmp_path, tools, out) + ["--nsamples", "40"]
+    proc = _start_cli(args, tmp_path, tools)
+    try:
+        rc = proc.wait(timeout=60)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+    assert rc == 0
+    payload = json.loads((out / "result.json").read_text())
+    validate_result_json(payload)
+    assert payload["status"] == "success"
+    assert payload["data"]["interrupted"] is False
+    assert payload["data"]["shutdown_state"] == "completed"
+    assert not (out / "stop_state.json").exists()
 
 
 @pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP], ids=["sigterm", "sighup"])
@@ -198,23 +227,49 @@ def test_stop_signal_stops_the_run_and_writes_result(tmp_path: Path, sig: int):
     _assert_soft_stopped(out, proc, rc)
 
 
-def test_result_json_survives_a_hard_kill(tmp_path: Path):
-    """The file is written before the wait, so SIGKILL during it keeps the record."""
+def test_stop_state_survives_a_hard_kill(tmp_path: Path):
+    """The sidecar is written before the wait, so SIGKILL keeps the record."""
     tools = _make_tools(tmp_path, stuck=True)
     out = tmp_path / "out"
     proc = _start_cli(_pb_args(tmp_path, tools, out), tmp_path, tools)
     try:
         _wait_started(out)
         proc.send_signal(signal.SIGTERM)
-        assert _wait_for(lambda: (out / "result.json").exists(), timeout=5), "no result.json before the wait"
+        assert _wait_for(lambda: (out / "stop_state.json").exists(), timeout=5), "no stop_state.json before the wait"
         assert proc.poll() is None, "the shutdown finished before the kill could land"
         proc.kill()
     finally:
         proc.wait()
 
-    payload = json.loads((out / "result.json").read_text())
-    assert payload["data"]["interrupted"] is True
-    assert any("pending" in w for w in payload["data"]["warnings"])
+    payload = json.loads((out / "stop_state.json").read_text())
+    assert payload["state"] == "stop_requested"
+    assert payload["stop_signal"] == signal.SIGTERM
+
+    from phyloai.mcp.tools.utils import check_status
+
+    status = check_status(str(out))
+    assert status["status"] == "unknown"
+    assert status["stop_state"]["state"] == "stop_requested"
+
+
+def test_inherited_sighup_ignore_is_not_overridden(tmp_path: Path):
+    """nohup-style SIG_IGN must survive controller installation."""
+    tools = _make_tools(tmp_path)
+    out = tmp_path / "out"
+    proc = _start_cli(_pb_args(tmp_path, tools, out), tmp_path, tools, ignore_hup=True)
+    try:
+        _wait_started(out)
+        proc.send_signal(signal.SIGHUP)
+        time.sleep(1)
+        assert proc.poll() is None, "HUP was handled despite inherited SIG_IGN"
+        assert not (out / "stop_state.json").exists()
+        rc = _stop(proc, signal.SIGTERM)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+    _assert_soft_stopped(out, proc, rc)
 
 
 def test_second_signal_stops_immediately(tmp_path: Path):
@@ -225,7 +280,7 @@ def test_second_signal_stops_immediately(tmp_path: Path):
     try:
         _wait_started(out)
         proc.send_signal(signal.SIGTERM)
-        assert _wait_for(lambda: (out / "result.json").exists(), timeout=5)
+        assert _wait_for(lambda: (out / "stop_state.json").exists(), timeout=5)
         assert proc.poll() is None, "the first signal must not end the shutdown"
         proc.send_signal(signal.SIGTERM)
         rc = proc.wait(timeout=40)
@@ -234,9 +289,12 @@ def test_second_signal_stops_immediately(tmp_path: Path):
             proc.kill()
             proc.wait()
 
-    assert rc == 0
+    assert rc == 143
     payload = json.loads((out / "result.json").read_text())
     validate_result_json(payload)
+    assert payload["status"] == "error"
+    assert payload["data"]["shutdown_state"] == "forced"
+    assert payload["data"]["force_signal"] == signal.SIGTERM
     assert any("Second stop request" in w for w in payload["data"]["warnings"])
 
 
@@ -248,7 +306,7 @@ def test_ctrl_c_keeps_waiting_for_the_chain(tmp_path: Path):
     try:
         _wait_started(out)
         proc.send_signal(signal.SIGINT)
-        assert _wait_for(lambda: (out / "result.json").exists(), timeout=10)
+        assert _wait_for(lambda: (out / "stop_state.json").exists(), timeout=10)
         assert proc.poll() is None, "Ctrl+C stopped waiting for the chains"
         left = [out / "chains" / f"{name}.left" for name in ("chain1", "chain2")]
         assert _wait_for(lambda: all(p.exists() for p in left), timeout=30), "chains were cut short"
@@ -262,6 +320,8 @@ def test_ctrl_c_keeps_waiting_for_the_chain(tmp_path: Path):
     payload = json.loads((out / "result.json").read_text())
     validate_result_json(payload)
     assert payload["data"]["interrupted"] is True
+    assert payload["data"]["shutdown_state"] == "stopped"
+    assert payload["data"]["stop_signal"] == signal.SIGINT
 
 
 def test_second_signal_stops_a_running_convergence_check(tmp_path: Path):
@@ -282,7 +342,10 @@ def test_second_signal_stops_a_running_convergence_check(tmp_path: Path):
             proc.kill()
             proc.wait()
 
-    assert rc == 0
+    assert rc == 143
     payload = json.loads((out / "result.json").read_text())
     validate_result_json(payload)
+    assert payload["status"] == "error"
+    assert payload["data"]["shutdown_state"] == "forced"
+    assert payload["data"]["force_signal"] == signal.SIGTERM
     assert any("final convergence check skipped" in w for w in payload["data"]["warnings"])

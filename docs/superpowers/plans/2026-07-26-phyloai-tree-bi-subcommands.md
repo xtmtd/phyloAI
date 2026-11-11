@@ -10,6 +10,7 @@
 
 **Critical conventions applied throughout this plan:**
 - Library `run_bi_*()` functions return payload dicts. CLI command functions are the sole writer of `result.json`, matching the existing `bi pb` pattern. No `write_result_json()` calls in library modules.
+  - **2026-11-10 exception:** `tree bi pb` may write the auxiliary `stop_state.json` sidecar from the library on a stop request. It must still never write `result.json`; the CLI remains the sole result writer. See `docs/superpowers/plans/2026-11-10-phyloai-tree-bi-stop-signals.md`.
 - `data.tool_stderr` is a **MUST** field per JSON standard §5.3. Per the approved design spec, tool output is streamed directly to terminal (not captured+replayed). Set `data.tool_stderr: ""` for bpcomp (all output streamed to terminal + written to tool output files). For tracecomp: set to captured stdout (stderr → terminal per design). For readpb_mpi: set to concatenated stdout across all modes (stderr → terminal per design).
 - `os.path.relpath(chain_dir / name, output_dir)` for all bpcomp/tracecomp chain path references — never hardcoded `../chains/`.
 - Dry-run must never call `env.require()` — use placeholder executable names like the existing `bi pb` does.

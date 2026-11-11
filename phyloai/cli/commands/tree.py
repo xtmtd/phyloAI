@@ -11,6 +11,7 @@ import click
 from rich.console import Console
 from rich.progress import Progress
 
+from phyloai.core.schema import write_result_json
 from phyloai.tree.ml import run_fasttree
 
 console = Console()
@@ -38,8 +39,11 @@ def _write_error_result(kwargs: dict, message: str, exit_code: int) -> None:
         "error": message,
         "data": {},
     }
-    result_path = output_dir / "result.json"
-    result_path.write_text(json.dumps(result, indent=2))
+    try:
+        write_result_json(result, output_dir, fsync=True)
+    except (OSError, TypeError, ValueError) as exc:
+        # Do not mask the original command error with a secondary write error.
+        click.echo(f"Warning: could not write error result.json: {exc}", err=True)
 
 
 def _build_command_tokens(kwargs: dict) -> list[str]:
@@ -1402,7 +1406,8 @@ def bi_group() -> None:
         "  monitor convergence in real time (bpcomp + tracecomp), and\n"
         "  produce a consensus tree when chains are stopped.\n\n"
         "\n\n"
-        "  Chains run until Ctrl+C (safe soft-stop) or --nsamples cycles\n"
+        "  Chains run until a stop signal (Ctrl+C / SIGTERM / SIGHUP soft-stop)\n"
+        "  or --nsamples cycles\n"
         "  are reached. The command stays alive, showing a live progress\n"
         "  bar and periodic convergence statistics.\n\n"
         "\n\n"
@@ -1517,7 +1522,7 @@ def bi_group() -> None:
     type=int,
     default=None,
     show_default=False,
-    help="Total MCMC cycles per chain after which pb_mpi stops (pb_mpi -x <until>). -1 = run forever (Ctrl+C to stop). Default (not set) = -1 for fresh runs, or use the stored value on --resume. Note: with --sample-freq=N, the number of saved points is --nsamples / N. On --resume, a new --nsamples value overrides the stored target; use this to extend a completed run (e.g. --resume --nsamples 10000).",
+    help="Total MCMC cycles per chain after which pb_mpi stops (pb_mpi -x <until>). -1 = run forever (a stop signal terminates). Default (not set) = -1 for fresh runs, or use the stored value on --resume. Note: with --sample-freq=N, the number of saved points is --nsamples / N. On --resume, a new --nsamples value overrides the stored target; use this to extend a completed run (e.g. --resume --nsamples 10000).",
 )
 @click.option(
     "--monitor-freq",
@@ -1572,42 +1577,88 @@ def bi_group() -> None:
     help="Suppress all terminal output except errors.",
 )
 def bi_pb_command(**kwargs) -> None:
-    from phyloai.tree.bi import run_bi_pb
+    from phyloai.tree.bi import (
+        StopController,
+        _clear_stop_state,
+        finalize_stop_payload,
+        run_bi_pb,
+    )
 
-    # Back up a previous result before the run: a stop signal makes `run_bi_pb`
-    # write a provisional result.json itself.
     result_path = kwargs["output_dir"] / "result.json"
-    if not kwargs.get("dry_run") and result_path.exists():
-        from datetime import datetime
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        shutil.copy2(str(result_path), str(result_path.with_name(f"result_{ts}.json")))
+    exit_code = 0
+    exit_message: str | None = None
 
-    try:
-        payload = run_bi_pb(**kwargs)
-    except FileNotFoundError as exc:
-        _write_error_result(kwargs, str(exc), 3)
-        _fail(str(exc), 3)
-    except ValueError as exc:
-        _write_error_result(kwargs, str(exc), 1)
-        _fail(str(exc), 1)
-    if kwargs.get("dry_run"):
-        if not kwargs.get("quiet"):
-            for cmd in payload["data"]["chain_cmds"].values():
-                click.echo(" ".join(cmd))
-        return
-    result_path.parent.mkdir(parents=True, exist_ok=True)
+    with StopController() as stop:
+        try:
+            payload = run_bi_pb(**kwargs, stop=stop)
+        except FileNotFoundError as exc:
+            _write_error_result(kwargs, str(exc), 3)
+            _fail(str(exc), 3)
+        except ValueError as exc:
+            _write_error_result(kwargs, str(exc), 1)
+            _fail(str(exc), 1)
 
-    # Add convergence_render.txt to output_files if it exists
-    conv_path = kwargs["output_dir"] / "convergence" / "convergence_render.txt"
-    if conv_path.exists():
-        payload.setdefault("data", {}).setdefault("output_files", {})["convergence_render"] = {
-            "path": str(conv_path), "description": "Human-readable convergence diagnostic summary"
-        }
+        if kwargs.get("dry_run"):
+            if not kwargs.get("quiet"):
+                for cmd in payload["data"]["chain_cmds"].values():
+                    click.echo(" ".join(cmd))
+            return
 
-    with open(result_path, "w") as fh:
-        json.dump(payload, fh, indent=2)
-    if payload["status"] == "error":
-        _fail(payload.get("error", "pb_mpi execution failed"), 2)
+        # Process a request that arrived between library return and commit,
+        # then freeze the business outcome. No analysis or chains restart.
+        while True:
+            if stop.pending_request:
+                payload = finalize_stop_payload(stop, payload, output_dir=kwargs["output_dir"])
+            if stop.begin_commit():
+                break
+
+        # Add convergence_render.txt to output_files if it exists
+        conv_path = kwargs["output_dir"] / "convergence" / "convergence_render.txt"
+        if conv_path.exists():
+            payload.setdefault("data", {}).setdefault("output_files", {})["convergence_render"] = {
+                "path": str(conv_path), "description": "Human-readable convergence diagnostic summary"
+            }
+
+        forced = payload.get("data", {}).get("shutdown_state") == "forced"
+        forced_signal = payload.get("data", {}).get("force_signal")
+        if payload["status"] == "error":
+            if forced:
+                business_code = 128 + int(forced_signal) if forced_signal is not None else 130
+            else:
+                business_code = 2
+            business_message = payload.get("error", "pb_mpi execution failed")
+        else:
+            business_code = 0
+            business_message = None
+        failure_code = business_code if business_code else 4
+
+        # Back up only when a new result is ready to publish.
+        try:
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            if result_path.exists():
+                from datetime import datetime
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                shutil.copy2(str(result_path), str(result_path.with_name(f"result_{ts}.json")))
+        except OSError as exc:
+            exit_code = failure_code
+            exit_message = f"Could not back up existing result.json: {exc}"
+        else:
+            try:
+                write_result_json(payload, kwargs["output_dir"], fsync=True)
+            except (OSError, TypeError, ValueError) as exc:
+                exit_code = failure_code
+                exit_message = f"Could not publish result.json: {exc}"
+            else:
+                try:
+                    _clear_stop_state(kwargs["output_dir"])
+                except OSError as exc:
+                    if not kwargs.get("quiet"):
+                        click.echo(f"Warning: could not remove stop_state.json: {exc}", err=True)
+                exit_code = business_code
+                exit_message = business_message
+
+    if exit_code:
+        _fail(exit_message or "tree bi pb failed", exit_code)
     if not kwargs.get("quiet"):
         click.echo(f"Results saved to {result_path}", err=True)
 

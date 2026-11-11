@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import signal
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -104,8 +105,8 @@ def test_tree_bi_readpb_dry_run(tmp_path: Path):
     assert result.exit_code == 0
 
 
-def test_previous_result_is_backed_up_before_the_run(tmp_path: Path):
-    """A stop signal writes result.json mid-run, so the old file is copied first."""
+def test_previous_result_is_not_backed_up_before_the_run(tmp_path: Path):
+    """Backup belongs to final publication, not run startup."""
     out = tmp_path / "out"
     out.mkdir()
     (out / "result.json").write_text(json.dumps({"command": "phyloai previous run", "sentinel": True}))
@@ -118,6 +119,243 @@ def test_previous_result_is_backed_up_before_the_run(tmp_path: Path):
     )
 
     assert result.exit_code == 1
-    backups = list(out.glob("result_*.json"))
-    assert backups, "the previous result.json was not backed up"
-    assert any(json.loads(p.read_text()).get("sentinel") is True for p in backups)
+    assert not list(out.glob("result_*.json"))
+    payload = json.loads((out / "result.json").read_text())
+    assert payload["status"] == "error"
+
+
+def _fake_payload(*, status: str = "success", shutdown_state: str = "completed", force_signal=None) -> dict:
+    data = {
+        "chain_cmds": {},
+        "tool_stderr": {},
+        "tool_logs": {},
+        "output_files": {},
+        "interrupted": shutdown_state != "completed",
+        "warnings": [],
+        "shutdown_state": shutdown_state,
+    }
+    if force_signal is not None:
+        data["stop_signal"] = force_signal
+        data["force_signal"] = force_signal
+    return {
+        "status": status,
+        "command": "phyloai tree bi pb --matrix m.phy --output-dir out",
+        "wall_time": 0.0,
+        "tool_versions": {},
+        "params": {},
+        "key_results": {},
+        "error": "forced" if status == "error" else None,
+        "data": data,
+    }
+
+
+def _invoke_pb(tmp_path: Path):
+    matrix = tmp_path / "m.phy"
+    matrix.write_text("2 3\na AAA\nb AAA\n")
+    return CliRunner().invoke(
+        cli,
+        ["tree", "bi", "pb", "--matrix", str(matrix), "--output-dir", str(tmp_path / "out")],
+    )
+
+
+def test_cli_backs_up_old_result_only_when_publishing(tmp_path: Path, monkeypatch):
+    import phyloai.tree.bi as bi_module
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "result.json").write_text('{"old": true}')
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: _fake_payload())
+
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 0
+    assert list(out.glob("result_*.json"))
+    assert json.loads((out / "result.json").read_text())["status"] == "success"
+
+
+def test_cli_publish_failure_returns_4(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: _fake_payload())
+
+    def fail_publish(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(tree_module, "write_result_json", fail_publish)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 4
+    assert "disk full" in result.output
+
+
+def test_cli_publish_type_error_returns_4(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: _fake_payload())
+
+    def fail_publish(*_args, **_kwargs):
+        raise TypeError("Object is not JSON serializable")
+
+    monkeypatch.setattr(tree_module, "write_result_json", fail_publish)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 4
+    assert "not JSON serializable" in result.output
+
+
+def test_cli_publish_circular_value_error_returns_4_and_preserves_old_result(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "result.json").write_text("old-result")
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: _fake_payload())
+
+    def fail_publish(*_args, **_kwargs):
+        raise ValueError("Circular reference detected")
+
+    monkeypatch.setattr(tree_module, "write_result_json", fail_publish)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 4
+    assert "Circular reference" in result.output
+    assert (out / "result.json").read_text() == "old-result"
+
+
+def test_tool_failure_with_publish_failure_preserves_exit_2(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    payload = _fake_payload(status="error")
+    payload["error"] = "pb_mpi failed"
+    payload["data"].pop("shutdown_state", None)
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: payload)
+
+    def fail_publish(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(tree_module, "write_result_json", fail_publish)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 2
+    assert "disk full" in result.output
+
+
+def test_missing_tool_error_write_failure_preserves_exit_3(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    def missing(**_kwargs):
+        raise FileNotFoundError("pb_mpi not found")
+
+    monkeypatch.setattr(bi_module, "run_bi_pb", missing)
+
+    def fail_write(*_args, **_kwargs):
+        raise OSError("cannot write error result")
+
+    monkeypatch.setattr(tree_module, "write_result_json", fail_write)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 3
+    assert "pb_mpi not found" in result.output
+    assert "cannot write error result" in result.output
+
+
+def test_cli_backup_failure_returns_4_and_preserves_old_result(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "result.json").write_text("old-result")
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: _fake_payload())
+
+    def fail_backup(*_args, **_kwargs):
+        raise OSError("backup failed")
+
+    monkeypatch.setattr(tree_module.shutil, "copy2", fail_backup)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 4
+    assert "backup failed" in result.output
+    assert (out / "result.json").read_text() == "old-result"
+
+
+def test_cli_publishes_final_result_with_fsync(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: _fake_payload())
+    real_write = tree_module.write_result_json
+    calls: list[bool] = []
+
+    def capture(payload, output_dir, *, fsync=False):
+        calls.append(fsync)
+        return real_write(payload, output_dir, fsync=fsync)
+
+    monkeypatch.setattr(tree_module, "write_result_json", capture)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 0
+    assert calls == [True]
+
+
+def test_cli_sidecar_delete_failure_warns_without_rewriting_result(tmp_path: Path, monkeypatch):
+    import phyloai.tree.bi as bi_module
+
+    monkeypatch.setattr(bi_module, "run_bi_pb", lambda **kwargs: _fake_payload())
+
+    def fail_clear(_output_dir):
+        raise OSError("cannot unlink sidecar")
+
+    monkeypatch.setattr(bi_module, "_clear_stop_state", fail_clear)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 0
+    assert "could not remove stop_state.json" in result.output
+    assert json.loads((tmp_path / "out" / "result.json").read_text())["status"] == "success"
+
+
+def test_cli_forced_publish_failure_preserves_143(tmp_path: Path, monkeypatch):
+    import phyloai.cli.commands.tree as tree_module
+    import phyloai.tree.bi as bi_module
+
+    monkeypatch.setattr(
+        bi_module,
+        "run_bi_pb",
+        lambda **kwargs: _fake_payload(
+            status="error", shutdown_state="forced", force_signal=signal.SIGTERM
+        ),
+    )
+
+    def fail_publish(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(tree_module, "write_result_json", fail_publish)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 143
+    assert "disk full" in result.output
+
+
+def test_cli_late_second_signal_is_finalized_before_publish(tmp_path: Path, monkeypatch):
+    import phyloai.tree.bi as bi_module
+
+    def fake_run(**kwargs):
+        stop = kwargs["stop"]
+        stop.note_signal(signal.SIGTERM)
+        stop.mark_handled(1)
+        stop.note_signal(signal.SIGINT)
+        return _fake_payload(shutdown_state="stopped")
+
+    monkeypatch.setattr(bi_module, "run_bi_pb", fake_run)
+    result = _invoke_pb(tmp_path)
+
+    assert result.exit_code == 130
+    payload = json.loads((tmp_path / "out" / "result.json").read_text())
+    assert payload["status"] == "error"
+    assert payload["data"]["shutdown_state"] == "forced"
+    assert payload["data"]["force_signal"] == signal.SIGINT

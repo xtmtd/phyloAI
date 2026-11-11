@@ -19,13 +19,14 @@ description: >-
 - Treat `--overwrite` as destructive. When the target `--output-dir` already exists and the user has not explicitly requested overwrite, prefer suggesting a new `--output-dir` or `--resume` when available before offering `--overwrite`. If a parameter card sets `--overwrite true`, ask for separate explicit confirmation naming the affected `--output-dir`; general command approval is not enough.
 - Never invent parameter names, aliases, defaults, or enum values. Unknown parameters block execution.
 - After a command completes, summarize `key_results`, warnings, and next steps. Do not auto-run the next step.
+- Before declaring a completed result, ensure no `stop_state.json` remains. If `check_status` returns `unknown` with `stop_state` or `stop_state_error`, read the sidecar and any attached `result`; report the stop state (soft stop requested vs forced, or unreadable sidecar) and do not call it success or failure. For `tree bi pb`, `stop_state.json` means the final commit did not finish or sidecar cleanup failed.
 - When a user asks about progress for a running job, call `check_status` and summarize using the checkpoint or result state. For `tree bi pb`, `convergence/convergence_render.txt` contains human-readable convergence diagnostics (pairwise chain status, after-burnin sample counts); this is the primary progress indicator once the first convergence check completes.
 
 ## Entry Modes
 
 - New task: ask for input data path, run `doctor` if needed, then start pretree workflow.
 - Resume task: call `read_report(run_dir)`; if missing, ask whether to run `report` or inspect a specific step with `read_result`.
-- Recovery is verified, not assumed: when resuming or inspecting an existing `output_dir`, smoke-test the read path with `check_status` → `read_result` → (when requested) `read_report`, and report the observed state. A completed atomic run (`result.json` present, `status: success`) is NOT re-run merely because the Skill conversation was interrupted — show the existing result and only relaunch if the user explicitly asks for a fresh run or grants `--overwrite`.
+- Recovery is verified, not assumed: when resuming or inspecting an existing `output_dir`, smoke-test the read path with `check_status` → `read_result` → (when requested) `read_report`, and report the observed state. A completed atomic run (`result.json` present, `status: success`, no `stop_state.json`) is NOT re-run merely because the Skill conversation was interrupted — show the existing result and only relaunch if the user explicitly asks for a fresh run or grants `--overwrite`.
 - Single-step task: render the parameter card for the requested command and wait for confirmation.
 
 ## Language Policy

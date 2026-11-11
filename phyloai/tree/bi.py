@@ -5,15 +5,18 @@ from __future__ import annotations
 import itertools
 import json
 import math
+import os
 import re
 import shutil
 import signal
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from phyloai.core.env import ToolEnv
+from phyloai.core.schema import save_json_atomic
 
 MODEL_FLAGS = {
     "gtr": "-gtr",
@@ -401,7 +404,44 @@ def _generate_trace_plots(trace_paths: list[Path], output_pdf: Path, burnin: int
 # ---------------------------------------------------------------------------
 
 
-def _run_convergence_check(output_dir: Path, chain_names: list[str], tools: dict[str, str], burnin: int) -> dict[str, Any]:
+class _ConvergenceInterrupted(Exception):
+    """Raised when a stop request interrupts a convergence tool."""
+
+    def __init__(self, *, forced: bool) -> None:
+        super().__init__("convergence interrupted")
+        self.forced = forced
+
+
+def _run_tool_interruptible(
+    cmd: list[str],
+    cwd: Path,
+    stop: "StopController | None",
+    *,
+    abort_if_requested: bool,
+) -> subprocess.CompletedProcess[str]:
+    if stop is None:
+        return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        while True:
+            try:
+                stdout, stderr = proc.communicate(timeout=0.5)
+                return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+            except subprocess.TimeoutExpired:
+                if stop.forced or (abort_if_requested and stop.requested):
+                    _terminate_end(proc)
+                    try:
+                        proc.communicate(timeout=2)
+                    except (OSError, subprocess.TimeoutExpired):
+                        pass
+                    raise _ConvergenceInterrupted(forced=stop.forced)
+    except BaseException:
+        if proc.poll() is None:
+            _terminate_end(proc)
+        raise
+
+
+def _run_convergence_check(output_dir: Path, chain_names: list[str], tools: dict[str, str], burnin: int, stop: "StopController | None" = None, *, abort_if_requested: bool = True) -> dict[str, Any]:
     conv_dir = output_dir / "convergence"
     conv_dir.mkdir(parents=True, exist_ok=True)
     comparisons: dict[str, list[str]] = {"all": chain_names}
@@ -413,13 +453,13 @@ def _run_convergence_check(output_dir: Path, chain_names: list[str], tools: dict
         base = f"bpcomp_{'all' if label == 'all' else label}"
         bp_base = conv_dir / base
         bp_cmd = [tools["bpcomp"], "-x", str(burnin), "-o", base, *[str(Path("../chains") / name) for name in names]]
-        bp_proc = subprocess.run(bp_cmd, cwd=conv_dir, capture_output=True, text=True)
+        bp_proc = _run_tool_interruptible(bp_cmd, conv_dir, stop, abort_if_requested=abort_if_requested)
         if bp_proc.returncode != 0:
             warnings.append(f"bpcomp {label} exited with code {bp_proc.returncode}: {bp_proc.stderr[:200]}")
         trace_base = f"tracecomp_{'all' if label == 'all' else label}"
         trace_out = conv_dir / f"{trace_base}.contdiff"
         trace_cmd = [tools["tracecomp"], "-x", str(burnin), *[str(Path("../chains") / f"{name}.trace") for name in names]]
-        trace_proc = subprocess.run(trace_cmd, cwd=conv_dir, capture_output=True, text=True)
+        trace_proc = _run_tool_interruptible(trace_cmd, conv_dir, stop, abort_if_requested=abort_if_requested)
         if trace_proc.returncode != 0:
             warnings.append(f"tracecomp {label} exited with code {trace_proc.returncode}: {trace_proc.stderr[:200]}")
         trace_out.write_text((trace_proc.stdout or "") + (("\n" + trace_proc.stderr) if trace_proc.stderr else ""))
@@ -449,7 +489,7 @@ def _run_convergence_check(output_dir: Path, chain_names: list[str], tools: dict
 # ---------------------------------------------------------------------------
 
 
-def _assemble_result(params: dict[str, Any], command: str, wall_time: float, tool_versions: dict[str, str | None], chain_cmds: dict[str, list[str]], chain_lengths: dict[str, int], final_convergence: dict[str, Any] | None, tool_outputs: dict[str, str], interrupted: bool, status: str = "success", error: str | None = None, warnings: list[str] | None = None, output_dir: Path | None = None) -> dict[str, Any]:
+def _assemble_result(params: dict[str, Any], command: str, wall_time: float, tool_versions: dict[str, str | None], chain_cmds: dict[str, list[str]], chain_lengths: dict[str, int], final_convergence: dict[str, Any] | None, tool_outputs: dict[str, str], interrupted: bool, status: str = "success", error: str | None = None, warnings: list[str] | None = None, output_dir: Path | None = None, shutdown_state: str | None = "completed", stop_signal: int | None = None, force_signal: int | None = None) -> dict[str, Any]:
     all_warnings = list(warnings or [])
     if final_convergence:
         all_warnings.extend(final_convergence.get("warnings", []))
@@ -470,6 +510,20 @@ def _assemble_result(params: dict[str, Any], command: str, wall_time: float, too
         for p in tracecomp_patterns:
             key = p.name.replace(".", "_")
             output_files[key] = {"path": str(p), "description": f"PhyloBayes tracecomp output: {p.name}"}
+    data: dict[str, Any] = {
+        "chain_cmds": chain_cmds,
+        "tool_stderr": tool_outputs,
+        "tool_logs": {name: f"chains/{name}.log" for name in chain_cmds},
+        "output_files": output_files,
+        "interrupted": interrupted,
+        "warnings": all_warnings,
+    }
+    if shutdown_state is not None:
+        data["shutdown_state"] = shutdown_state
+    if stop_signal is not None:
+        data["stop_signal"] = stop_signal
+    if force_signal is not None:
+        data["force_signal"] = force_signal
     return {
         "status": status,
         "command": command,
@@ -483,14 +537,7 @@ def _assemble_result(params: dict[str, Any], command: str, wall_time: float, too
             "consensus_tree": consensus_tree,
         },
         "error": error,
-        "data": {
-            "chain_cmds": chain_cmds,
-            "tool_stderr": tool_outputs,
-            "tool_logs": {name: f"chains/{name}.log" for name in chain_cmds},
-            "output_files": output_files,
-            "interrupted": interrupted,
-            "warnings": all_warnings,
-        },
+        "data": data,
     }
 
 
@@ -499,37 +546,205 @@ def _assemble_result(params: dict[str, Any], command: str, wall_time: float, too
 # ---------------------------------------------------------------------------
 
 
+def _write_stop_state(
+    output_dir: Path,
+    *,
+    state: str,
+    pid: int,
+    stop_signal: int,
+    force_signal: int | None = None,
+) -> None:
+    """Write/update the minimal stop sidecar atomically."""
+    if state not in ("stop_requested", "forced"):
+        raise ValueError(f"Unknown stop state: {state}")
+    path = output_dir / "stop_state.json"
+    now = datetime.now(timezone.utc).isoformat()
+    requested_at = now
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+            requested_at = existing.get("requested_at", now)
+        except (OSError, json.JSONDecodeError):
+            pass
+    payload: dict[str, Any] = {
+        "state": state,
+        "pid": pid,
+        "requested_at": requested_at,
+        "stop_signal": stop_signal,
+    }
+    if force_signal is not None:
+        payload["forced_at"] = now
+        payload["force_signal"] = force_signal
+    save_json_atomic(path, payload, fsync=True)
+
+
+def _clear_stop_state(output_dir: Path) -> None:
+    (output_dir / "stop_state.json").unlink(missing_ok=True)
+
+
+def finalize_stop_payload(
+    stop: "StopController",
+    payload: dict[str, Any],
+    *,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Process a late stop request after ``run_bi_pb()`` returned.
+
+    This is the library-side handoff used by the CLI final publisher; it never
+    restarts analysis or chains. A late first request after a completed result
+    is treated as already handled (no chains remain); a late second request
+    converts the payload to the forced-stop error form.
+    """
+    data = payload.setdefault("data", {})
+    warnings = data.setdefault("warnings", [])
+    if stop.forced:
+        stop_signal = stop.first_signal if stop.first_signal is not None else getattr(signal, "SIGINT", 2)
+        force_signal = stop.force_signal if stop.force_signal is not None else stop_signal
+        payload["status"] = "error"
+        if not payload.get("error"):
+            payload["error"] = "Run forcibly stopped by a second stop signal"
+        data["interrupted"] = True
+        data["shutdown_state"] = "forced"
+        data["stop_signal"] = stop_signal
+        data["force_signal"] = force_signal
+        if "Second stop request" not in " ".join(warnings):
+            warnings.append("Second stop request: terminating the chains now")
+        try:
+            _write_stop_state(
+                output_dir,
+                state="forced",
+                pid=os.getpid(),
+                stop_signal=stop_signal,
+                force_signal=force_signal,
+            )
+        except OSError as exc:
+            warnings.append(f"Could not update stop_state.json: {exc}")
+        stop.mark_handled(2)
+        return payload
+
+    if stop.requested:
+        # No chains remain in this handoff; a first request cannot do more
+        # than be recorded as handled before commit.
+        stop.mark_handled(1)
+    return payload
+
+
+class StopController:
+    """Command-local stop state and signal lifecycle for ``tree bi pb``.
+
+    The handler only records signals; it does no I/O and never raises. The
+    library drives soft/forced shutdown by polling the state below.
+    """
+
+    def __init__(self, *, install_handlers: bool = True) -> None:
+        self._install_handlers = install_handlers
+        self.first_signal: int | None = None
+        self.force_signal: int | None = None
+        self.stop_level = 0
+        self.handled_level = 0
+        self.phase = "running"
+        self._latched: list[int] = []
+        self._previous: dict[int, Any] = {}
+        self._installed = False
+
+    @property
+    def requested(self) -> bool:
+        return self.stop_level >= 1
+
+    @property
+    def forced(self) -> bool:
+        return self.stop_level >= 2
+
+    @property
+    def pending_request(self) -> bool:
+        return self.stop_level > self.handled_level
+
+    @property
+    def latched_signals(self) -> tuple[int, ...]:
+        return tuple(self._latched)
+
+    def _signals(self) -> list[int]:
+        signals: list[int] = []
+        for name in ("SIGINT", "SIGTERM", "SIGHUP"):
+            signum = getattr(signal, name, None)
+            if signum is not None:
+                signals.append(signum)
+        return signals
+
+    def install(self) -> None:
+        if not self._install_handlers or self._installed:
+            return
+        for signum in self._signals():
+            try:
+                current = signal.getsignal(signum)
+                if current == signal.SIG_IGN:
+                    continue
+                self._previous[signum] = current
+                signal.signal(signum, self._handle)
+            except (ValueError, OSError):
+                self._previous.pop(signum, None)
+        self._installed = True
+
+    def restore(self) -> None:
+        for signum, handler in list(self._previous.items()):
+            try:
+                signal.signal(signum, handler)
+            except (ValueError, OSError):
+                pass
+        self._previous.clear()
+        self._installed = False
+
+    def _handle(self, signum: int, _frame: Any) -> None:
+        self.note_signal(signum)
+
+    def note_signal(self, signum: int) -> None:
+        """Record a stop request without doing any I/O."""
+        if self.phase == "committing":
+            self._latched.append(signum)
+            return
+        if self.stop_level == 0:
+            self.first_signal = signum
+            self.stop_level = 1
+            self.phase = "stop_requested"
+        elif self.stop_level == 1:
+            self.force_signal = signum
+            self.stop_level = 2
+            self.phase = "forced"
+        else:
+            self._latched.append(signum)
+
+    def note_keyboard_interrupt(self) -> None:
+        """Direct-library-call fallback: treat KeyboardInterrupt as SIGINT."""
+        self.note_signal(getattr(signal, "SIGINT", 2))
+
+    def mark_handled(self, level: int) -> None:
+        """Mark the stop action as submission-ready up to *level*."""
+        self.handled_level = max(self.handled_level, level)
+
+    def begin_commit(self) -> bool:
+        """Enter the commit attempt and report whether a request is pending."""
+        self.phase = "committing"
+        if self.pending_request:
+            if self.stop_level >= 2:
+                self.phase = "forced"
+            elif self.stop_level == 1:
+                self.phase = "stop_requested"
+            else:
+                self.phase = "running"
+            return False
+        return True
+
+    def __enter__(self) -> "StopController":
+        self.install()
+        return self
+
+    def __exit__(self, _exc_type: Any, _exc: Any, _tb: Any) -> None:
+        self.restore()
+
+
 def _soft_stop_chains(output_dir: Path, chain_names: list[str]) -> None:
     for name in chain_names:
         (output_dir / "chains" / f"{name}.run").write_text("0\n")
-
-
-def _install_stop_handlers() -> dict[int, Any]:
-    """Handle scheduler stop signals exactly like Ctrl+C; return the previous handlers."""
-    previous: dict[int, Any] = {}
-
-    def _interrupt(_signum: int, _frame: Any) -> None:
-        raise KeyboardInterrupt
-
-    for name in ("SIGTERM", "SIGHUP"):
-        signum = getattr(signal, name, None)
-        if signum is None:
-            continue
-        try:
-            previous[signum] = signal.getsignal(signum)
-            signal.signal(signum, _interrupt)
-        except (ValueError, OSError):
-            # Non-main thread or a platform that refuses the handler.
-            previous.pop(signum, None)
-    return previous
-
-
-def _restore_stop_handlers(previous: dict[int, Any]) -> None:
-    for signum, handler in previous.items():
-        try:
-            signal.signal(signum, handler)
-        except (ValueError, OSError):
-            pass
 
 
 def _terminate_end(proc: subprocess.Popen[str]) -> None:
@@ -540,6 +755,10 @@ def _terminate_end(proc: subprocess.Popen[str]) -> None:
     except (OSError, subprocess.TimeoutExpired):
         try:
             proc.kill()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                pass
         except OSError:
             pass
 
@@ -583,14 +802,81 @@ def _format_convergence_text(conv_result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict[str, list[str]], tools: dict[str, str], tool_versions: dict[str, str | None], params: dict[str, Any], command: str, run_start: float, nsamples: int, monitor_freq: int, burnin_frac: float, poll_interval: int, quiet: bool) -> dict[str, Any]:
+def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict[str, list[str]], tools: dict[str, str], tool_versions: dict[str, str | None], params: dict[str, Any], command: str, run_start: float, nsamples: int, monitor_freq: int, burnin_frac: float, poll_interval: int, quiet: bool, stop: StopController | None = None) -> dict[str, Any]:
+    stop = stop or StopController(install_handlers=False)
+    stop.install()
+
     procs: dict[str, subprocess.Popen[str]] = {}
     outputs: dict[str, str] = {name: "" for name in chain_names}
-    # Bound before the handlers: a stop can arrive before the display exists.
     conv_warnings: list[str] = []
     live_display: Any = None
-    previous_handlers = _install_stop_handlers()
-    try:
+    sidecar_written = False
+    soft_stop_done = False
+    forced_cleanup_done = False
+
+    def _close_log(proc: subprocess.Popen[str]) -> None:
+        log = getattr(proc, "_phyloai_log", None)
+        if log is not None and not log.closed:
+            log.close()
+
+    def _stop_display() -> None:
+        if live_display is not None:
+            try:
+                live_display.stop()
+            except Exception:
+                pass
+
+    def _terminate_all() -> None:
+        for proc in list(procs.values()):
+            if proc.poll() is None:
+                _terminate_end(proc)
+            _close_log(proc)
+
+    def _write_requested_sidecar() -> None:
+        nonlocal sidecar_written
+        if sidecar_written:
+            return
+        try:
+            _write_stop_state(
+                output_dir,
+                state="stop_requested",
+                pid=os.getpid(),
+                stop_signal=stop.first_signal if stop.first_signal is not None else getattr(signal, "SIGINT", 2),
+            )
+        except OSError as exc:
+            conv_warnings.append(f"Could not write stop_state.json: {exc}")
+        sidecar_written = True
+
+    def _warn_once(message: str) -> None:
+        if message not in conv_warnings:
+            conv_warnings.append(message)
+
+    def _write_forced_sidecar() -> None:
+        try:
+            _write_stop_state(
+                output_dir,
+                state="forced",
+                pid=os.getpid(),
+                stop_signal=stop.first_signal if stop.first_signal is not None else getattr(signal, "SIGINT", 2),
+                force_signal=stop.force_signal if stop.force_signal is not None else getattr(signal, "SIGINT", 2),
+            )
+        except OSError as exc:
+            conv_warnings.append(f"Could not update stop_state.json: {exc}")
+
+    def _force_cleanup() -> None:
+        nonlocal forced_cleanup_done
+        if forced_cleanup_done:
+            return
+        _warn_once("Second stop request: terminating the chains now")
+        _write_forced_sidecar()
+        _terminate_all()
+        forced_cleanup_done = True
+        stop.mark_handled(2)
+
+    def execute() -> dict[str, Any] | None:
+        nonlocal live_display
+        if stop.requested:
+            return None
         from rich.console import Console
         from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeElapsedColumn
         from rich.live import Live
@@ -617,6 +903,8 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
             live_display.start()
 
         for name, cmd in chain_cmds.items():
+            if stop.requested:
+                return None
             log = open(output_dir / "chains" / f"{name}.log", "w")
             proc = subprocess.Popen(cmd, cwd=output_dir / "chains", stdout=log, stderr=subprocess.STDOUT, text=True)
             proc._phyloai_log = log  # type: ignore[attr-defined]
@@ -632,8 +920,9 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
         last_trace_read = time.monotonic()
         final_convergence: dict[str, Any] | None = None
         while procs:
+            if stop.requested:
+                return None
             now = time.monotonic()
-            # --- Poll .trace files every --poll-interval seconds ---
             if now - last_trace_read >= poll_interval:
                 trace_lengths = {name: _count_trace_samples(output_dir / "chains" / f"{name}.trace") for name in chain_names}
                 last_trace_read = now
@@ -650,12 +939,15 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
                 if min_len - last_check >= monitor_freq:
                     burnin = math.floor(min_len * burnin_frac)
                     if burnin >= 10:
-                        conv = _run_convergence_check(output_dir, chain_names, tools, burnin)
+                        try:
+                            conv = _run_convergence_check(output_dir, chain_names, tools, burnin, stop=stop, abort_if_requested=True)
+                        except _ConvergenceInterrupted:
+                            return None
                         final_convergence = conv
                         if not quiet:
                             conv_text = _format_convergence_text(conv)
                             (output_dir / "convergence" / "convergence_render.txt").write_text(conv_text)
-                            live_display.stop()
+                            _stop_display()
                             print(f"\n--- Convergence Check @ {min_len} samples (burnin {int(burnin_frac*100)}% = {burnin}) ---{conv_text}")
                             print("-" * 60)
                             pairwise_statuses = [m.get("status") for m in conv.get("pairwise", {}).values()]
@@ -675,117 +967,173 @@ def _run_bi_processes(output_dir: Path, chain_names: list[str], chain_cmds: dict
                         msg = f"Skipping convergence check: chains too short (burnin {burnin} < 10)"
                         conv_warnings.append(msg)
                         if not quiet:
-                            live_display.stop()
+                            _stop_display()
                             print(f"  Warning: {msg}")
                             print("\n\n\n\n")
                             live_display.start()
                     last_check = min_len
-            # --- Fast poll: process exit checks every 1s ---
             for name, proc in list(procs.items()):
                 if proc.poll() is not None:
-                    getattr(proc, "_phyloai_log").close()
+                    _close_log(proc)
                     if proc.returncode != 0:
                         remaining = [n for n in procs if n != name]
                         if remaining:
                             if not quiet:
-                                live_display.stop()
+                                _stop_display()
                                 print(f"  Chain {name} failed -- stopping remaining chains...")
                             _soft_stop_chains(output_dir, remaining)
+                            if stop.requested:
+                                _write_requested_sidecar()
                             for rem_name in remaining:
-                                procs[rem_name].wait()
-                                getattr(procs[rem_name], "_phyloai_log").close()
+                                rem_proc = procs[rem_name]
+                                while rem_proc.poll() is None:
+                                    if stop.forced:
+                                        break
+                                    if stop.requested:
+                                        _write_requested_sidecar()
+                                    try:
+                                        rem_proc.wait(timeout=1)
+                                    except subprocess.TimeoutExpired:
+                                        continue
+                                if stop.forced:
+                                    break
+                                _close_log(rem_proc)
+                            if stop.forced:
+                                _force_cleanup()
+                            elif stop.requested:
+                                _write_requested_sidecar()
+                                _warn_once("Stop requested while handling a failed chain")
+                                stop.mark_handled(1)
                         if not quiet:
-                            live_display.stop()
+                            _stop_display()
                         trace_lengths = {n: _count_trace_samples(output_dir / "chains" / f"{n}.trace") for n in chain_names}
                         for n in chain_names:
                             log_path = output_dir / "chains" / f"{n}.log"
                             outputs[n] = log_path.read_text() if log_path.exists() else ""
-                        return _assemble_result(params, command, time.monotonic() - run_start, tool_versions, chain_cmds, trace_lengths, final_convergence, outputs, False, "error", f"pb_mpi chain {name} exited with code {proc.returncode}", warnings=conv_warnings, output_dir=output_dir)
+                        shutdown_state = "forced" if stop.forced else ("stopped" if stop.requested else None)
+                        return _assemble_result(
+                            params, command, time.monotonic() - run_start, tool_versions,
+                            chain_cmds, trace_lengths, final_convergence, outputs,
+                            False, "error", f"pb_mpi chain {name} exited with code {proc.returncode}",
+                            warnings=conv_warnings, output_dir=output_dir,
+                            shutdown_state=shutdown_state,
+                            stop_signal=stop.first_signal if stop.requested else None,
+                            force_signal=stop.force_signal if stop.forced else None,
+                        )
                     del procs[name]
+            if stop.requested:
+                return None
             time.sleep(1)
-        # All chains exited normally
-        if not quiet:
-            live_display.stop()
+        _stop_display()
         lengths = {name: _count_trace_samples(output_dir / "chains" / f"{name}.trace") for name in chain_names}
         if lengths:
             burnin = math.floor(min(lengths.values()) * burnin_frac)
             if burnin >= 10:
-                final_convergence = _run_convergence_check(output_dir, chain_names, tools, burnin)
+                try:
+                    final_convergence = _run_convergence_check(output_dir, chain_names, tools, burnin, stop=stop, abort_if_requested=True)
+                except _ConvergenceInterrupted:
+                    return None
             else:
                 conv_warnings.append(f"Skipping convergence check: chains too short (burnin {burnin} < 10)")
         for name in chain_names:
             log_path = output_dir / "chains" / f"{name}.log"
             outputs[name] = log_path.read_text() if log_path.exists() else ""
-        return _assemble_result(params, command, time.monotonic() - run_start, tool_versions, chain_cmds, lengths, final_convergence, outputs, False, warnings=conv_warnings, output_dir=output_dir)
-    except KeyboardInterrupt:
-        # First signal: let the running MCMC cycle finish, as Ctrl+C always has.
-        # Second signal: stop now.
-        if not quiet and live_display is not None:
-            live_display.stop()
-            print("\n  Caught interrupt -- sending soft-stop to all chains...")
-        _soft_stop_chains(output_dir, chain_names)
-        if not quiet:
-            for name in chain_names:
-                print(f"    Wrote 0 -> chains/{name}.run")
-            print("    Waiting for chains to finish current cycle (signal again to stop now)...")
-        # Write before waiting: a hard kill during the shutdown would otherwise
-        # leave no result at all. The final payload overwrites this file.
-        early_lengths = {name: _count_trace_samples(output_dir / "chains" / f"{name}.trace") for name in chain_names}
-        try:
-            (output_dir / "result.json").write_text(
-                json.dumps(
-                    _assemble_result(
-                        params, command, time.monotonic() - run_start, tool_versions,
-                        chain_cmds, early_lengths, None, {},
-                        True, warnings=["Stop requested; final convergence check pending"],
-                        output_dir=None,
-                    ),
-                    indent=2,
-                )
-            )
-        except OSError as exc:
-            conv_warnings.append(f"Could not write the early result.json: {exc}")
-        forced = False
-        try:
+        if stop.requested:
+            return None
+        return _assemble_result(params, command, time.monotonic() - run_start, tool_versions, chain_cmds, lengths, final_convergence, outputs, False, warnings=conv_warnings, output_dir=output_dir, shutdown_state="completed")
+
+    def stop_flow() -> dict[str, Any]:
+        nonlocal sidecar_written, soft_stop_done, forced_cleanup_done
+        if not sidecar_written:
+            _stop_display()
+            if not quiet:
+                print("\n  Caught interrupt -- sending soft-stop to all chains...")
+            _write_requested_sidecar()
+        if not soft_stop_done:
+            _soft_stop_chains(output_dir, chain_names)
+            soft_stop_done = True
+            if not quiet:
+                for name in chain_names:
+                    print(f"    Wrote 0 -> chains/{name}.run")
+                print("    Waiting for chains to finish current cycle (signal again to stop now)...")
+
+        if not stop.forced:
             for name, proc in list(procs.items()):
-                proc.wait()
-                getattr(proc, "_phyloai_log").close()
+                while proc.poll() is None:
+                    if stop.forced:
+                        break
+                    try:
+                        proc.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        continue
+                if stop.forced:
+                    break
+                _close_log(proc)
                 if not quiet:
                     samples = _count_trace_samples(output_dir / "chains" / f"{name}.trace")
                     print(f"    {name} stopped at {samples} samples.")
-        except KeyboardInterrupt:
-            forced = True
-            conv_warnings.append("Second stop request: terminating the chains now")
-            for name, proc in list(procs.items()):
-                if proc.poll() is None:
-                    _terminate_end(proc)
-                log = getattr(proc, "_phyloai_log", None)
-                if log is not None and not log.closed:
-                    log.close()
+            if not stop.forced:
+                stop.mark_handled(1)
+
+        if stop.forced and not forced_cleanup_done:
+            _force_cleanup()
+
         lengths = {name: _count_trace_samples(output_dir / "chains" / f"{name}.trace") for name in chain_names}
-        final_convergence = None
-        if forced:
-            conv_warnings.append("Skipping final convergence check: stopped by a second request")
-        elif lengths:
+        final_convergence: dict[str, Any] | None = None
+        if not stop.forced and lengths:
             burnin = math.floor(min(lengths.values()) * burnin_frac)
             if burnin >= 10:
                 if not quiet:
                     print("    Running final convergence check...")
                 try:
-                    final_convergence = _run_convergence_check(output_dir, chain_names, tools, burnin)
-                except KeyboardInterrupt:
-                    forced = True
+                    final_convergence = _run_convergence_check(output_dir, chain_names, tools, burnin, stop=stop, abort_if_requested=False)
+                except _ConvergenceInterrupted:
                     conv_warnings.append("Second stop request: final convergence check skipped")
+                    stop.mark_handled(2)
+                except KeyboardInterrupt:
+                    stop.note_keyboard_interrupt()
+                    raise
             else:
                 conv_warnings.append(f"Skipping convergence check: chains too short (burnin {burnin} < 10)")
-        for name in chain_names:
-            log_path = output_dir / "chains" / f"{name}.log"
-            outputs[name] = log_path.read_text() if log_path.exists() else ""
+
+        if stop.forced and not forced_cleanup_done:
+            _force_cleanup()
+
+        if not stop.forced:
+            stop.mark_handled(1)
+            for name in chain_names:
+                log_path = output_dir / "chains" / f"{name}.log"
+                outputs[name] = log_path.read_text() if log_path.exists() else ""
+        if stop.forced:
+            final_convergence = None
+            if not forced_cleanup_done:
+                _force_cleanup()
+
+        shutdown_state = "forced" if stop.forced else "stopped"
+        status = "error" if stop.forced else "success"
+        error = "Run forcibly stopped by a second stop signal" if stop.forced else None
         if not quiet:
-            print("    Writing result.json  (status: success)")
-        return _assemble_result(params, command, time.monotonic() - run_start, tool_versions, chain_cmds, lengths, final_convergence, outputs, True, warnings=conv_warnings, output_dir=output_dir)
-    finally:
-        _restore_stop_handlers(previous_handlers)
+            print(f"    Writing result.json  (status: {status})")
+        return _assemble_result(
+            params, command, time.monotonic() - run_start, tool_versions,
+            chain_cmds, lengths, final_convergence, outputs,
+            True, status, error, warnings=conv_warnings, output_dir=output_dir,
+            shutdown_state=shutdown_state,
+            stop_signal=stop.first_signal,
+            force_signal=stop.force_signal,
+        )
+
+    while True:
+        try:
+            if stop.requested:
+                return stop_flow()
+            result = execute()
+            if result is not None:
+                return result
+        except KeyboardInterrupt:
+            stop.note_keyboard_interrupt()
+        except _ConvergenceInterrupted:
+            return stop_flow()
 
 
 # ---------------------------------------------------------------------------
@@ -815,6 +1163,8 @@ def run_bi_pb(
     pb_path: Path | None = None,
     dry_run: bool = False,
     quiet: bool = False,
+    *,
+    stop: StopController | None = None,
 ) -> dict[str, Any]:
     run_start = time.monotonic()
     output_dir = output_dir.resolve()
@@ -952,6 +1302,11 @@ def run_bi_pb(
             chain_cmds[name] = _build_chain_cmd(tools["mpirun"], tools["pb_mpi"], threads, matrix_for_chains, model_flags, sample_freq, nsamples, name)
         else:
             chain_cmds[name] = _build_resume_cmd(tools["mpirun"], tools["pb_mpi"], threads, name)
+    if not dry_run:
+        # A new accepted run supersedes any stale stop record from a previous
+        # interrupted attempt. Rejected runs, input-conversion failures and
+        # chain-command validation failures never reach this point.
+        _clear_stop_state(output_dir)
     if skipped_names:
         names = [n for n in names if n not in skipped_names]
         if not names:
@@ -964,4 +1319,4 @@ def run_bi_pb(
             print(msg)
     if dry_run:
         return _assemble_result(params, command, time.monotonic() - run_start, {"pb_mpi": None, "bpcomp": None, "tracecomp": None, "mpirun": None}, chain_cmds, {name: 0 for name in names}, None, {name: "" for name in names}, False, output_dir=output_dir)
-    return _run_bi_processes(output_dir, names, chain_cmds, tools, tool_versions, params, command, run_start, nsamples, monitor_freq, burnin_frac, poll_interval, quiet)
+    return _run_bi_processes(output_dir, names, chain_cmds, tools, tool_versions, params, command, run_start, nsamples, monitor_freq, burnin_frac, poll_interval, quiet, stop=stop)
